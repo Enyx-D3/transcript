@@ -5,7 +5,7 @@ import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 class WhisperService {
   Whisper? _whisper;
 
-  Future<void> init({WhisperModel model = WhisperModel.base}) async {
+  Future<void> init({model}) async {
     // You can swap downloadHost to your own mirror / cache
     _whisper = Whisper(
       model: model,

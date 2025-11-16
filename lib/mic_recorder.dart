@@ -22,6 +22,17 @@ class MicRecorder {
     return path;
   }
 
+  Future<void> startToPath(String path) async {
+  await _rec.start(
+    const RecordConfig(
+      encoder: AudioEncoder.wav,
+      sampleRate: 16000,
+      numChannels: 1,
+    ),
+    path: path,
+  );
+}
+
   Future<String?> stop() => _rec.stop();
 
   Future<void> cancel() => _rec.cancel();

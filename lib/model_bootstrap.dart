@@ -18,7 +18,7 @@ Future<ModelPaths> ensureDiarizationModels() async {
 
   // 2) Embedding: NeMo titanet-small (speaker-recognition-models)
   final embUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recognition-models/nemo_en_titanet_small.onnx';
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx';
   final embOnnxFile = File('${embDir.path}/embedding.onnx');
   if (!await embOnnxFile.exists() || (await embOnnxFile.length()) == 0) {
     final r = await http.get(Uri.parse(embUrl));

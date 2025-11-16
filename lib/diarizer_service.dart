@@ -22,14 +22,14 @@ class DiarizerService {
     initBindings();
     final mp = await ensureDiarizationModels();
 
-    final segCfg = OfflineSpeakerSegmentationModelConfig.new(
+    final segCfg = OfflineSpeakerSegmentationModelConfig(
       pyannote: OfflineSpeakerSegmentationPyannoteModelConfig(model: mp.segOnnx),
       numThreads: numThreads,
       provider: 'cpu',
       debug: false,
     );
 
-    final embCfg = SpeakerEmbeddingExtractorConfig.new(
+    final embCfg = SpeakerEmbeddingExtractorConfig(
       model: mp.embOnnx,
       numThreads: numThreads,
       provider: 'cpu',
