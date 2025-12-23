@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "909295591544",
+    "project_id": "transcript-480707",
+    "storage_bucket": "transcript-480707.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:909295591544:android:a8f63d55d2aff0a8f18d8d",
+        "android_client_info": {
+          "package_name": "com.enyxd.transcript"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDIZu71MLXkDf75OdZEhmySKofqWoM3ys"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

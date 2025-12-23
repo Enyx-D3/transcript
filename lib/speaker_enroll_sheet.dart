@@ -1,6 +1,7 @@
 // lib/speaker_enroll_sheet.dart
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:transcript/common/app_flushbar.dart';
 import 'speaker_embedding.dart';
 import 'speaker_memory.dart';
 
@@ -39,7 +40,8 @@ Future<String?> showSpeakerEnrollSheet({
           await  memory.enrollAppend(name: controller.text.trim(), embedding: v);
           Navigator.of(ctx).pop(controller.text.trim());
         } catch (e) {
-          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Enroll failed: $e')));
+          await AppFlushbar.error(ctx, message: 'Enroll failed');
+          // ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Enroll failed: $e')));
         } finally {
           enrolling = false;
           (ctx).markNeedsBuild();

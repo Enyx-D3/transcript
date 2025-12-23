@@ -1,127 +1,173 @@
-// lib/speaker_memory.dart
+// lib/speaker_memory.dart (file-based, no ObjectBox)
+//
+// - One embedding per name (averaged over time).
+// - JSON on disk: { "Alex": [0.1, 0.2, ...], ... }
+// - Cached in memory per isolate.
+// - Safe to call from background isolate (no ObjectBox).
+
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'speaker_embedding.dart';
 
-class SpeakerProfile {
-  final String name;
-  final List<List<double>> vectors; // multiple prototypes per speaker
+/// Small helper so call-sites can use `.key` and `.value`
+/// similar to MapEntry.
+class IdentifyResult {
+  final String? key;   // speaker name
+  final double value;  // similarity score
 
-  SpeakerProfile({required this.name, required this.vectors});
-
-  Map<String, dynamic> toJson() => {'name': name, 'vectors': vectors};
-
-  static SpeakerProfile fromJson(Map<String, dynamic> j) => SpeakerProfile(
-        name: j['name'] as String,
-        vectors: (j['vectors'] as List)
-            .map((e) => (e as List).map((x) => (x as num).toDouble()).toList())
-            .toList(),
-      );
+  const IdentifyResult(this.key, this.value);
 }
 
 class SpeakerMemory {
-  static const _kKey = 'speaker_profiles_v2';
-  static const int _maxVectorsPerSpeaker = 12; // cap to bound size
-  static SpeakerMemory? _inst;
-
-  final List<SpeakerProfile> _profiles = [];
-
   SpeakerMemory._();
 
+  static SpeakerMemory? _instance;
+
+  /// Singleton per isolate.
   static Future<SpeakerMemory> instance() async {
-    if (_inst != null) return _inst!;
-    final m = SpeakerMemory._();
-    await m._load();
-    _inst = m;
-    return m;
+    _instance ??= SpeakerMemory._();
+    await _instance!._ensureLoaded();
+    return _instance!;
   }
 
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kKey);
-    if (raw == null) return;
-    final list = (json.decode(raw) as List).cast<Map<String, dynamic>>();
-    _profiles
-      ..clear()
-      ..addAll(list.map(SpeakerProfile.fromJson));
-  }
+  /// name -> embedding
+  final Map<String, Float32List> _embeds = {};
 
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = json.encode(_profiles.map((p) => p.toJson()).toList());
-    await prefs.setString(_kKey, raw);
-  }
+  bool _loaded = false;
+  File? _file;
 
-  List<SpeakerProfile> get profiles => List.unmodifiable(_profiles);
+  // --------------------------------------------------
+  // Load / save
+  // --------------------------------------------------
 
-  /// Append a prototype for [name]; create profile if needed; cap to max.
-  Future<void> enrollAppend({
-    required String name,
-    required Float32List embedding, // must be L2-normalized
-  }) async {
-    final vec = embedding.map((e) => e.toDouble()).toList();
-    final idx =
-        _profiles.indexWhere((p) => p.name.toLowerCase() == name.toLowerCase());
-    if (idx >= 0) {
-      final v = List<List<double>>.from(_profiles[idx].vectors);
-      v.add(vec);
-      if (v.length > _maxVectorsPerSpeaker) {
-        v.removeAt(0); // FIFO
+  Future<void> _ensureLoaded() async {
+    if (_loaded) return;
+
+    final dir = await getApplicationDocumentsDirectory();
+    _file = File('${dir.path}/speaker_memory.json');
+
+    if (await _file!.exists()) {
+      try {
+        final txt = await _file!.readAsString();
+        if (txt.trim().isNotEmpty) {
+          final decoded = jsonDecode(txt) as Map<String, dynamic>;
+          decoded.forEach((name, value) {
+            final list =
+                (value as List).cast<num>().map((e) => e.toDouble()).toList();
+            _embeds[name] = Float32List.fromList(list);
+          });
+        }
+      } catch (e, st) {
+        debugPrint('SpeakerMemory load failed: $e\n$st');
+        _embeds.clear();
       }
-      _profiles[idx] = SpeakerProfile(name: _profiles[idx].name, vectors: v);
-    } else {
-      _profiles.add(SpeakerProfile(name: name, vectors: [vec]));
     }
-    await _save();
+
+    _loaded = true;
   }
 
-  /// Identify by best cosine over all prototypes of all speakers.
-  /// Returns (name, score) or (null, 0.0) if below threshold or no profiles.
-  MapEntry<String?, double> identify(
-    Float32List query, {
+  Future<void> _flush() async {
+    if (_file == null) return;
+
+    final map = <String, List<double>>{};
+    _embeds.forEach((name, emb) {
+      map[name] = emb.map((e) => e.toDouble()).toList();
+    });
+
+    try {
+      await _file!.writeAsString(jsonEncode(map));
+    } catch (e, st) {
+      debugPrint('SpeakerMemory save failed: $e\n$st');
+    }
+  }
+
+  // --------------------------------------------------
+  // Math helpers
+  // --------------------------------------------------
+
+  double _cosine(Float32List a, Float32List b) {
+    final n = math.min(a.length, b.length);
+    double dot = 0.0, na = 0.0, nb = 0.0;
+    for (int i = 0; i < n; i++) {
+      final x = a[i];
+      final y = b[i];
+      dot += x * y;
+      na += x * x;
+      nb += y * y;
+    }
+    if (na <= 0 || nb <= 0) return 0.0;
+    return dot / (math.sqrt(na) * math.sqrt(nb));
+  }
+
+  // --------------------------------------------------
+  // Public API used by diarization pipeline
+  // --------------------------------------------------
+
+  /// Identify the closest known speaker.
+  /// Returns IdentifyResult(key: nameOrNull, value: similarityScore).
+  IdentifyResult identify(
+    Float32List probe, {
     double threshold = 0.67,
-    double marginToSecond = 0.04, // require a small gap vs #2
   }) {
     String? bestName;
-    double best = -1.0;
-    double second = -1.0;
+    double bestScore = -1.0;
 
-    for (final p in _profiles) {
-      for (final proto in p.vectors) {
-        final s = SpeakerEmbedder.cosine(query, Float32List.fromList(proto));
-        if (s > best) {
-          second = best;
-          best = s;
-          bestName = p.name;
-        } else if (s > second) {
-          second = s;
-        }
+    _embeds.forEach((name, emb) {
+      final s = _cosine(emb, probe);
+      if (s > bestScore) {
+        bestScore = s;
+        bestName = name;
       }
-    }
+    });
 
-    if (best >= threshold && (best - second) >= marginToSecond) {
-      return MapEntry(bestName, best);
+    if (bestScore >= threshold && bestName != null) {
+      return IdentifyResult(bestName, bestScore);
     }
-    return const MapEntry(null, 0.0);
+    return const IdentifyResult(null, 0.0);
   }
 
+  /// Enroll or update a speaker by averaging embeddings.
+  Future<void> enrollAppend({
+    required String name,
+    required Float32List embedding,
+  }) async {
+    final existing = _embeds[name];
+    if (existing == null) {
+      _embeds[name] = embedding;
+    } else {
+      final n = math.min(existing.length, embedding.length);
+      final out = Float32List(n);
+      for (int i = 0; i < n; i++) {
+        out[i] = (existing[i] + embedding[i]) * 0.5;
+      }
+      _embeds[name] = out;
+    }
+    await _flush();
+  }
+
+  // --------------------------------------------------
+  // Helpers (debug / management)
+  // --------------------------------------------------
+
+  /// Snapshot of all stored speakers.
+  Map<String, Float32List> dumpAll() => Map.unmodifiable(_embeds);
+
+  /// Remove a single speaker by exact name.
   Future<void> remove(String name) async {
-    _profiles.removeWhere((p) => p.name.toLowerCase() == name.toLowerCase());
-    await _save();
+    _embeds.remove(name);
+    await _flush();
   }
 
-  static Future<String> dataFilePath() async {
-  final dir = await getApplicationDocumentsDirectory();
-  return '${dir.path}/profiles/speaker_memory.json';
-}
+  /// Nicer alias, in case you prefer this in your UI.
+  Future<void> removeSpeaker(String name) => remove(name);
 
-Future<String> rawJson() async {
-  final p = await SpeakerMemory.dataFilePath();
-  final f = File(p);
-  if (await f.exists()) return await f.readAsString();
-  return '{}';
-}
+  /// Clear all stored speakers and wipe the JSON.
+  Future<void> clearAll() async {
+    _embeds.clear();
+    await _flush();
+  }
 }

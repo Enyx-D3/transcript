@@ -1,7 +1,10 @@
 // lib/debug/speaker_memory_page.dart
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:transcript/common/app_flushbar.dart';
+
 import '../speaker_memory.dart';
 
 class SpeakerMemoryPage extends StatefulWidget {
@@ -25,20 +28,21 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
     setState(() => _loading = true);
 
     final mem = await SpeakerMemory.instance();
-    final profiles = mem.profiles; // List<SpeakerProfile>
+    final map = mem.dumpAll(); // Map<String, Float32List>
 
-    // Build the visible table rows
     final rows = <_Row>[];
-    for (final p in profiles) {
-      final count = p.vectors.length;
-      final dim = count > 0 ? p.vectors.first.length : 0;
-      rows.add(_Row(name: p.name, count: count, dim: dim));
-    }
+    map.forEach((name, emb) {
+      rows.add(_Row(name: name, count: 1, dim: emb.length));
+    });
     rows.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
-    // Build pretty JSON from current in-memory content
-    final encoded = json.encode(profiles.map((e) => e.toJson()).toList());
-    final pretty = const JsonEncoder.withIndent('  ').convert(json.decode(encoded));
+    final jsonMap = <String, List<double>>{};
+    map.forEach((name, emb) {
+      jsonMap[name] = emb.map((e) => e.toDouble()).toList();
+    });
+    final encoded = json.encode(jsonMap);
+    final pretty =
+        const JsonEncoder.withIndent('  ').convert(json.decode(encoded));
 
     if (!mounted) return;
     setState(() {
@@ -51,9 +55,10 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
   Future<void> _copyJson() async {
     await Clipboard.setData(ClipboardData(text: _jsonPretty));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied SpeakerMemory JSON')),
-    );
+    await AppFlushbar.success(context, message: 'JSON Copied');
+    // ScaffoldMessenger.of(context).showSnackBar(
+    //   const SnackBar(content: Text('Copied SpeakerMemory JSON')),
+    // );
   }
 
   Future<void> _clearAll() async {
@@ -63,24 +68,24 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
         title: const Text('Clear all profiles?'),
         content: const Text('This will remove every enrolled speaker.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Clear')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
         ],
       ),
     );
     if (ok != true) return;
 
     final mem = await SpeakerMemory.instance();
-    // remove one by one (since there’s no clearAll() in your API)
-    final names = mem.profiles.map((p) => p.name).toList(growable: false);
-    for (final n in names) {
-      await mem.remove(n);
-    }
+    await mem.clearAll();
     if (mounted) {
+      await AppFlushbar.success(context, message: 'All Profiles Cleared');
       await _load();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('All profiles cleared')),
-      );
     }
   }
 
@@ -89,18 +94,18 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
     await mem.remove(name);
     if (mounted) {
       await _load();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Deleted $name')),
-      );
+      await AppFlushbar.success(context, message: 'Deleted $name');
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(content: Text('Deleted $name')),
+      // );
     }
   }
 
   void _openVectors(String name) async {
     final mem = await SpeakerMemory.instance();
-    final prof = mem.profiles.firstWhere(
-      (p) => p.name.toLowerCase() == name.toLowerCase(),
-      orElse: () => SpeakerProfile(name: name, vectors: const []),
-    );
+    final map = mem.dumpAll();
+    final emb = map[name];
+
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -110,20 +115,34 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('$name • ${prof.vectors.length} vectors',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(
+              emb == null
+                  ? '$name • no embedding'
+                  : '$name • 1 vector (dim ${emb.length})',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 8),
-            Expanded(
-              child: ListView.separated(
-                itemCount: prof.vectors.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (_, i) => ListTile(
-                  leading: const Icon(Icons.graphic_eq),
-                  title: Text('Vector ${i + 1}'),
-                  subtitle: Text('dim = ${prof.vectors[i].length}'),
+            if (emb != null)
+              Expanded(
+                child: ListView(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.graphic_eq),
+                      title: const Text('Vector 1'),
+                      subtitle: Text('dim = ${emb.length}'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              const Expanded(
+                child: Center(
+                  child: Text(
+                    'No vector stored for this speaker.',
+                    style: TextStyle(color: Colors.white70),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -161,22 +180,30 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Profiles', style: TextStyle(fontWeight: FontWeight.w600)),
+                          const Text(
+                            'Profiles',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
                           const SizedBox(height: 8),
                           if (_rows.isEmpty)
-                            const Text('No profiles saved yet.',
-                                style: TextStyle(color: Colors.white70)),
-                          ..._rows.map((r) => ListTile(
-                                leading: const Icon(Icons.person),
-                                title: Text(r.name),
-                                subtitle: Text('vectors: ${r.count} • dim: ${r.dim}'),
-                                onTap: () => _openVectors(r.name),
-                                trailing: IconButton(
-                                  tooltip: 'Delete',
-                                  icon: const Icon(Icons.delete_outline),
-                                  onPressed: () => _delete(r.name),
-                                ),
-                              )),
+                            const Text(
+                              'No profiles saved yet.',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ..._rows.map(
+                            (r) => ListTile(
+                              leading: const Icon(Icons.person),
+                              title: Text(r.name),
+                              subtitle:
+                                  Text('vectors: ${r.count} • dim: ${r.dim}'),
+                              onTap: () => _openVectors(r.name),
+                              trailing: IconButton(
+                                tooltip: 'Delete',
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () => _delete(r.name),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -184,7 +211,8 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                   const SizedBox(height: 12),
                   Card(
                     child: ExpansionTile(
-                      title: const Text('Raw JSON (current in-memory view)'),
+                      title: const Text(
+                          'Raw JSON (current in-memory + persisted view)'),
                       children: [
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,

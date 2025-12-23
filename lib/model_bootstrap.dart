@@ -1,30 +1,57 @@
 // lib/model_bootstrap.dart
 import 'dart:io';
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
-import 'segmentation_installer.dart';
 
+/// Where the ONNX files end up on device (App Documents).
+/// We copy them from assets on first run (or when version changes).
 class ModelPaths {
-  final String segOnnx, embOnnx;
+  final String segOnnx; // pyannote segmentation
+  final String embOnnx; // NeMo Titanet-small speaker embedding
   ModelPaths({required this.segOnnx, required this.embOnnx});
 }
 
-Future<ModelPaths> ensureDiarizationModels() async {
+/// Bump this when you replace the bundled models in assets
+const _kAssetModelVersion = 1;
+
+/// Asset paths (placed under /assets in your repo; see pubspec.yaml below)
+const _kSegAssetFull   = 'assets/models/segmentation/model.onnx';
+const _kSegAssetInt8   = 'assets/models/segmentation/model.int8.onnx'; // optional
+const _kEmbAsset       = 'assets/models/embedding/nemo_en_titanet_small.onnx';
+
+/// Ensures both segmentation + embedding models exist on device by copying
+/// from assets (no network). Returns absolute file paths for Sherpa-ONNX.
+Future<ModelPaths> ensureDiarizationModels({bool useInt8Seg = false}) async {
   final docs = await getApplicationDocumentsDirectory();
-  final embDir = Directory('${docs.path}/models/embedding')..createSync(recursive: true);
+  final root = Directory('${docs.path}/models');
+  final segDir = Directory('${root.path}/segmentation')..createSync(recursive: true);
+  final embDir = Directory('${root.path}/embedding')..createSync(recursive: true);
 
-  // 1) Segmentation: download & extract pyannote seg model
-  final segOnnxPath = await installSegmentationModel(useInt8: false);
+  // Simple versioning: re-copy when version bump
+  final verFile = File('${root.path}/.asset_version');
+  final needsRefresh = !await verFile.exists() ||
+      (await verFile.readAsString()).trim() != 'v$_kAssetModelVersion';
 
-  // 2) Embedding: NeMo titanet-small (speaker-recognition-models)
-  final embUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx';
-  final embOnnxFile = File('${embDir.path}/embedding.onnx');
-  if (!await embOnnxFile.exists() || (await embOnnxFile.length()) == 0) {
-    final r = await http.get(Uri.parse(embUrl));
-    if (r.statusCode != 200) throw Exception('Failed to download embedding model');
-    await embOnnxFile.writeAsBytes(r.bodyBytes, flush: true);
-  }
+  // Target filenames on device
+  final segDst = File('${segDir.path}/${useInt8Seg ? 'model.int8.onnx' : 'model.onnx'}');
+  final embDst = File('${embDir.path}/embedding.onnx');
 
-  return ModelPaths(segOnnx: segOnnxPath, embOnnx: embOnnxFile.path);
+  // Copy segmentation
+  final segAsset = useInt8Seg ? _kSegAssetInt8 : _kSegAssetFull;
+  await _ensureAssetCopied(segAsset, segDst, overwrite: needsRefresh);
+
+  // Copy embedding
+  await _ensureAssetCopied(_kEmbAsset, embDst, overwrite: needsRefresh);
+
+  // Write version marker
+  await verFile.writeAsString('v$_kAssetModelVersion', flush: true);
+
+  return ModelPaths(segOnnx: segDst.path, embOnnx: embDst.path);
+}
+
+Future<void> _ensureAssetCopied(String assetPath, File dst, {bool overwrite = false}) async {
+  if (!overwrite && await dst.exists() && (await dst.length()) > 0) return;
+  final bytes = await rootBundle.load(assetPath);
+  final data = bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes);
+  await dst.writeAsBytes(data, flush: true);
 }

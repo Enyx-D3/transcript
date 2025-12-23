@@ -7,6 +7,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:transcript/common/app_flushbar.dart';
+import 'package:transcript/tabs/timeline_tab.dart';
 
 import '../mic_recorder.dart';
 import '../audio_preprocess.dart';
@@ -15,7 +17,6 @@ import '../speaker_memory.dart';
 import '../model_bootstrap.dart';
 import '../audio_utils.dart';
 import 'enroll_prompts.dart';
-import '../transcribe_page.dart';
 
 class EnrollmentFlowPage extends StatefulWidget {
   final List<EnrollmentPrompt> prompts;
@@ -117,7 +118,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      _toast(context, 'Record error: $e');
+      await AppFlushbar.error(context, message: 'Error Recording');
     }
   }
 
@@ -135,14 +136,14 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         try {
           File(wav).deleteSync();
         } catch (_) {}
-        _toast(context, 'Please record at least ${minSec.toStringAsFixed(1)}s');
+         await AppFlushbar.error(context, message: 'Please record at least ${minSec.toStringAsFixed(1)}s');
         return;
       }
 
       await _processClip(wav);
     } catch (e) {
       if (!mounted) return;
-      _toast(context, 'Stop error: $e');
+      await AppFlushbar.error(context, message: 'Error Stopping Recording');
     }
   }
 
@@ -154,7 +155,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       _recording = false;
       _seconds = 0.0;
     });
-    _toast(context, 'Canceled');
+   await AppFlushbar.success(context, message: 'Recording Cancelled');
   }
 
   Future<void> _processClip(String wavPath) async {
@@ -187,7 +188,8 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       }
 
       if (parts.isEmpty) {
-        _toast(context, 'Could not extract voice features. Please re-record.');
+        if (!mounted) return;
+        await AppFlushbar.error(context, message: 'Could not extract voice features. Please re-record.');
         return;
       }
 
@@ -197,7 +199,8 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
 
       setState(() {}); // refresh UI
     } catch (e) {
-      _toast(context, 'Process failed: $e');
+      if (!mounted) return;
+      await AppFlushbar.error(context, message: 'Processing Failed');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -219,7 +222,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   Future<void> _next() async {
     if (_busy) return;
     if (_vectors[_index] == null) {
-      _toast(context, 'Please record this step first.');
+      await AppFlushbar.error(context, message: 'Please record this step first.');
       return;
     }
     if (_index + 1 < widget.prompts.length) {
@@ -265,17 +268,16 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         }
       }
       if (!mounted) return;
-      _toast(context, 'Voice enrolled for $name');
-
+      await AppFlushbar.success(context, message:  'Voice enrolled for $name');
       await _stopPlayback();
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const TranscribePage()),
+        MaterialPageRoute(builder: (_) => TimelineTab(onNavigateToTab: (int tabIndex) {  },)),
         (route) => false,
       );
     } catch (e) {
       if (!mounted) return;
-      _toast(context, 'Save failed: $e');
+       await AppFlushbar.error(context, message:  'Save failed');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -319,7 +321,8 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       if (!mounted) return;
       setState(() => _playingGuide = true);
     } catch (e) {
-      _toast(context, 'Could not play guide: $e');
+      if (!mounted) return;
+      await AppFlushbar.error(context, message:  'Could not play guide');
     }
   }
 
@@ -327,7 +330,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   Future<void> _togglePlayMyRecording() async {
     final clip = _clips[_index];
     if (clip == null || !File(clip).existsSync()) {
-      _toast(context, 'No recording for this step yet.');
+      await AppFlushbar.error(context, message:  'No recording for this step yet.');
       return;
     }
 
@@ -343,7 +346,8 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       if (!mounted) return;
       setState(() => _playingUser = true);
     } catch (e) {
-      _toast(context, 'Could not play your recording: $e');
+      if (!mounted) return;
+        await AppFlushbar.error(context, message:  'Could not play your recording');
     }
   }
 
@@ -593,12 +597,12 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   }
 }
 
-void _toast(BuildContext ctx, String msg) {
-  ScaffoldMessenger.of(ctx).hideCurrentSnackBar();
-  ScaffoldMessenger.of(ctx).showSnackBar(
-    SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
-  );
-}
+// void _toast(BuildContext ctx, String msg) {
+//   ScaffoldMessenger.of(ctx).hideCurrentSnackBar();
+//   ScaffoldMessenger.of(ctx).showSnackBar(
+//     SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+//   );
+// }
 
 String _fmt(double s) {
   final mm = (s ~/ 60).toString().padLeft(2, '0');

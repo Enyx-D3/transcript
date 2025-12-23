@@ -1,0 +1,295 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:3200388878705800176",
+      "lastPropertyId": "6:7695013108958009494",
+      "name": "SpeakerProfileEntity",
+      "properties": [
+        {
+          "id": "1:6702059865944067861",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:5345987891012576039",
+          "name": "name",
+          "type": 9
+        },
+        {
+          "id": "4:4896971552185629249",
+          "name": "createdAt",
+          "type": 10
+        },
+        {
+          "id": "5:8451920050140837086",
+          "name": "updatedAt",
+          "type": 10
+        },
+        {
+          "id": "6:7695013108958009494",
+          "name": "nameKey",
+          "indexId": "5:2947264841664275460",
+          "type": 9,
+          "flags": 2080
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "2:1687012079620164052",
+      "lastPropertyId": "4:1392604743333566476",
+      "name": "SpeakerVectorEntity",
+      "properties": [
+        {
+          "id": "1:1656202792958724257",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:3502700310038458288",
+          "name": "speakerId",
+          "indexId": "2:3508564611448806414",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "SpeakerProfileEntity"
+        },
+        {
+          "id": "3:6491080623561340642",
+          "name": "embedding",
+          "type": 23
+        },
+        {
+          "id": "4:1392604743333566476",
+          "name": "createdAt",
+          "type": 10
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "3:8951984836733702572",
+      "lastPropertyId": "7:4106402967987977160",
+      "name": "TranscriptEntity",
+      "properties": [
+        {
+          "id": "1:5329062333556713166",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:5216945440035634755",
+          "name": "title",
+          "type": 9
+        },
+        {
+          "id": "3:8661120482805166472",
+          "name": "model",
+          "type": 9
+        },
+        {
+          "id": "4:1266568489435921706",
+          "name": "lang",
+          "type": 9
+        },
+        {
+          "id": "5:5345922877091796549",
+          "name": "durationSec",
+          "type": 8
+        },
+        {
+          "id": "6:799037357380662095",
+          "name": "createdAt",
+          "type": 10
+        },
+        {
+          "id": "7:4106402967987977160",
+          "name": "audioPath",
+          "type": 9
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "4:5744334615254339933",
+      "lastPropertyId": "6:3684531645536754636",
+      "name": "TranscriptTurnEntity",
+      "properties": [
+        {
+          "id": "1:7472799879046224792",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:2899076633283858871",
+          "name": "transcriptId",
+          "indexId": "3:197343125622883525",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "TranscriptEntity"
+        },
+        {
+          "id": "3:766513792105933622",
+          "name": "speakerLabel",
+          "type": 9
+        },
+        {
+          "id": "4:8930494030151307393",
+          "name": "startSec",
+          "type": 8
+        },
+        {
+          "id": "5:2706587413564865508",
+          "name": "endSec",
+          "type": 8
+        },
+        {
+          "id": "6:3684531645536754636",
+          "name": "text",
+          "type": 9
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "5:7831950910300597404",
+      "lastPropertyId": "8:8262934732911788997",
+      "name": "TranscriptionJobEntity",
+      "properties": [
+        {
+          "id": "1:36258057449499458",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:297764067916004067",
+          "name": "wavPath",
+          "type": 9
+        },
+        {
+          "id": "3:4689568872317128278",
+          "name": "translateToEnglish",
+          "type": 1
+        },
+        {
+          "id": "4:4683342057130356257",
+          "name": "titleHint",
+          "type": 9
+        },
+        {
+          "id": "5:7581930211408447811",
+          "name": "status",
+          "type": 9
+        },
+        {
+          "id": "6:8125824377358247077",
+          "name": "transcriptId",
+          "type": 6
+        },
+        {
+          "id": "7:3622792769210616683",
+          "name": "error",
+          "type": 9
+        },
+        {
+          "id": "8:8262934732911788997",
+          "name": "createdAt",
+          "type": 10
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "6:1274441994532829430",
+      "lastPropertyId": "5:3368783852519367829",
+      "name": "TranscriptChatMessageEntity",
+      "properties": [
+        {
+          "id": "1:3420364209823227715",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:8896178509220524013",
+          "name": "transcriptId",
+          "indexId": "6:8733085736401595721",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "3:6174848270693824875",
+          "name": "isUser",
+          "type": 1
+        },
+        {
+          "id": "4:1273098618954495660",
+          "name": "text",
+          "type": 9
+        },
+        {
+          "id": "5:3368783852519367829",
+          "name": "createdAt",
+          "type": 10
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "7:1361999600127992866",
+      "lastPropertyId": "4:5523908990864756026",
+      "name": "TranscriptSummaryEntity",
+      "properties": [
+        {
+          "id": "1:789519095845763247",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:8895227994930637095",
+          "name": "summary",
+          "type": 9
+        },
+        {
+          "id": "3:1364986997420540922",
+          "name": "updatedAt",
+          "type": 10
+        },
+        {
+          "id": "4:5523908990864756026",
+          "name": "transcriptId",
+          "indexId": "7:3039872481382531499",
+          "type": 6,
+          "flags": 8
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "lastEntityId": "7:1361999600127992866",
+  "lastIndexId": "7:3039872481382531499",
+  "lastRelationId": "1:2617604582228853530",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [
+    480077227493555476,
+    5443520686700661010
+  ],
+  "retiredPropertyUids": [
+    2821609119649167936
+  ],
+  "retiredRelationUids": [
+    2617604582228853530
+  ],
+  "version": 1
+}
