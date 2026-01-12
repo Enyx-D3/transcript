@@ -1,5 +1,3 @@
-// lib/record/record_sheet.dart
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -18,17 +16,29 @@ class RecordSheet extends StatefulWidget {
 
   static Future<void> show(BuildContext context) async {
     const kBusyTranscribing = 'busy_transcribing';
-    final v = await FlutterForegroundTask.getData(key: kBusyTranscribing);
-    final busy = v == true;
 
+    final busyFlag =
+        (await FlutterForegroundTask.getData(key: kBusyTranscribing)) == true;
+
+    final running = await FlutterForegroundTask.isRunningService;
+
+    final busy = busyFlag && running;
+    if (busyFlag && !running) {
+      await FlutterForegroundTask.saveData(
+        key: kBusyTranscribing,
+        value: false,
+      );
+    }
     if (busy) {
       if (!context.mounted) return;
-      await AppFlushbar.success(
+      await AppFlushbar.info(
         context,
         message: 'Transcription in progress… Please wait.',
       );
       return;
     }
+
+    if (!context.mounted) return;
 
     return showModalBottomSheet(
       context: context,
@@ -51,31 +61,77 @@ class _RecordSheetState extends State<RecordSheet> {
   bool _paused = false;
   bool _starting = false;
 
-  double _seconds = 0.0;
-  Timer? _ticker;
-  Timer? _startDelayTimer;
-  double _level = 0.0;
+  double _seconds = 0.0; // from service ticks
+  double _level = 0.0; // from service ticks
   late final void Function(Object) _fgListener;
+
+  static const String _kBusyTranscribing = 'busy_transcribing';
+
+  // ✅ prevents double navigation / double transcript creation
+  bool _handledStop = false;
 
   @override
   void initState() {
     super.initState();
-    _fgListener = (Object data) {
+
+    _fgListener = (Object data) async {
       if (!mounted) return;
-      if (data is Map && data['type'] == 'tick') {
-        final lv = (data['level'] as num?)?.toDouble();
-        if (lv != null) setState(() => _level = lv.clamp(0.0, 1.0));
+      if (data is! Map) return;
+
+      final type = data['type'];
+
+      if (type == 'tick') {
         final sec = (data['elapsedSec'] as num?)?.toDouble();
-        if (sec != null) setState(() => _seconds = sec);
+        final lv = (data['level'] as num?)?.toDouble();
+        final pa = data['paused'] as bool?;
+
+        setState(() {
+          if (sec != null) _seconds = sec;
+          if (lv != null) _level = lv.clamp(0.0, 1.0);
+          if (pa != null) _paused = pa;
+          _starting = false;
+        });
+        return;
+      }
+
+      if (type == 'limit_reached') {
+        // Just informational. The actual stop event will arrive as 'stopped'.
+        await AppFlushbar.info(
+          context,
+          message: 'Recording limit reached. Stopping…',
+        );
+        return;
+      }
+
+      // ✅ This fires both for manual stop and auto-stop (limit reached)
+      if (type == 'stopped') {
+        if (_handledStop) return;
+        _handledStop = true;
+
+        final fp = data['filePath'];
+        final wavPath = fp is String ? fp : null;
+
+        setState(() {
+          _recording = false;
+          _paused = false;
+          _starting = false;
+        });
+
+        if (wavPath == null || wavPath.trim().isEmpty) {
+          await AppFlushbar.error(context, message: 'Recording file missing.');
+          return;
+        }
+
+        // ✅ Create transcript + job + navigate (same as your manual _stop flow)
+        await _createTranscriptAndStartTranscription(wavPath: wavPath);
       }
     };
+
     RecordingService.addListener(_fgListener);
   }
 
   @override
   void dispose() {
-    _ticker?.cancel();
-    _startDelayTimer?.cancel();
     RecordingService.removeListener(_fgListener);
     super.dispose();
   }
@@ -90,29 +146,22 @@ class _RecordSheetState extends State<RecordSheet> {
     }
   }
 
-  void _startTicker() {
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      if (_recording && !_paused) {
-        setState(() => _seconds += 1);
-      }
-    });
-  }
-
   Future<void> _start() async {
-    if (_recording) return;
+    if (_recording || _starting) return;
+
     try {
+      _handledStop = false;
+
       await _ensureMic();
 
       setState(() {
         _starting = true;
         _seconds = 0.0;
+        _level = 0.0;
       });
 
       final path = await RecordingService.start();
       if (path == null) {
-        debugPrint("HERE IS THE PROBLEM");
         setState(() => _starting = false);
         if (!mounted) return;
         await AppFlushbar.error(context, message: 'Couldn’t start recording.');
@@ -123,19 +172,10 @@ class _RecordSheetState extends State<RecordSheet> {
         _recording = true;
         _paused = false;
       });
-
-      _startDelayTimer?.cancel();
-      _startDelayTimer = Timer(const Duration(milliseconds: 500), () {
-        if (!mounted) return;
-        if (_recording && !_paused) {
-          _startTicker();
-        }
-        setState(() => _starting = false);
-      });
     } catch (e) {
       setState(() => _starting = false);
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Filed to Start Recording, $e');
+      await AppFlushbar.error(context, message: 'Failed to start recording: $e');
     }
   }
 
@@ -144,9 +184,9 @@ class _RecordSheetState extends State<RecordSheet> {
     try {
       RecordingService.pause();
       setState(() => _paused = true);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Failed to Pause Recording');
+      await AppFlushbar.error(context, message: 'Failed to pause recording');
     }
   }
 
@@ -155,91 +195,129 @@ class _RecordSheetState extends State<RecordSheet> {
     try {
       RecordingService.resume();
       setState(() => _paused = false);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Failed to Resuming Recording');
+      await AppFlushbar.error(context, message: 'Failed to resume recording');
     }
   }
 
+  // Manual stop just requests stop; actual handling is in 'stopped' event above.
   Future<void> _stop() async {
     if (!_recording) return;
+
     try {
-      _startDelayTimer?.cancel();
-      _ticker?.cancel();
       setState(() {
         _recording = false;
         _paused = false;
       });
 
-      final wavPath = await RecordingService.stop();
-      if (wavPath == null) {
-        if (!mounted) return;
-        await AppFlushbar.error(context, message: 'Failed to Stop Recording');
-        return;
-      }
-
-      final placeholderDuration = _seconds.isFinite && _seconds >= 0
-          ? _seconds
-          : 0.0;
-
-      final obx = ObjectBox.I;
-      final tId = obx.transcripts.put(
-        TranscriptEntity(
-          title: '',
-          model: 'whisper',
-          lang: 'auto',
-          audioPath: wavPath,
-          durationSec: placeholderDuration,
-          createdAt: DateTime.now(),
-        ),
-      );
-
-      if (!mounted) return;
-      Navigator.of(context).pop(); // close sheet
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => TranscriptDetailPage(transcriptId: tId),
-        ),
-      );
-
-      // Kick off background transcribe (non-blocking – all heavy work in BG isolate).
-      try {
-        await BackgroundTranscriber.start(
-          wavPath: wavPath,
-          translateToEnglish: false,
-          titleHint: null,
-          existingTranscriptId: tId,
-        );
-      } catch (e) {
-        if (!mounted) return;
-        await AppFlushbar.error(context, message: 'Processing Error');
-      }
+      await RecordingService.stop();
+      // ✅ do NOT navigate here anymore (avoid duplicates)
+      // Navigation happens when we receive the 'stopped' callback with filePath.
     } catch (e) {
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Processing Error');
+      await AppFlushbar.error(context, message: 'Failed to stop recording: $e');
     }
   }
 
   Future<void> _cancel() async {
     try {
-      _startDelayTimer?.cancel();
-      _ticker?.cancel();
+      _handledStop = true; // prevent auto handler if any late events arrive
+
       final p = await RecordingService.stop(); // stop and discard
+
       setState(() {
         _recording = false;
         _paused = false;
+        _starting = false;
         _seconds = 0.0;
+        _level = 0.0;
       });
+
       if (p != null) {
         try {
           File(p).deleteSync();
         } catch (_) {}
       }
       if (!mounted) return;
-      await AppFlushbar.success(context, message: 'Recording Cancelled');
-    } catch (e) {
+      await AppFlushbar.success(context, message: 'Recording cancelled');
+    } catch (_) {
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Failed to Stop Recording');
+      await AppFlushbar.error(context, message: 'Failed to cancel recording');
+    }
+  }
+
+  Future<void> _createTranscriptAndStartTranscription({
+    required String wavPath,
+  }) async {
+    final placeholderDuration =
+        (_seconds.isFinite && _seconds >= 0) ? _seconds : 0.0;
+
+    final obx = ObjectBox.I;
+
+    // 1) Create transcript placeholder
+    final tId = obx.transcripts.put(
+      TranscriptEntity(
+        title: '',
+        model: 'whisper',
+        lang: 'auto',
+        audioPath: wavPath,
+        durationSec: placeholderDuration,
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    // 2) Create job row
+    final jobId = obx.jobs.put(
+      TranscriptionJobEntity(
+        wavPath: wavPath,
+        translateToEnglish: false,
+        titleHint: null,
+        transcriptId: tId,
+        status: 'PENDING',
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    // 3) Mark busy immediately
+    await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
+
+    if (!mounted) return;
+
+    // close sheet then open transcript detail
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TranscriptDetailPage(transcriptId: tId),
+      ),
+    );
+
+    // 4) start background transcriber
+    try {
+      await BackgroundTranscriber.start(
+        wavPath: wavPath,
+        translateToEnglish: false,
+        titleHint: null,
+        existingTranscriptId: tId,
+      );
+
+      // mark job running
+      final job = obx.jobs.get(jobId);
+      if (job != null && job.status == 'PENDING') {
+        job.status = 'RUNNING';
+        obx.jobs.put(job);
+      }
+    } catch (e) {
+      final job = obx.jobs.get(jobId);
+      if (job != null) {
+        job.status = 'ERROR';
+        job.error = 'Failed to start transcription.';
+        obx.jobs.put(job);
+      }
+      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+
+      if (!mounted) return;
+      await AppFlushbar.error(context, message: 'Processing Error: $e');
     }
   }
 
@@ -349,13 +427,9 @@ class _RecordSheetState extends State<RecordSheet> {
     final ss = (s % 60).toStringAsFixed(1).padLeft(4, '0');
     return '$mm:$ss';
   }
-
-  // Future<void> _snack(String msg) async {
-  //   if (!mounted) return;
-  //   await AppFlushbar.error(context, message:  msg);
-  // }
 }
 
+// keep your LevelBars as-is
 class LevelBars extends StatelessWidget {
   const LevelBars({
     super.key,
@@ -378,7 +452,7 @@ class LevelBars extends StatelessWidget {
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: level),
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       builder: (context, v, _) {
         return SizedBox(
@@ -396,7 +470,7 @@ class LevelBars extends StatelessWidget {
                   child: Container(
                     height: barH,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),

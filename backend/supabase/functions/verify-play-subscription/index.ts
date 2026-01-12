@@ -1,110 +1,152 @@
-// supabase/functions/verify-play-subscription/index.ts
-import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
-import { GoogleAuth } from 'https://esm.sh/google-auth-library@9.14.1';
-import { androidpublisher_v3, google } from 'https://esm.sh/googleapis@137.0.0';
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.48.0";
+import { GoogleAuth } from "https://esm.sh/google-auth-library@9.14.1";
+import { androidpublisher_v3, google } from "https://esm.sh/googleapis@137.0.0";
 
 type Body = {
   product_id?: string;
   purchase_token?: string;
-  user_id?: string; // we'll send this from Flutter
 };
 
 serve(async (req: Request) => {
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+  if (req.method !== "POST") {
+    return json({ ok: false, error: "Method not allowed" }, 405);
   }
 
   try {
     const body = (await req.json()) as Body;
     const productId = body.product_id;
     const purchaseToken = body.purchase_token;
-    const userId = body.user_id;
 
-    if (!productId || !purchaseToken || !userId) {
-      return json({ ok: false, error: 'Missing product_id / purchase_token / user_id' }, 400);
+    if (!productId || !purchaseToken) {
+      return json(
+        { ok: false, error: "Missing product_id / purchase_token" },
+        400,
+      );
     }
 
-    // Read secrets
-    const svcEmail = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL');
-    const svcPrivateKey = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY');
-    const supabaseUrl = Deno.env.get('SB_URL');
-    const supabaseServiceRoleKey = Deno.env.get('SB_SERVICE_ROLE_KEY');
+    // ---- Read secrets (MATCH YOUR SECRET NAMES) ----
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!svcEmail || !svcPrivateKey || !supabaseUrl || !supabaseServiceRoleKey) {
-      return json({ ok: false, error: 'Missing env vars' }, 500);
+    const svcEmail = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
+    const rawPrivateKey = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
+
+    const packageName = Deno.env.get("ANDROID_PACKAGE_NAME") ??
+      "com.fllama.transcript";
+
+    if (
+      !supabaseUrl ||
+      !supabaseAnonKey ||
+      !supabaseServiceRoleKey ||
+      !svcEmail ||
+      !rawPrivateKey
+    ) {
+      return json(
+        {
+          ok: false,
+          error:
+            "Missing env vars: SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY / GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
+        },
+        500,
+      );
     }
 
-    // 1) Setup Google auth client
+    // Fix private key newlines if stored with \n
+    const svcPrivateKey = rawPrivateKey.replaceAll("\\n", "\n");
+
+    // ---- Identify user from Supabase JWT ----
+    const authHeader = req.headers.get("Authorization") ?? "";
+    if (!authHeader) {
+      return json({ ok: false, error: "Missing Authorization header" }, 401);
+    }
+
+    const sbUser = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: userData, error: userErr } = await sbUser.auth.getUser();
+    if (userErr || !userData?.user) {
+      return json({ ok: false, error: "Unauthorized" }, 401);
+    }
+    const userId = userData.user.id;
+
+    // ---- Setup Google auth client ----
     const auth = new GoogleAuth({
       credentials: {
         client_email: svcEmail,
         private_key: svcPrivateKey,
       },
-      scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+      scopes: ["https://www.googleapis.com/auth/androidpublisher"],
     });
 
     const authClient = await auth.getClient();
 
     const androidpublisher = google.androidpublisher({
-      version: 'v3',
+      version: "v3",
       auth: authClient,
     }) as androidpublisher_v3.Androidpublisher;
 
-    // 2) Extract package name from your Android app
-    // Either hard-code here, or store in env var
-    const packageName = Deno.env.get('ANDROID_PACKAGE_NAME') ?? 'com.fllama.transcript';
-
-    // 3) Call Google Play API
+    // ---- Call Google Play API (Subscriptions v2) ----
     const subs = await androidpublisher.purchases.subscriptionsv2.get({
       packageName,
       token: purchaseToken,
     });
 
-    // Basic validation
     const purchase = subs.data;
-
     if (!purchase) {
-      return json({ ok: false, error: 'No purchase data from Google Play' }, 400);
+      return json({ ok: false, error: "No purchase data from Google Play" }, 400);
+    }
+
+    // Validate active state
+    const state = purchase.subscriptionState;
+    const activeStates = new Set([
+      "SUBSCRIPTION_STATE_ACTIVE",
+      "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+    ]);
+
+    if (!state || !activeStates.has(state)) {
+      return json(
+        { ok: false, error: `Subscription not active: ${state ?? "unknown"}` },
+        400,
+      );
     }
 
     const lineItems = purchase.lineItems ?? [];
     if (lineItems.length === 0) {
-      return json({ ok: false, error: 'No lineItems in purchase' }, 400);
+      return json({ ok: false, error: "No lineItems in purchase" }, 400);
     }
 
-    const li = lineItems[0];
+    // Prefer matching productId (if present), otherwise first item
+    const li = lineItems.find((x) => x.productId === productId) ?? lineItems[0];
 
-    // status: 1 = pending, 2 = active, 3 = paused, 4 = in grace period, etc
-    const state = li?.subscriptionPurchase?.purchaseState;
-    if (state !== 2 && state !== 4) {
-      return json({ ok: false, error: 'Subscription not active' }, 400);
+    const expiryTime = li?.expiryTime;
+    if (!expiryTime) {
+      return json({ ok: false, error: "Missing expiryTime" }, 400);
     }
 
-    // Get expiry time from Google (millis since epoch)
-    const expiryMillis = li?.subscriptionPurchase?.expiryTime ?? li?.expiryTime;
-    if (!expiryMillis) {
-      return json({ ok: false, error: 'Missing expiry time' }, 400);
+    // expiryTime is an RFC3339 timestamp string
+    const expiryDate = new Date(expiryTime);
+    if (isNaN(expiryDate.getTime())) {
+      return json({ ok: false, error: `Bad expiryTime: ${expiryTime}` }, 400);
     }
 
-    const expiryDate = new Date(Number(expiryMillis));
+    // ---- Update profiles using service role (bypasses RLS) ----
+    const sbAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    // 4) Update profiles in Supabase (using service role)
-    const sb = createClient(supabaseUrl, supabaseServiceRoleKey);
-
-    const { error: upErr } = await sb
-      .from('profiles')
+    const { error: upErr } = await sbAdmin
+      .from("profiles")
       .update({
         is_upgraded: true,
         pro_expires_at: expiryDate.toISOString(),
-        // Optionally end trial immediately
         trial_expires_at: new Date().toISOString(),
       })
-      .eq('id', userId);
+      .eq("id", userId);
 
     if (upErr) {
-      console.error('Supabase update error:', upErr);
-      return json({ ok: false, error: 'Failed to update profile' }, 500);
+      console.error("Supabase update error:", upErr);
+      return json({ ok: false, error: "Failed to update profile" }, 500);
     }
 
     return json({
@@ -113,7 +155,7 @@ serve(async (req: Request) => {
       expires_at: expiryDate.toISOString(),
     });
   } catch (e) {
-    console.error('verify-play-subscription error', e);
+    console.error("verify-play-subscription error", e);
     return json({ ok: false, error: String(e) }, 500);
   }
 });
@@ -121,6 +163,6 @@ serve(async (req: Request) => {
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { "Content-Type": "application/json" },
   });
 }

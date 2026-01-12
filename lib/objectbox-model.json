@@ -73,7 +73,7 @@
     },
     {
       "id": "3:8951984836733702572",
-      "lastPropertyId": "7:4106402967987977160",
+      "lastPropertyId": "10:6997765070573863445",
       "name": "TranscriptEntity",
       "properties": [
         {
@@ -85,7 +85,9 @@
         {
           "id": "2:5216945440035634755",
           "name": "title",
-          "type": 9
+          "indexId": "8:7737390945199500515",
+          "type": 9,
+          "flags": 2048
         },
         {
           "id": "3:8661120482805166472",
@@ -111,6 +113,23 @@
           "id": "7:4106402967987977160",
           "name": "audioPath",
           "type": 9
+        },
+        {
+          "id": "8:5122286692028078014",
+          "name": "editedText",
+          "type": 9
+        },
+        {
+          "id": "9:8792445965630346753",
+          "name": "fullTextCache",
+          "type": 9
+        },
+        {
+          "id": "10:6997765070573863445",
+          "name": "searchText",
+          "indexId": "9:7148887307430447360",
+          "type": 9,
+          "flags": 2048
         }
       ],
       "relations": []
@@ -272,10 +291,39 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "8:2255608453628138765",
+      "lastPropertyId": "4:2782852559897670244",
+      "name": "AiChatMessageEntity",
+      "properties": [
+        {
+          "id": "1:4335845400258746896",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:7656486546653185229",
+          "name": "isUser",
+          "type": 1
+        },
+        {
+          "id": "3:5798712844637565378",
+          "name": "text",
+          "type": 9
+        },
+        {
+          "id": "4:2782852559897670244",
+          "name": "createdAtMs",
+          "type": 6
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "7:1361999600127992866",
-  "lastIndexId": "7:3039872481382531499",
+  "lastEntityId": "8:2255608453628138765",
+  "lastIndexId": "9:7148887307430447360",
   "lastRelationId": "1:2617604582228853530",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

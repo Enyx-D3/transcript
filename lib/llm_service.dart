@@ -60,15 +60,15 @@ List<Message> formatPromptForModel({
 /// Build summary prompt over transcript (as user content)
 String _buildSummaryPrompt(String transcript) {
   return '''
-Summarize the following meeting transcript.
+Summarize the following *Transcript*.
 
 Focus on:
 - Overall summary
 - Key decisions
-- Action items (with owners if mentioned)
-- Risks / open questions
+- Action items if available (with owners if mentioned)
+- Risks / open questions if available
 
-Meeting transcript:
+Transcript:
 $transcript
 ''';
 }
@@ -79,20 +79,19 @@ String _buildQaPrompt({
   required String transcript,
 }) {
   return '''
-You must answer strictly based on the meeting transcript.
+You must answer the *Question* strictly based on the *Transcript*.
 
 Rules:
 - Only use information from the transcript.
 - If the answer is not clearly in the transcript, say: "I don't know based on the transcript."
 - Keep the answer concise and directly address the question.
 
-Meeting transcript:
+Transcript:
 $transcript
 
 Question:
 $question
 
-Answer:
 ''';
 }
 

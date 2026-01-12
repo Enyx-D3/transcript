@@ -140,9 +140,9 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
               leading: const CircleAvatar(
                 child: Icon(Icons.smart_toy_outlined),
               ),
-              title: const Text('Qwen3-0.6B  •  Q4_K_M'),
+              title: const Text('Qwen3-0.6B'),
               subtitle: Text(
-                'Local LLM used for AI Chat\n$statusText',
+                'Local LLM used for AI.\n$statusText',
               ),
               isThreeLine: true,
               trailing: trailing,

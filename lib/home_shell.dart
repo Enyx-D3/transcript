@@ -1,16 +1,29 @@
 // lib/home_shell.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'tabs/timeline_tab.dart';
 import 'calendar/calendar_page.dart';
 import 'record/record_sheet.dart';
 import 'tabs/ai_chat_tab.dart';
 import 'tabs/account_tab.dart';
+import 'tabs/search_tab.dart';
+// IMPORTANT: import the result type for callback return value
+import 'auth/eligibility_gate.dart';
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  const HomeShell({
+    super.key,
+    required this.initialEligible,
+    this.eligibilityError,
+    required this.onRetryEligibility,
+  });
+
+  final bool initialEligible;
+  final String? eligibilityError;
+
+  /// ✅ Retry will call AppGate to re-check and return latest result
+  final Future<EligibilityGateResult> Function() onRetryEligibility;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -19,112 +32,16 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  bool _checkingEligibility = true;
-  bool _eligible = true;
+  late bool _eligible;
   String? _eligibilityError;
 
-  Future<void>? _activeEligibilityLoad;
-  StreamSubscription<AuthState>? _authSub;
-
-  SupabaseClient get _sb => Supabase.instance.client;
+  bool _retrying = false;
 
   @override
   void initState() {
     super.initState();
-    _refreshEligibility();
-
-    _authSub = _sb.auth.onAuthStateChange.listen((_) {
-      _refreshEligibility(force: true);
-    });
-  }
-
-  @override
-  void dispose() {
-    _authSub?.cancel();
-    super.dispose();
-  }
-
-  // ---------------- Eligibility check (NO inserts here) ----------------
-
-  Future<void> _refreshEligibility({bool force = false}) async {
-    if (!force && _activeEligibilityLoad != null) {
-      await _activeEligibilityLoad;
-      return;
-    }
-
-    _activeEligibilityLoad = _refreshEligibilityInternal();
-    await _activeEligibilityLoad;
-    _activeEligibilityLoad = null;
-  }
-
-  Future<void> _refreshEligibilityInternal() async {
-    if (!mounted) return;
-
-    setState(() {
-      _checkingEligibility = true;
-      _eligibilityError = null;
-    });
-
-    try {
-      final user = _sb.auth.currentUser;
-      if (user == null) {
-        setState(() {
-          _eligible = false;
-          _checkingEligibility = false;
-        });
-        return;
-      }
-
-      final row = await _sb
-          .from('profiles')
-          .select('is_upgraded, trial_expires_at, pro_expires_at')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      if (row == null) {
-        setState(() {
-          _eligible = false;
-          _checkingEligibility = false;
-        });
-        return;
-      }
-
-      final map = Map<String, dynamic>.from(row);
-
-      final bool isUpgraded = (map['is_upgraded'] as bool?) ?? false;
-      final DateTime? trialExpires = _parseDate(map['trial_expires_at']);
-      final DateTime? proExpires = _parseDate(map['pro_expires_at']);
-
-      final now = DateTime.now().toUtc();
-
-      final bool trialActive =
-          trialExpires != null && trialExpires.isAfter(now);
-
-      final bool proActive = isUpgraded &&
-          (proExpires == null || proExpires.isAfter(now));
-
-      final bool eligible = trialActive || proActive;
-
-      if (!mounted) return;
-      setState(() {
-        _eligible = eligible;
-        _checkingEligibility = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _eligible = false;
-        _checkingEligibility = false;
-        _eligibilityError = e.toString();
-      });
-    }
-  }
-
-  DateTime? _parseDate(dynamic v) {
-    if (v == null) return null;
-    if (v is DateTime) return v.toUtc();
-    if (v is String) return DateTime.tryParse(v)?.toUtc();
-    return null;
+    _eligible = widget.initialEligible;
+    _eligibilityError = widget.eligibilityError;
   }
 
   // ---------------- Navigation ----------------
@@ -134,7 +51,10 @@ class _HomeShellState extends State<HomeShell> {
     await RecordSheet.show(context);
   }
 
+  void _unfocus() => FocusManager.instance.primaryFocus?.unfocus();
+
   Future<void> _goTo(int i) async {
+     _unfocus();
     if (i == 2) {
       await _openRecordSheet();
       return;
@@ -142,25 +62,43 @@ class _HomeShellState extends State<HomeShell> {
 
     if (!mounted) return;
     setState(() => _index = i);
-
-    if (i == 4) {
-      // refresh quickly when entering account
-      unawaited(_refreshEligibility(force: true));
-    }
   }
 
   void _jumpToAccount() {
     if (!mounted) return;
-
-    // This ensures the bottom nav highlight updates immediately
     setState(() => _index = 4);
-
-    // And we refresh state so Account can reflect new plan quickly
-    unawaited(_refreshEligibility(force: true));
   }
 
-  bool get _showLockOverlay =>
-      !_checkingEligibility && !_eligible && _index != 4;
+  bool get _showLockOverlay => !_eligible && _index != 4;
+
+  Future<void> _retryEligibility() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+
+    try {
+      final res = await widget.onRetryEligibility();
+
+      if (!mounted) return;
+      setState(() {
+        _eligible = res.eligible;
+        _eligibilityError = res.error;
+      });
+
+      // If retry succeeds, you may want to auto-close overlay by going Timeline
+      if (res.eligible) {
+        setState(() => _index = 0);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _eligible = false;
+        _eligibilityError = e.toString();
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() => _retrying = false);
+    }
+  }
 
   // ---------------- UI ----------------
 
@@ -170,58 +108,50 @@ class _HomeShellState extends State<HomeShell> {
       TimelineTab(onNavigateToTab: _goTo), // 0
       const CalendarPage(),               // 1
       const SizedBox.shrink(),            // 2
-      const AiChatTab(),                  // 3
+      const SearchTab(),                  // 3
       AccountTab(
-    onUpgradeSuccess: () {
-      // Option A: remain on Account tab -> just remove this block
-      // Option B: go to Timeline after success:
-      setState(() => _index = 0);
-      // refresh eligibility if you want:
-      unawaited(_refreshEligibility(force: true));
-    },
-  ),        // 4
+        onUpgradeSuccess: () async {
+          // After upgrade, do a real retry check (not optimistic)
+          await _retryEligibility();
+          if (!mounted) return;
+          if (_eligible) {
+            setState(() => _index = 0);
+          } else {
+            setState(() => _index = 4);
+          }
+        },
+      ), // 4
     ];
 
     return Scaffold(
       body: Stack(
         children: [
-          // Block interactions with the app when locked (except Account tab)
           IgnorePointer(
             ignoring: _showLockOverlay,
             child: IndexedStack(index: _index, children: pages),
           ),
 
-          if (_checkingEligibility)
-            const Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-
           if (_showLockOverlay)
             _AccessLockedOverlay(
               error: _eligibilityError,
+              retrying: _retrying,
               onUpgrade: _jumpToAccount,
-              onRetry: () => _refreshEligibility(force: true),
+              onRetry: _retryEligibility, // ✅ real retry
             ),
         ],
       ),
-
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) async {
-          // When locked, allow only Account tab
-          if (!_checkingEligibility && !_eligible && i != 4) {
-            return;
-          }
+          _unfocus();
+          if (!_eligible && i != 4) return;
           await _goTo(i);
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.timeline), label: 'Timeline'),
           NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Calendar'),
           NavigationDestination(icon: Icon(Icons.mic), label: 'Record'),
-          NavigationDestination(icon: Icon(Icons.smart_toy_outlined), label: 'AI Chat'),
+          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
           NavigationDestination(icon: Icon(Icons.person), label: 'Account'),
         ],
       ),
@@ -236,20 +166,20 @@ class _AccessLockedOverlay extends StatelessWidget {
     required this.onUpgrade,
     required this.onRetry,
     this.error,
+    this.retrying = false,
   });
 
   final VoidCallback onUpgrade;
   final VoidCallback onRetry;
   final String? error;
+  final bool retrying;
 
   @override
   Widget build(BuildContext context) {
-    // GestureDetector eats taps outside the card,
-    // but DOES NOT block the buttons inside the card.
     return Positioned.fill(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () {}, // swallow taps
+        onTap: () {},
         child: Container(
           color: Colors.black.withOpacity(0.50),
           child: Center(
@@ -301,7 +231,7 @@ class _AccessLockedOverlay extends StatelessWidget {
                         if (error != null) ...[
                           const SizedBox(height: 10),
                           Text(
-                            error!,
+                            "Internet is required to verify the access",
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.redAccent,
@@ -316,8 +246,14 @@ class _AccessLockedOverlay extends StatelessWidget {
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: onRetry,
-                                child: const Text('Retry'),
+                                onPressed: retrying ? null : onRetry,
+                                child: retrying
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Text('Retry'),
                               ),
                             ),
                             const SizedBox(width: 10),

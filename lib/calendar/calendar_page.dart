@@ -238,84 +238,84 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Future<void> _openDaySheet(DateTime day) async {
-    final obx = ObjectBox.I;
-    final start = DateTime(day.year, day.month, day.day);
-    final end = start.add(const Duration(days: 1));
+  void unfocus() => FocusManager.instance.primaryFocus?.unfocus();
 
-    // Query all (ordered), then filter for that specific day.
-    final qb = obx.transcripts.query()
-      ..order(TranscriptEntity_.createdAt);
-    final q = qb.build();
-    final all = q.find();
-    q.close();
+  unfocus(); // ✅ prevent keyboard restore from Timeline search
 
-    final items = all.where((t) {
-      final local = t.createdAt.toLocal();
-      return !local.isBefore(start) && local.isBefore(end);
-    }).toList();
+  final obx = ObjectBox.I;
+  final start = DateTime(day.year, day.month, day.day);
+  final end = start.add(const Duration(days: 1));
 
-    if (!mounted) return;
+  final qb = obx.transcripts.query()..order(TranscriptEntity_.createdAt);
+  final q = qb.build();
+  final all = q.find();
+  q.close();
 
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: const Color(0xFF0B0C10),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-            child: items.isEmpty
-                ? const SizedBox(
-                    height: 120,
-                    child: Center(
-                      child: Text(
-                        'No transcripts on this day.',
-                        style: TextStyle(color: Colors.white70),
-                      ),
+  final items = all.where((t) {
+    final local = t.createdAt.toLocal();
+    return !local.isBefore(start) && local.isBefore(end);
+  }).toList();
+
+  if (!mounted) return;
+
+  await showModalBottomSheet(
+    context: context,
+    showDragHandle: true,
+    backgroundColor: const Color(0xFF0B0C10),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+          child: items.isEmpty
+              ? const SizedBox(
+                  height: 120,
+                  child: Center(
+                    child: Text(
+                      'No transcripts on this day.',
+                      style: TextStyle(color: Colors.white70),
                     ),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final t = items[i];
-                      final when = t.createdAt.toLocal();
-                      final hh = when.hour.toString().padLeft(2, '0');
-                      final mm = when.minute.toString().padLeft(2, '0');
-                      final title = (t.title?.trim().isNotEmpty ?? false)
-                          ? t.title!.trim()
-                          : 'Untitled';
-
-                      // If you later add `audioPath` to TranscriptEntity, re-enable:
-                      // final hasAudio = (t.audioPath != null &&
-                      //     t.audioPath!.isNotEmpty &&
-                      //     File(t.audioPath!).existsSync());
-
-                      return ListTile(
-                        leading: const Icon(Icons.description, color: Color(0xFFCD66FD)),
-                        title: Text(title),
-                        subtitle: Text('$hh:$mm • ${_fmtDuration(t.durationSec)}'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.of(context).pop(); // close sheet
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TranscriptDetailPage(transcriptId: t.id),
-                            ),
-                          );
-                        },
-                      );
-                    },
                   ),
-          ),
-        );
-      },
-    );
-  }
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final t = items[i];
+                    final when = t.createdAt.toLocal();
+                    final hh = when.hour.toString().padLeft(2, '0');
+                    final mm = when.minute.toString().padLeft(2, '0');
+                    final title = (t.title?.trim().isNotEmpty ?? false)
+                        ? t.title!.trim()
+                        : 'Untitled';
+
+                    return ListTile(
+                      leading: const Icon(Icons.description, color: Color(0xFFCD66FD)),
+                      title: Text(title),
+                      subtitle: Text('$hh:$mm • ${_fmtDuration(t.durationSec)}'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        unfocus(); // ✅
+                        Navigator.of(context).pop(); // close sheet
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TranscriptDetailPage(transcriptId: t.id),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+      );
+    },
+  );
+
+  unfocus(); // ✅ ensure keyboard stays closed after dismiss
+}
 
   String _fmtDuration(double sec) {
     final s = sec.isFinite && sec >= 0 ? sec : 0.0;

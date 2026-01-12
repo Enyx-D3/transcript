@@ -60,11 +60,13 @@ class SpeakerVectorEntity {
 
 // -------------------- Transcript entities (for completeness) --------------------
 
+
 @Entity()
 class TranscriptEntity {
   int id;
 
   /// Optional title shown in lists.
+  @Index()
   String? title;
 
   /// Whisper/model name and language tag used.
@@ -76,6 +78,18 @@ class TranscriptEntity {
 
   /// Duration in seconds.
   double durationSec;
+
+  /// Optional user-edited transcript text
+  String? editedText;
+
+  /// ✅ Cached concatenated transcript text from turns (cleaned)
+  String? fullTextCache;
+
+  /// ✅ Search field:
+  /// - if editedText exists -> editedText
+  /// - else -> fullTextCache
+  @Index()
+  String? searchText;
 
   @Backlink('transcript')
   final turns = ToMany<TranscriptTurnEntity>();
@@ -90,6 +104,9 @@ class TranscriptEntity {
     required this.lang,
     this.audioPath,
     required this.durationSec,
+    this.editedText,
+    this.fullTextCache,
+    this.searchText,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 }
@@ -184,4 +201,22 @@ class TranscriptChatMessageEntity {
     required this.text,
     required this.createdAt,
   });
+}
+
+@Entity()
+class AiChatMessageEntity {
+  @Id()
+  int id;
+
+  bool isUser; // true=user, false=assistant
+  String text;
+
+  int createdAtMs; // sort key
+
+  AiChatMessageEntity({
+    this.id = 0,
+    required this.isUser,
+    required this.text,
+    int? createdAtMs,
+  }) : createdAtMs = createdAtMs ?? DateTime.now().millisecondsSinceEpoch;
 }

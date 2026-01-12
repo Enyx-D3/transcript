@@ -2,10 +2,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:transcript/common/app_flushbar.dart';
 import 'package:transcript/objectbox/objectbox_store.dart';
 
 import '../auth/profile_model.dart';
+import '../auth/eligibility_gate.dart';
 import '../billing/subscription_service.dart';
 import '../billing/subscription_products.dart';
 import '../common/confirm_dialog.dart';
@@ -29,6 +31,8 @@ class _AccountTabState extends State<AccountTab> {
 
   bool _upgrading = false;
   Future<void>? _activeUpgrade;
+
+  bool _restoring = false;
 
   bool _deleting = false;
 
@@ -79,11 +83,7 @@ class _AccountTabState extends State<AccountTab> {
         return;
       }
 
-      final row = await _sb
-          .from('profiles')
-          .select()
-          .eq('id', user.id)
-          .maybeSingle();
+      final row = await _sb.from('profiles').select().eq('id', user.id).maybeSingle();
 
       if (row == null) {
         final now = DateTime.now().toUtc();
@@ -92,17 +92,10 @@ class _AccountTabState extends State<AccountTab> {
           'email': user.email,
           'date_joined': now.toIso8601String(),
           'is_upgraded': false,
-          'trial_expires_at': now
-              .add(const Duration(days: 7))
-              .toIso8601String(),
+          'trial_expires_at': now.add(const Duration(days: 7)).toIso8601String(),
         });
 
-        final row2 = await _sb
-            .from('profiles')
-            .select()
-            .eq('id', user.id)
-            .maybeSingle();
-
+        final row2 = await _sb.from('profiles').select().eq('id', user.id).maybeSingle();
         if (row2 == null) throw Exception('Profile creation failed.');
 
         setState(() {
@@ -140,8 +133,7 @@ class _AccountTabState extends State<AccountTab> {
     if (!p.isUpgraded) return false;
 
     final ex = p.proExpiresAt;
-    if (ex == null)
-      return true; // current rule: upgraded without date => active
+    if (ex == null) return true;
     return ex.isAfter(DateTime.now().toUtc());
   }
 
@@ -151,23 +143,10 @@ class _AccountTabState extends State<AccountTab> {
     if (d == null) return '—';
     final local = d.toLocal();
     const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
+      'January','February','March','April','May','June',
+      'July','August','September','October','November','December',
     ];
-    final day = local.day.toString();
-    final month = months[local.month - 1];
-    final year = local.year.toString();
-    return '$day $month $year';
+    return '${local.day} ${months[local.month - 1]} ${local.year}';
   }
 
   Widget _pill(String text, {Color? color}) {
@@ -189,15 +168,103 @@ class _AccountTabState extends State<AccountTab> {
     );
   }
 
+  // ---------------- GateSplash-like overlay + eligibility check ----------------
+
+  Future<EligibilityGateResult> _showGateSplashAndVerify({
+    required String status,
+    bool pollForPro = false,
+  }) async {
+    if (!mounted) return const EligibilityGateResult(eligible: false);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useSafeArea: false,
+      builder: (_) => _GateSplashLike(status: status),
+    );
+
+    final started = DateTime.now();
+
+    try {
+      await _loadProfile(force: true);
+
+      if (pollForPro) {
+        for (int i = 0; i < 8; i++) {
+          await _loadProfile(force: true);
+          if (_proActive) break;
+          await Future.delayed(const Duration(milliseconds: 600));
+        }
+      }
+
+      final res = await checkEligibilityOnce(_sb);
+
+      final elapsed = DateTime.now().difference(started);
+      const minVisible = Duration(milliseconds: 1400);
+      final remaining = minVisible - elapsed;
+      if (remaining > Duration.zero) await Future.delayed(remaining);
+
+      return res;
+    } finally {
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
+  // ---------------- Restore flow ----------------
+
+  Future<void> _restorePurchasesFlow() async {
+    if (_restoring || _upgrading) return;
+
+    setState(() {
+      _restoring = true;
+      _error = null;
+    });
+
+    bool ok = false;
+
+    try {
+      // Ensure purchase stream is listening
+      await SubscriptionService.I.initialize();
+
+      // Trigger restore
+      ok = await SubscriptionService.I.restore(timeout: const Duration(seconds: 35));
+
+      // Regardless of restore result, refresh + verify
+      final res = await _showGateSplashAndVerify(
+        status: 'Restoring purchases…',
+        pollForPro: true,
+      );
+
+      if (!mounted) return;
+
+      if (_proActive && res.eligible) {
+        await AppFlushbar.success(context, message: 'Restore successful');
+      } else if (ok) {
+        // entitlementApplied happened but UI may need another refresh
+        await AppFlushbar.success(context, message: 'Restore applied. Refreshing…');
+      } else {
+        await AppFlushbar.error(context, message: 'No active purchase found');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Restore failed: $e');
+      await AppFlushbar.error(context, message: 'Restore failed');
+    } finally {
+      if (!mounted) return;
+      setState(() => _restoring = false);
+    }
+  }
+
   // ---------------- Upgrade flow (single product) ----------------
 
   Future<void> _startUpgradeFlow() async {
-    if (_upgrading) return;
+    if (_upgrading || _restoring) return;
     await _upgradeWithStore(kProSubscriptionId);
   }
 
   Future<void> _upgradeWithStore(String productId) async {
-    if (_upgrading) return;
+    if (_upgrading || _restoring) return;
 
     _activeUpgrade = _upgradeInternal(productId);
     await _activeUpgrade;
@@ -210,6 +277,8 @@ class _AccountTabState extends State<AccountTab> {
       _error = null;
     });
 
+    bool purchaseOk = false;
+
     try {
       final products = await SubscriptionService.I.fetchProducts();
       final product = products.where((p) => p.id == productId).isNotEmpty
@@ -221,28 +290,55 @@ class _AccountTabState extends State<AccountTab> {
       }
 
       final ok = await SubscriptionService.I.buy(product);
+
       if (!ok) {
-        throw Exception('Purchase not completed.');
+        // This covers:
+        // - user canceled
+        // - already owned (often needs restore)
+        // - no purchaseStream update (timeout)
+        throw Exception('Purchase not completed (cancelled/owned/timeout). Try Restore.');
       }
 
-      await _loadProfile(force: true);
+      purchaseOk = true;
+
+      if (mounted) {
+        await AppFlushbar.success(context, message: 'Purchase completed');
+        widget.onUpgradeSuccess?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Upgrade failed: $e');
+        await AppFlushbar.error(context, message: 'Upgrade failed');
+      }
+    } finally {
+      if (!mounted) return;
+
+      final res = await _showGateSplashAndVerify(
+        status: purchaseOk ? 'Verifying purchase…' : 'Refreshing status…',
+        pollForPro: purchaseOk,
+      );
 
       if (!mounted) return;
-      await AppFlushbar.success(context, message: 'Upgrade successful!');
-      widget.onUpgradeSuccess?.call();
+
+      if (purchaseOk && res.eligible) {
+        await AppFlushbar.success(context, message: 'Pro verified');
+      } else if (purchaseOk && !res.eligible) {
+        await AppFlushbar.error(context, message: 'Verification pending');
+      }
 
       setState(() => _upgrading = false);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _upgrading = false;
-        _error = 'Upgrade failed: $e';
-      });
-      await AppFlushbar.error(context, message: 'Upgrade failed');
     }
   }
 
   Future<void> _signOut() async {
+    final ok = await showConfirmDeleteDialog(
+      context,
+      title: 'Sign out?',
+      message: 'You will be signed out of your account.',
+      confirmText: 'Sign out',
+      cancelText: 'Cancel',
+    );
+    if (!ok) return;
     await _sb.auth.signOut();
   }
 
@@ -270,15 +366,12 @@ class _AccountTabState extends State<AccountTab> {
     });
 
     try {
-      // Calls Supabase Edge Function: delete-account
-      // This function must delete profile + auth user using service_role.
       await _sb.functions.invoke('delete-account');
-      
+
       await ObjectBox.I.clearAllData();
 
       if (!mounted) return;
       await AppFlushbar.success(context, message: 'Account deleted');
-      // Best-effort sign out on client
       await _sb.auth.signOut();
 
       setState(() => _deleting = false);
@@ -333,9 +426,8 @@ class _AccountTabState extends State<AccountTab> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
-          // ✅ Header padding updated (icon + Account text)
           const Padding(
-            padding: EdgeInsets.fromLTRB(6, 8, 6, 12),
+            padding: EdgeInsets.fromLTRB(12, 24, 6, 12),
             child: Row(
               children: [
                 Icon(Icons.account_circle_outlined),
@@ -381,16 +473,11 @@ class _AccountTabState extends State<AccountTab> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            _pill(
-                              'Joined ${_fmtDateLong(_profile?.dateJoined)}',
-                            ),
+                            _pill('Joined ${_fmtDateLong(_profile?.dateJoined)}'),
                             if (_proActive)
                               _pill('Plan Pro', color: const Color(0xFF8E7CFF))
                             else if (_trialActive)
-                              _pill(
-                                'Plan Trial',
-                                color: const Color(0xFF65D6FF),
-                              )
+                              _pill('Plan Trial', color: const Color(0xFF65D6FF))
                             else
                               _pill('Plan Free'),
                           ],
@@ -450,19 +537,20 @@ class _AccountTabState extends State<AccountTab> {
                       _proActive
                           ? 'Pro'
                           : _trialActive
-                          ? 'Trial'
-                          : 'Free',
+                              ? 'Trial'
+                              : 'Free',
                     ),
 
                     const SizedBox(height: 6),
 
-                    _kvRow(
-                      'Trial ends',
-                      _fmtDateLong(_profile!.trialExpiresAt),
-                      trailing: _trialActive
-                          ? _pill('Active', color: const Color(0xFF65D6FF))
-                          : _pill('Expired', color: Colors.redAccent),
-                    ),
+                    if (!_proActive)
+                      _kvRow(
+                        'Trial ends',
+                        _fmtDateLong(_profile!.trialExpiresAt),
+                        trailing: _trialActive
+                            ? _pill('Active', color: const Color(0xFF65D6FF))
+                            : _pill('Expired', color: Colors.redAccent),
+                      ),
 
                     const SizedBox(height: 6),
 
@@ -470,34 +558,45 @@ class _AccountTabState extends State<AccountTab> {
                       _kvRow(
                         'Pro expiry',
                         _fmtDateLong(_profile!.proExpiresAt),
-                        trailing: _pill(
-                          'Active',
-                          color: const Color(0xFF8E7CFF),
-                        ),
+                        trailing: _pill('Active', color: const Color(0xFF8E7CFF)),
                       ),
 
                     const SizedBox(height: 14),
 
-                    if (!_proActive)
+                    if (!_proActive) ...[
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
-                          onPressed: _upgrading ? null : _startUpgradeFlow,
+                          onPressed: (_upgrading || _restoring) ? null : _startUpgradeFlow,
                           icon: _upgrading
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.workspace_premium_outlined),
-                          label: Text(
-                            _upgrading ? 'Upgrading…' : 'Upgrade to Pro',
-                          ),
+                          label: Text(_upgrading ? 'Upgrading…' : 'Upgrade to Pro'),
                         ),
-                      )
-                    else
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // ✅ TEMP RESTORE BUTTON (remove later)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: (_restoring || _upgrading) ? null : _restorePurchasesFlow,
+                          icon: _restoring
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.restore),
+                          label: Text(_restoring ? 'Restoring…' : 'Restore Purchases'),
+                        ),
+                      ),
+                    ] else
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -513,7 +612,6 @@ class _AccountTabState extends State<AccountTab> {
 
             const SizedBox(height: 12),
 
-            // ✅ Refined access card: only enabled/disabled
             Card(
               elevation: 0.6,
               shape: RoundedRectangleBorder(
@@ -524,9 +622,7 @@ class _AccountTabState extends State<AccountTab> {
                 child: Row(
                   children: [
                     Icon(
-                      accessEnabled
-                          ? Icons.lock_open_outlined
-                          : Icons.lock_outline,
+                      accessEnabled ? Icons.lock_open_outlined : Icons.lock_outline,
                       color: accessEnabled ? Colors.white : Colors.redAccent,
                     ),
                     const SizedBox(width: 10),
@@ -535,9 +631,7 @@ class _AccountTabState extends State<AccountTab> {
                         accessEnabled ? 'Access enabled' : 'Access disabled',
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
-                          color: accessEnabled
-                              ? Colors.white70
-                              : Colors.redAccent,
+                          color: accessEnabled ? Colors.white70 : Colors.redAccent,
                         ),
                       ),
                     ),
@@ -559,7 +653,6 @@ class _AccountTabState extends State<AccountTab> {
 
             const SizedBox(height: 10),
 
-            // ✅ Delete account button (no redesign; just an extra button)
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -570,10 +663,7 @@ class _AccountTabState extends State<AccountTab> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(
-                        Icons.delete_forever_outlined,
-                        color: Colors.redAccent,
-                      ),
+                    : const Icon(Icons.delete_forever_outlined, color: Colors.redAccent),
                 label: Text(
                   _deleting ? 'Deleting…' : 'Delete account',
                   style: const TextStyle(color: Colors.redAccent),
@@ -592,9 +682,7 @@ class _AccountTabState extends State<AccountTab> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Expanded(
-          child: Text(k, style: const TextStyle(color: Colors.white70)),
-        ),
+        Expanded(child: Text(k, style: const TextStyle(color: Colors.white70))),
         Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
         if (trailing != null) ...[const SizedBox(width: 8), trailing],
       ],
@@ -602,7 +690,61 @@ class _AccountTabState extends State<AccountTab> {
   }
 }
 
-// ---------------- Avatar ----------------
+class _GateSplashLike extends StatelessWidget {
+  const _GateSplashLike({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0B0F),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  height: 72,
+                  width: 72,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A22),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFF8E7CFF).withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset(
+                      'assets/logo/logo-transparent.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Starting up…',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  status,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 20),
+                const LinearProgressIndicator(minHeight: 3),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.profile, required this.fallbackEmail});
@@ -616,8 +758,7 @@ class _Avatar extends StatelessWidget {
 
     final user = Supabase.instance.client.auth.currentUser;
     final meta = user?.userMetadata ?? {};
-    url ??=
-        (meta['avatar_url'] ?? meta['picture'] ?? meta['photo_url']) as String?;
+    url ??= (meta['avatar_url'] ?? meta['picture'] ?? meta['photo_url']) as String?;
 
     if (url != null && url.trim().isNotEmpty) {
       return CircleAvatar(radius: 26, backgroundImage: NetworkImage(url));

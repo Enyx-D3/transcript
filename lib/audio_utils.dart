@@ -174,3 +174,109 @@ Future<void> trimWav16kMonoPcm({
 
   await writePcm16MonoWav(outputPath, sampleRate: info.sampleRate, samples: samples);
 }
+
+Wave readWaveSimple(String path) {
+  final file = File(path);
+  final bytes = file.readAsBytesSync();
+  
+  // Parse WAV header
+  if (bytes.length < 44) {
+    throw Exception('File too small to be a WAV file');
+  }
+  
+  // Check for "RIFF" header
+  if (String.fromCharCodes(bytes.sublist(0, 4)) != 'RIFF') {
+    throw Exception('Not a RIFF file');
+  }
+  
+  // Check for "WAVE" format
+  if (String.fromCharCodes(bytes.sublist(8, 12)) != 'WAVE') {
+    throw Exception('Not a WAVE file');
+  }
+  
+  // Find "fmt " chunk
+  int fmtOffset = 12;
+  while (fmtOffset < bytes.length - 8) {
+    final chunkId = String.fromCharCodes(bytes.sublist(fmtOffset, fmtOffset + 4));
+    if (chunkId == 'fmt ') {
+      break;
+    }
+    final chunkSize = ByteData.view(bytes.buffer).getUint32(fmtOffset + 4, Endian.little);
+    fmtOffset += 8 + chunkSize;
+  }
+  
+  if (fmtOffset >= bytes.length - 8) {
+    throw Exception('fmt chunk not found');
+  }
+  
+  // Parse format chunk
+  final audioFormat = ByteData.view(bytes.buffer).getUint16(fmtOffset + 8, Endian.little);
+  final numChannels = ByteData.view(bytes.buffer).getUint16(fmtOffset + 10, Endian.little);
+  final sampleRate = ByteData.view(bytes.buffer).getUint32(fmtOffset + 12, Endian.little);
+  final bitsPerSample = ByteData.view(bytes.buffer).getUint16(fmtOffset + 22, Endian.little);
+  
+  if (audioFormat != 1) {
+    throw Exception('Only PCM format is supported');
+  }
+  
+  // Find "data" chunk
+  int dataOffset = 12;
+  while (dataOffset < bytes.length - 8) {
+    final chunkId = String.fromCharCodes(bytes.sublist(dataOffset, dataOffset + 4));
+    if (chunkId == 'data') {
+      break;
+    }
+    final chunkSize = ByteData.view(bytes.buffer).getUint32(dataOffset + 4, Endian.little);
+    dataOffset += 8 + chunkSize;
+  }
+  
+  if (dataOffset >= bytes.length - 8) {
+    throw Exception('data chunk not found');
+  }
+  
+  final dataSize = ByteData.view(bytes.buffer).getUint32(dataOffset + 4, Endian.little);
+  dataOffset += 8;
+  
+  // Read audio data
+  final numSamples = dataSize ~/ (numChannels * (bitsPerSample ~/ 8));
+  final samples = Float32List(numSamples);
+  
+  if (bitsPerSample == 16) {
+    // 16-bit PCM
+    for (int i = 0; i < numSamples; i++) {
+      int byteOffset = dataOffset + i * numChannels * 2;
+      // Sum all channels for mono conversion (average)
+      double sum = 0;
+      for (int c = 0; c < numChannels; c++) {
+        final sample = ByteData.view(bytes.buffer).getInt16(byteOffset + c * 2, Endian.little);
+        sum += sample / 32768.0; // Normalize to [-1.0, 1.0]
+      }
+      samples[i] = sum / numChannels; // Average channels
+    }
+  } else if (bitsPerSample == 32) {
+    // 32-bit float PCM
+    for (int i = 0; i < numSamples; i++) {
+      int byteOffset = dataOffset + i * numChannels * 4;
+      // Sum all channels for mono conversion (average)
+      double sum = 0;
+      for (int c = 0; c < numChannels; c++) {
+        final sample = ByteData.view(bytes.buffer).getFloat32(byteOffset + c * 4, Endian.little);
+        sum += sample;
+      }
+      samples[i] = sum / numChannels; // Average channels
+    }
+  } else {
+    throw Exception('Unsupported bits per sample: $bitsPerSample');
+  }
+  
+  // Create and return Wave object matching sherpa_onnx's Wave class
+  return Wave(samples: samples, sampleRate: sampleRate);
+}
+
+/// Wave class that matches sherpa_onnx's Wave class structure
+class Wave {
+  final Float32List samples;
+  final int sampleRate;
+  
+  Wave({required this.samples, required this.sampleRate});
+}

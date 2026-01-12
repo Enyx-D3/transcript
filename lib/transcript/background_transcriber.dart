@@ -39,7 +39,7 @@ class BackgroundTranscriber {
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.once(),
         allowWakeLock: true,
-        allowWifiLock: true,
+        allowWifiLock: false,
         autoRunOnBoot: false,
       ),
     );
@@ -54,13 +54,19 @@ class BackgroundTranscriber {
     int? existingTranscriptId,
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
-    await FlutterForegroundTask.saveData(key: _kTranslate, value: translateToEnglish);
+    await FlutterForegroundTask.saveData(
+      key: _kTranslate,
+      value: translateToEnglish,
+    );
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
     if (titleHint != null) {
       await FlutterForegroundTask.saveData(key: _kTitleHint, value: titleHint);
     }
     if (existingTranscriptId != null) {
-      await FlutterForegroundTask.saveData(key: _kExistingId, value: existingTranscriptId);
+      await FlutterForegroundTask.saveData(
+        key: _kExistingId,
+        value: existingTranscriptId,
+      );
     }
 
     await FlutterForegroundTask.startService(
@@ -76,7 +82,9 @@ class BackgroundTranscriber {
     return v;
   }
 
-  static StreamSubscription<dynamic> onData(void Function(dynamic data) handler) {
+  static StreamSubscription<dynamic> onData(
+    void Function(dynamic data) handler,
+  ) {
     FlutterForegroundTask.addTaskDataCallback(handler);
     final ctrl = StreamController<dynamic>();
     ctrl.onCancel = () => FlutterForegroundTask.removeTaskDataCallback(handler);
@@ -87,15 +95,20 @@ class BackgroundTranscriber {
 class _TranscribeTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-    final wavPath =
-        await FlutterForegroundTask.getData<String>(key: BackgroundTranscriber._kWavPath);
+    final wavPath = await FlutterForegroundTask.getData<String>(
+      key: BackgroundTranscriber._kWavPath,
+    );
     final translate =
-        await FlutterForegroundTask.getData<bool>(key: BackgroundTranscriber._kTranslate) ??
-            false;
-    final titleHint =
-        await FlutterForegroundTask.getData<String>(key: BackgroundTranscriber._kTitleHint);
-    final existingId =
-        await FlutterForegroundTask.getData<int>(key: BackgroundTranscriber._kExistingId);
+        await FlutterForegroundTask.getData<bool>(
+          key: BackgroundTranscriber._kTranslate,
+        ) ??
+        false;
+    final titleHint = await FlutterForegroundTask.getData<String>(
+      key: BackgroundTranscriber._kTitleHint,
+    );
+    final existingId = await FlutterForegroundTask.getData<int>(
+      key: BackgroundTranscriber._kExistingId,
+    );
 
     if (wavPath == null || wavPath.isEmpty) {
       await FlutterForegroundTask.updateService(
@@ -148,6 +161,11 @@ class _TranscribeTaskHandler extends TaskHandler {
         notificationText: 'See app',
       );
     } finally {
+      // ✅ always clear busy flag even if UI isolate is dead
+      await FlutterForegroundTask.saveData(
+        key: BackgroundTranscriber._kBusyTranscribing,
+        value: false,
+      );
       await FlutterForegroundTask.stopService();
     }
   }
@@ -156,5 +174,10 @@ class _TranscribeTaskHandler extends TaskHandler {
   void onRepeatEvent(DateTime timestamp) {}
 
   @override
-  Future<void> onDestroy(DateTime timestamp, bool bySystem) async {}
+  Future<void> onDestroy(DateTime timestamp, bool bySystem) async {
+    await FlutterForegroundTask.saveData(
+    key: BackgroundTranscriber._kBusyTranscribing,
+    value: false,
+  );
+  }
 }

@@ -49,6 +49,31 @@ class SpeakerEmbedder {
     return _l2norm(vec);
   }
 
+  // ✅ NEW: avoid re-reading WAV for each window (much faster + less IO)
+  /// Compute a normalized embedding from already-loaded samples.
+  /// `startIndex`/`endIndex` are sample indices in `samples`.
+  Future<Float32List> embedFromSamplesRange({
+    required Float32List samples,
+    required int sampleRate,
+    required int startIndex,
+    required int endIndex,
+  }) async {
+    final a = startIndex.clamp(0, samples.length);
+    final b = endIndex.clamp(0, samples.length);
+    if (b <= a) return Float32List(0);
+
+    // NOTE: this copies; for 2s windows it’s acceptable.
+    final slice = samples.sublist(a, b);
+
+    final stream = _ext.createStream();
+    stream.acceptWaveform(samples: slice, sampleRate: sampleRate);
+    stream.inputFinished();
+    final vec = _ext.compute(stream);
+    stream.free();
+
+    return _l2norm(vec);
+  }
+
   /// Average a set of embeddings then L2-normalize.
   Float32List meanPool(Iterable<Float32List> vecs) {
     Float32List? sum;
@@ -66,13 +91,16 @@ class SpeakerEmbedder {
     return _l2norm(sum);
   }
 
-  static double cosine(Float32List a, Float32List b) {
-    final n = math.min(a.length, b.length);
-    double s = 0.0;
-    for (var i = 0; i < n; i++) s += a[i] * b[i];
-    return s;
-  }
+static double cosine(Float32List a, Float32List b) {
+  if (a.isEmpty || b.isEmpty) return 0.0;
+  if (a.length != b.length) return 0.0; // prevent silent mismatch
 
+  double s = 0.0;
+  for (int i = 0; i < a.length; i++) {
+    s += a[i] * b[i];
+  }
+  return s; // embeddings are L2-normalized already
+}
   static Float32List _l2norm(Float32List v) {
     double s = 0.0;
     for (final x in v) s += x * x;

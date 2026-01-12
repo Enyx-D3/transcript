@@ -1,20 +1,15 @@
-// lib/record/recording_service.dart
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// ===== Public control surface you call from UI =====
 class RecordingService {
-  static const _serviceId = 431; // any unique int
-  static const _kFilePath = 'rec_file_path';
-  static const _kCmd = 'cmd';
-  static const _cmdStop = 'stop';
+  static const _serviceId = 431;
 
-  /// Must be called once (e.g. app start or before first start()).
   static Future<void> ensureInitialized() async {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -23,8 +18,6 @@ class RecordingService {
         channelDescription: 'Capturing microphone audio',
         channelImportance: NotificationChannelImportance.DEFAULT,
         priority: NotificationPriority.DEFAULT,
-
-        // lock-screen behavior
         visibility: NotificationVisibility.VISIBILITY_PUBLIC,
         showWhen: true,
         onlyAlertOnce: true,
@@ -36,27 +29,28 @@ class RecordingService {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        // TICK EVERY 1 SECOND
-        eventAction: ForegroundTaskEventAction.repeat(1000),
+        eventAction: ForegroundTaskEventAction.repeat(200),
         allowWakeLock: true,
-        allowWifiLock: true,
+        allowWifiLock: false,
         autoRunOnBoot: false,
         autoRunOnMyPackageReplaced: true,
       ),
     );
 
-    // REQUIRED for sendDataToMain / addTaskDataCallback
     FlutterForegroundTask.initCommunicationPort();
   }
 
-  /// Start service + begin recording. Returns file path if started, else null.
   static Future<String?> start() async {
-    await ensureInitialized(); // <-- make initialization idempotent & guaranteed
+    await ensureInitialized();
+
     final already = await FlutterForegroundTask.isRunningService;
     if (!already) {
       final filePath = await _newWavPath();
 
-      // Persist data for the TaskHandler
+      // ✅ Read SharedPreferences HERE (UI isolate) and pass value to task storage
+      final prefs = await SharedPreferences.getInstance();
+      final allowLong = prefs.getBool(_kAllowLongRecordingPref) ?? false;
+
       await FlutterForegroundTask.saveData(key: _kFilePath, value: filePath);
       await FlutterForegroundTask.saveData(
         key: _kStartEpochMs,
@@ -64,29 +58,21 @@ class RecordingService {
       );
       await FlutterForegroundTask.saveData(key: _kPaused, value: false);
 
+      // ✅ runtime config for the task
+      await FlutterForegroundTask.saveData(
+        key: _kAllowLongRecordingRuntime,
+        value: allowLong,
+      );
+
       final result = await FlutterForegroundTask.startService(
         serviceId: _serviceId,
         notificationTitle: 'Recording…',
         notificationText: '00:00',
-        // optional:
-        notificationIcon: null,
-        notificationButtons: const [
-          // NotificationButton(id: _btnPause, text: 'Pause'),
-          // NotificationButton(id: _btnStop, text: 'Stop'),
-        ],
-        callback: recordingStartCallback, // your top-level entrypoint
+        callback: recordingStartCallback,
       );
 
-      if (result is ServiceRequestSuccess) {
-        return filePath;
-      } else if (result is ServiceRequestFailure) {
-        // Optionally log: result.error
-        return null;
-      } else {
-        return null;
-      }
+      return (result is ServiceRequestSuccess) ? filePath : null;
     } else {
-      // Already running → return stored path
       final v = await FlutterForegroundTask.getData(key: _kFilePath);
       return v is String ? v : null;
     }
@@ -100,40 +86,31 @@ class RecordingService {
 
   static Future<String?> stop() async {
     final completer = Completer<void>();
+
     void onData(Object data) {
       if (data is Map && data['type'] == 'stopped') {
-        // (Optionally: capture filePath from the event)
-        completer.complete();
+        if (!completer.isCompleted) completer.complete();
       }
     }
 
-    // Listen for task → UI signal that the recorder has fully stopped.
     FlutterForegroundTask.addTaskDataCallback(onData);
-
-    // Ask the TaskHandler to stop the recorder & flush the file.
     FlutterForegroundTask.sendDataToTask(const {_kCmd: _cmdStop});
 
-    // Wait (with timeout) for the confirmation message.
     try {
       await completer.future.timeout(const Duration(seconds: 5));
     } catch (_) {
-      // If it times out, we’ll still attempt to stop the service gracefully.
+      // ignore timeout
     } finally {
       FlutterForegroundTask.removeTaskDataCallback(onData);
     }
 
-    // Read the path while the service is still alive.
     final v = await FlutterForegroundTask.getData(key: _kFilePath);
     final path = v is String ? v : null;
 
-    // Now stop the foreground service.
     final result = await FlutterForegroundTask.stopService();
-
     return (result is ServiceRequestSuccess) ? path : null;
   }
 
-  /// Subscribe in UI to get ticks & state from the TaskHandler (optional).
-  /// Call removeTaskDataCallback on dispose.
   static void addListener(void Function(Object data) onData) {
     FlutterForegroundTask.addTaskDataCallback(onData);
   }
@@ -151,8 +128,6 @@ class RecordingService {
   }
 }
 
-/// ====== TaskHandler + constants ======
-
 // keys for plugin key-value storage
 const _kFilePath = 'rec_file_path';
 const _kStartEpochMs = 'rec_start_epoch_ms';
@@ -164,10 +139,19 @@ const _cmdPause = 'pause';
 const _cmdResume = 'resume';
 const _cmdStop = 'stop';
 
-// notification button ids
+// notification button ids (optional)
 const _btnPause = 'btn_pause';
 const _btnResume = 'btn_resume';
 const _btnStop = 'btn_stop';
+
+// ✅ SharedPreferences key
+const String _kAllowLongRecordingPref = 'allow_long_recording';
+
+// ✅ runtime value passed into the task (read via FlutterForegroundTask.getData)
+const String _kAllowLongRecordingRuntime = 'allow_long_recording_runtime';
+
+// ✅ default limit (you said currently you want 30s; change later)
+const int _kDefaultMaxSeconds = (30*60)+1; // 30 min
 
 @pragma('vm:entry-point')
 void recordingStartCallback() {
@@ -177,33 +161,47 @@ void recordingStartCallback() {
 }
 
 class _RecordingTaskHandler extends TaskHandler {
-  late final AudioRecorder _rec; // ✅
+  late final AudioRecorder _rec;
+
   bool _paused = false;
+  bool _stopped = false;
+
   int _startEpochMs = DateTime.now().millisecondsSinceEpoch;
+
+  int _pausedAccumMs = 0;
+  int? _pauseStartedMs;
+
   String? _path;
-  bool _stopped = false; // ✅ add
-  // Called when the service starts.
+
+  int _lastNotifSec = -1;
+
+  // ✅ config loaded from task storage
+  bool _allowLongRecording = false;
+
+  // ✅ prevent overlapping async tick calls
+  bool _ticking = false;
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     _rec = AudioRecorder();
-    // Load config saved by UI
+
     final p = await FlutterForegroundTask.getData(key: _kFilePath);
     final s = await FlutterForegroundTask.getData(key: _kStartEpochMs);
     final pa = await FlutterForegroundTask.getData(key: _kPaused);
+    final allow = await FlutterForegroundTask.getData(key: _kAllowLongRecordingRuntime);
 
     _path = (p is String) ? p : null;
     _startEpochMs = (s is int) ? s : DateTime.now().millisecondsSinceEpoch;
     _paused = (pa is bool) ? pa : false;
+    _allowLongRecording = (allow is bool) ? allow : false;
 
     if (_path == null) {
       final docs = await getApplicationDocumentsDirectory();
-      final dir = Directory('${docs.path}/recordings')
-        ..createSync(recursive: true);
+      final dir = Directory('${docs.path}/recordings')..createSync(recursive: true);
       final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
       _path = '${dir.path}/rec_$ts.wav';
     }
 
-    // Start recording to that path if not started yet.
     if (!await _rec.isRecording()) {
       await _rec.start(
         const RecordConfig(
@@ -215,17 +213,19 @@ class _RecordingTaskHandler extends TaskHandler {
       );
     }
 
-    // If we booted into paused state, pause now.
     if (_paused && await _rec.isRecording()) {
       await _rec.pause();
+      _pauseStartedMs = DateTime.now().millisecondsSinceEpoch;
     }
+
+    _tickAndNotify(DateTime.now());
   }
 
-  // Tick comes from ForegroundTaskOptions.eventAction (repeat(1000))
   @override
   void onRepeatEvent(DateTime timestamp) {
-    if (_stopped) return; // ✅ add
-  _tickAndNotify(timestamp);
+    if (_stopped) return;
+    if (_ticking) return;
+    _tickAndNotify(timestamp);
   }
 
   @override
@@ -240,7 +240,7 @@ class _RecordingTaskHandler extends TaskHandler {
           await _resumeInternal();
           break;
         case _cmdStop:
-          await _stopInternal();
+          await _stopInternal(stopServiceToo: true);
           break;
       }
     }
@@ -256,28 +256,25 @@ class _RecordingTaskHandler extends TaskHandler {
         _resumeInternal();
         break;
       case _btnStop:
-        _stopInternal();
+        _stopInternal(stopServiceToo: true);
         break;
     }
   }
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
-    // Make sure the recorder is stopped and flushed.
-    if (await _rec.isRecording()) {
+    try {
       await _rec.stop();
-    } else {
-      // If paused, calling stop() is still okay in record 5.x
-      await _rec.stop();
-    }
+    } catch (_) {}
   }
 
-  // ---- internals ----
   Future<void> _pauseInternal() async {
     if (_stopped) return;
-    if (await _rec.isRecording()) {
+    if (!_paused && await _rec.isRecording()) {
       await _rec.pause();
       _paused = true;
+      _pauseStartedMs = DateTime.now().millisecondsSinceEpoch;
+
       await FlutterForegroundTask.saveData(key: _kPaused, value: true);
       await FlutterForegroundTask.updateService(
         notificationTitle: 'Paused',
@@ -286,14 +283,24 @@ class _RecordingTaskHandler extends TaskHandler {
           NotificationButton(id: _btnStop, text: 'Stop'),
         ],
       );
+
+      _tickAndNotify(DateTime.now());
     }
   }
 
   Future<void> _resumeInternal() async {
     if (_stopped) return;
-    if (await _rec.isPaused()) {
+    if (_paused && await _rec.isPaused()) {
       await _rec.resume();
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (_pauseStartedMs != null) {
+        _pausedAccumMs += (now - _pauseStartedMs!);
+        _pauseStartedMs = null;
+      }
+
       _paused = false;
+
       await FlutterForegroundTask.saveData(key: _kPaused, value: false);
       await FlutterForegroundTask.updateService(
         notificationTitle: 'Recording…',
@@ -302,54 +309,88 @@ class _RecordingTaskHandler extends TaskHandler {
           NotificationButton(id: _btnStop, text: 'Stop'),
         ],
       );
+
+      _tickAndNotify(DateTime.now());
     }
   }
 
-  Future<void> _stopInternal() async {
-  if (_stopped) return;
-  _stopped = true; // ✅ add
+  Future<void> _stopInternal({bool stopServiceToo = false}) async {
+    if (_stopped) return;
+    _stopped = true;
 
-  await _rec.stop();
-
-  FlutterForegroundTask.sendDataToMain({
-    'type': 'stopped',
-    'filePath': _path,
-  });
-}
-
-  void _tickAndNotify(DateTime ts) async {
-    final elapsed = _elapsedSeconds(ts.millisecondsSinceEpoch);
-
-    double level = 0.0;
     try {
-      final amp = await _rec.getAmplitude(); // record package
-      final db = amp.current; // ~ -160..0
-      final clamped = db.clamp(-20.0, 0.0);
-      level = (clamped + 20.0) / 20.0;
-    } catch (_) {
-      level = 0.0;
-    }
-    debugPrint('LEVEL ${DateTime.now().toIso8601String()} -> $level');
+      await _rec.stop();
+    } catch (_) {}
+
     FlutterForegroundTask.sendDataToMain({
-      'type': 'tick',
-      'elapsedSec': elapsed,
-      'paused': _paused,
-      'level': level, // <-- critical: include this field
+      'type': 'stopped',
+      'filePath': _path,
     });
 
-    final mm = (elapsed ~/ 60).toString().padLeft(2, '0');
-    final ss = (elapsed % 60).toString().padLeft(2, '0');
-    await FlutterForegroundTask.updateService(notificationText: '$mm:$ss');
+    if (stopServiceToo) {
+      try {
+        await FlutterForegroundTask.stopService();
+      } catch (_) {}
+    }
+  }
+
+  void _tickAndNotify(DateTime ts) async {
+    _ticking = true;
+    try {
+      final elapsed = _elapsedSeconds(ts.millisecondsSinceEpoch);
+
+      // ✅ enforce limit here
+      if (!_allowLongRecording && elapsed >= _kDefaultMaxSeconds) {
+        FlutterForegroundTask.sendDataToMain({
+          'type': 'limit_reached',
+          'elapsedSec': elapsed,
+          'maxSec': _kDefaultMaxSeconds,
+        });
+
+        try {
+          await FlutterForegroundTask.updateService(
+            notificationTitle: 'Limit reached',
+            notificationText: 'Stopping…',
+          );
+        } catch (_) {}
+
+        await _stopInternal(stopServiceToo: true);
+        return;
+      }
+
+      double level = 0.0;
+      try {
+        final amp = await _rec.getAmplitude();
+        final db = amp.current; // -160..0
+        final clamped = db.clamp(-60.0, 0.0);
+        level = (clamped + 60.0) / 60.0; // 0..1
+      } catch (_) {
+        level = 0.0;
+      }
+
+      FlutterForegroundTask.sendDataToMain({
+        'type': 'tick',
+        'elapsedSec': elapsed,
+        'paused': _paused,
+        'level': level,
+      });
+
+      if (elapsed != _lastNotifSec) {
+        _lastNotifSec = elapsed;
+        final mm = (elapsed ~/ 60).toString().padLeft(2, '0');
+        final ss = (elapsed % 60).toString().padLeft(2, '0');
+        await FlutterForegroundTask.updateService(notificationText: '$mm:$ss');
+      }
+    } finally {
+      _ticking = false;
+    }
   }
 
   int _elapsedSeconds(int nowMs) {
-    // When paused we still show the frozen elapsed time; for simplicity we
-    // just stop increasing the clock when paused.
-    if (_paused) {
-      // Compute last elapsed based on last timestamp we sent (notification holds it).
-      // Here we just cap it at current computed value and don't increment while paused.
-    }
-    final base = Duration(milliseconds: nowMs - _startEpochMs).inSeconds;
-    return base < 0 ? 0 : base;
+    final pausedExtra = (_pauseStartedMs == null) ? 0 : (nowMs - _pauseStartedMs!);
+    final effectiveMs = (nowMs - _startEpochMs) - _pausedAccumMs - pausedExtra;
+
+    final sec = Duration(milliseconds: effectiveMs).inSeconds;
+    return sec < 0 ? 0 : sec;
   }
 }

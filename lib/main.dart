@@ -13,7 +13,7 @@ import 'transcript/transcription_persistence.dart';
 
 // App gate
 import 'auth/app_gate.dart';
-
+import 'auth/eligibility_gate.dart';
 // If you still need the global Whisper for ModelPickerPage, keep this:
 import 'whisper_service.dart';
 
@@ -110,6 +110,19 @@ class _SplashGateState extends State<SplashGate> {
     _boot();
   }
 
+  Future<void> _recoverStaleTranscriptionLock() async {
+    const kBusy = 'busy_transcribing';
+
+    final busyFlag = (await FlutterForegroundTask.getData(key: kBusy)) == true;
+
+    // if API exists:
+    final running = await FlutterForegroundTask.isRunningService;
+
+    if (busyFlag && !running) {
+      await FlutterForegroundTask.saveData(key: kBusy, value: false);
+    }
+  }
+
   Future<void> _boot() async {
     try {
       setState(() => _status = 'Requesting microphone access…');
@@ -123,12 +136,18 @@ class _SplashGateState extends State<SplashGate> {
         await FlutterForegroundTask.requestNotificationPermission();
       }
 
+      setState(() => _status = 'Initializing…');
+      await _recoverStaleTranscriptionLock();
+      final eligibility = await checkEligibilityOnce(Supabase.instance.client);
+
       await Future.delayed(const Duration(milliseconds: 120));
 
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const AppGate()));
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => AppGate(initialEligibility: eligibility),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -141,8 +160,12 @@ class _SplashGateState extends State<SplashGate> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
+      // ✅ Still blocks back navigation
       canPop: false,
-      onPopInvoked: (_) {},
+      // ✅ New signature (replaces deprecated onPopInvoked)
+      onPopInvokedWithResult: (didPop, result) {
+        // do nothing (prevent leaving)
+      },
       child: Scaffold(
         body: SafeArea(
           child: Center(
@@ -161,10 +184,13 @@ class _SplashGateState extends State<SplashGate> {
                         color: const Color(0xFF8E7CFF).withValues(alpha: 0.4),
                       ),
                     ),
-                    child: const Icon(
-                      Icons.mic_rounded,
-                      size: 36,
-                      color: Color(0xFF8E7CFF),
+                    // ✅ Replace icon with asset image
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: Image.asset(
+                        'assets/logo/logo-transparent.png',
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),

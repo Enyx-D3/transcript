@@ -106,7 +106,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(3, 8951984836733702572),
     name: 'TranscriptEntity',
-    lastPropertyId: const obx_int.IdUid(7, 4106402967987977160),
+    lastPropertyId: const obx_int.IdUid(10, 6997765070573863445),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -119,7 +119,8 @@ final _entities = <obx_int.ModelEntity>[
         id: const obx_int.IdUid(2, 5216945440035634755),
         name: 'title',
         type: 9,
-        flags: 0,
+        flags: 2048,
+        indexId: const obx_int.IdUid(8, 7737390945199500515),
       ),
       obx_int.ModelProperty(
         id: const obx_int.IdUid(3, 8661120482805166472),
@@ -150,6 +151,25 @@ final _entities = <obx_int.ModelEntity>[
         name: 'audioPath',
         type: 9,
         flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 5122286692028078014),
+        name: 'editedText',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 8792445965630346753),
+        name: 'fullTextCache',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 6997765070573863445),
+        name: 'searchText',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(9, 7148887307430447360),
       ),
     ],
     relations: <obx_int.ModelRelation>[],
@@ -344,6 +364,40 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(8, 2255608453628138765),
+    name: 'AiChatMessageEntity',
+    lastPropertyId: const obx_int.IdUid(4, 2782852559897670244),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 4335845400258746896),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 7656486546653185229),
+        name: 'isUser',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 5798712844637565378),
+        name: 'text',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 2782852559897670244),
+        name: 'createdAtMs',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -384,8 +438,8 @@ Future<obx.Store> openStore({
 obx_int.ModelDefinition getObjectBoxModel() {
   final model = obx_int.ModelInfo(
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(7, 1361999600127992866),
-    lastIndexId: const obx_int.IdUid(7, 3039872481382531499),
+    lastEntityId: const obx_int.IdUid(8, 2255608453628138765),
+    lastIndexId: const obx_int.IdUid(9, 7148887307430447360),
     lastRelationId: const obx_int.IdUid(1, 2617604582228853530),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -537,7 +591,16 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final audioPathOffset = object.audioPath == null
             ? null
             : fbb.writeString(object.audioPath!);
-        fbb.startTable(8);
+        final editedTextOffset = object.editedText == null
+            ? null
+            : fbb.writeString(object.editedText!);
+        final fullTextCacheOffset = object.fullTextCache == null
+            ? null
+            : fbb.writeString(object.fullTextCache!);
+        final searchTextOffset = object.searchText == null
+            ? null
+            : fbb.writeString(object.searchText!);
+        fbb.startTable(11);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, titleOffset);
         fbb.addOffset(2, modelOffset);
@@ -545,6 +608,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addFloat64(4, object.durationSec);
         fbb.addInt64(5, object.createdAt.millisecondsSinceEpoch);
         fbb.addOffset(6, audioPathOffset);
+        fbb.addOffset(7, editedTextOffset);
+        fbb.addOffset(8, fullTextCacheOffset);
+        fbb.addOffset(9, searchTextOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -575,6 +641,15 @@ obx_int.ModelDefinition getObjectBoxModel() {
           12,
           0,
         );
+        final editedTextParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 18);
+        final fullTextCacheParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 20);
+        final searchTextParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 22);
         final createdAtParam = DateTime.fromMillisecondsSinceEpoch(
           const fb.Int64Reader().vTableGet(buffer, rootOffset, 14, 0),
         );
@@ -585,6 +660,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
           lang: langParam,
           audioPath: audioPathParam,
           durationSec: durationSecParam,
+          editedText: editedTextParam,
+          fullTextCache: fullTextCacheParam,
+          searchText: searchTextParam,
           createdAt: createdAtParam,
         );
         obx_int.InternalToManyAccess.setRelInfo<TranscriptEntity>(
@@ -850,6 +928,58 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    AiChatMessageEntity: obx_int.EntityDefinition<AiChatMessageEntity>(
+      model: _entities[7],
+      toOneRelations: (AiChatMessageEntity object) => [],
+      toManyRelations: (AiChatMessageEntity object) => {},
+      getId: (AiChatMessageEntity object) => object.id,
+      setId: (AiChatMessageEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (AiChatMessageEntity object, fb.Builder fbb) {
+        final textOffset = fbb.writeString(object.text);
+        fbb.startTable(5);
+        fbb.addInt64(0, object.id);
+        fbb.addBool(1, object.isUser);
+        fbb.addOffset(2, textOffset);
+        fbb.addInt64(3, object.createdAtMs);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final isUserParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          6,
+          false,
+        );
+        final textParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final createdAtMsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          10,
+          0,
+        );
+        final object = AiChatMessageEntity(
+          id: idParam,
+          isUser: isUserParam,
+          text: textParam,
+          createdAtMs: createdAtMsParam,
+        );
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -948,6 +1078,21 @@ class TranscriptEntity_ {
   /// See [TranscriptEntity.audioPath].
   static final audioPath = obx.QueryStringProperty<TranscriptEntity>(
     _entities[2].properties[6],
+  );
+
+  /// See [TranscriptEntity.editedText].
+  static final editedText = obx.QueryStringProperty<TranscriptEntity>(
+    _entities[2].properties[7],
+  );
+
+  /// See [TranscriptEntity.fullTextCache].
+  static final fullTextCache = obx.QueryStringProperty<TranscriptEntity>(
+    _entities[2].properties[8],
+  );
+
+  /// See [TranscriptEntity.searchText].
+  static final searchText = obx.QueryStringProperty<TranscriptEntity>(
+    _entities[2].properties[9],
   );
 
   /// see [TranscriptEntity.turns]
@@ -1084,5 +1229,28 @@ class TranscriptSummaryEntity_ {
   /// See [TranscriptSummaryEntity.transcriptId].
   static final transcriptId = obx.QueryIntegerProperty<TranscriptSummaryEntity>(
     _entities[6].properties[3],
+  );
+}
+
+/// [AiChatMessageEntity] entity fields to define ObjectBox queries.
+class AiChatMessageEntity_ {
+  /// See [AiChatMessageEntity.id].
+  static final id = obx.QueryIntegerProperty<AiChatMessageEntity>(
+    _entities[7].properties[0],
+  );
+
+  /// See [AiChatMessageEntity.isUser].
+  static final isUser = obx.QueryBooleanProperty<AiChatMessageEntity>(
+    _entities[7].properties[1],
+  );
+
+  /// See [AiChatMessageEntity.text].
+  static final text = obx.QueryStringProperty<AiChatMessageEntity>(
+    _entities[7].properties[2],
+  );
+
+  /// See [AiChatMessageEntity.createdAtMs].
+  static final createdAtMs = obx.QueryIntegerProperty<AiChatMessageEntity>(
+    _entities[7].properties[3],
   );
 }
