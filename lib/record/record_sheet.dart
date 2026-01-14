@@ -1,5 +1,7 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:transcript/common/app_flushbar.dart';
@@ -70,6 +72,15 @@ class _RecordSheetState extends State<RecordSheet> {
   // ✅ prevents double navigation / double transcript creation
   bool _handledStop = false;
 
+  // ✅ user input: target speakers (0 = auto/null)
+  final TextEditingController _targetSpeakersCtrl =
+      TextEditingController(text: '0');
+
+  // ✅ keys written by recording task so UI can restore instantly after reopening sheet
+  static const String _kLastElapsedSec = 'rec_last_elapsed_sec';
+  static const String _kLastLevel = 'rec_last_level';
+  static const String _kLastPaused = 'rec_last_paused';
+
   @override
   void initState() {
     super.initState();
@@ -89,13 +100,15 @@ class _RecordSheetState extends State<RecordSheet> {
           if (sec != null) _seconds = sec;
           if (lv != null) _level = lv.clamp(0.0, 1.0);
           if (pa != null) _paused = pa;
+
+          // ✅ if ticks are coming, we're recording
+          _recording = true;
           _starting = false;
         });
         return;
       }
 
       if (type == 'limit_reached') {
-        // Just informational. The actual stop event will arrive as 'stopped'.
         await AppFlushbar.info(
           context,
           message: 'Recording limit reached. Stopping…',
@@ -103,13 +116,16 @@ class _RecordSheetState extends State<RecordSheet> {
         return;
       }
 
-      // ✅ This fires both for manual stop and auto-stop (limit reached)
       if (type == 'stopped') {
         if (_handledStop) return;
         _handledStop = true;
 
         final fp = data['filePath'];
         final wavPath = fp is String ? fp : null;
+
+        // ✅ target speakers in stop payload
+        final ts = data['targetSpeakers'];
+        final int? targetSpeakers = (ts is int) ? ts : null;
 
         setState(() {
           _recording = false;
@@ -122,18 +138,55 @@ class _RecordSheetState extends State<RecordSheet> {
           return;
         }
 
-        // ✅ Create transcript + job + navigate (same as your manual _stop flow)
-        await _createTranscriptAndStartTranscription(wavPath: wavPath);
+        await _createTranscriptAndStartTranscription(
+          wavPath: wavPath,
+          targetSpeakers: targetSpeakers,
+        );
       }
     };
 
     RecordingService.addListener(_fgListener);
+
+    // ✅ IMPORTANT: if user closed sheet and reopened while recording,
+    // restore state immediately (buttons/time) instead of waiting for next tick.
+    _hydrateFromRecordingService();
   }
 
   @override
   void dispose() {
+    _targetSpeakersCtrl.dispose();
     RecordingService.removeListener(_fgListener);
     super.dispose();
+  }
+
+  /// ✅ Restore UI state instantly if the recording service is already running.
+  Future<void> _hydrateFromRecordingService() async {
+    final running = await FlutterForegroundTask.isRunningService;
+    if (!mounted) return;
+
+    if (!running) {
+      setState(() {
+        _recording = false;
+        _paused = false;
+        _starting = false;
+      });
+      return;
+    }
+
+    // service is running -> show correct buttons immediately
+    final elapsed = await FlutterForegroundTask.getData(key: _kLastElapsedSec);
+    final level = await FlutterForegroundTask.getData(key: _kLastLevel);
+    final paused = await FlutterForegroundTask.getData(key: _kLastPaused);
+
+    setState(() {
+      _recording = true;
+      _starting = false;
+
+      _paused = (paused is bool) ? paused : false;
+
+      if (elapsed is num) _seconds = elapsed.toDouble();
+      if (level is num) _level = level.toDouble().clamp(0.0, 1.0);
+    });
   }
 
   Future<void> _ensureMic() async {
@@ -146,11 +199,26 @@ class _RecordSheetState extends State<RecordSheet> {
     }
   }
 
+  // ✅ parse textbox: 0 or invalid => null
+  int? _parseTargetSpeakers() {
+    final raw = _targetSpeakersCtrl.text.trim();
+    if (raw.isEmpty) return null;
+
+    final n = int.tryParse(raw);
+    if (n == null) return null;
+
+    if (n <= 0) return null; // 0 => null(auto)
+
+    return n.clamp(1, 12);
+  }
+
   Future<void> _start() async {
     if (_recording || _starting) return;
 
     try {
       _handledStop = false;
+
+      final int? targetSpeakers = _parseTargetSpeakers();
 
       await _ensureMic();
 
@@ -160,7 +228,8 @@ class _RecordSheetState extends State<RecordSheet> {
         _level = 0.0;
       });
 
-      final path = await RecordingService.start();
+      final path =
+          await RecordingService.start(targetSpeakers: targetSpeakers);
       if (path == null) {
         setState(() => _starting = false);
         if (!mounted) return;
@@ -201,7 +270,6 @@ class _RecordSheetState extends State<RecordSheet> {
     }
   }
 
-  // Manual stop just requests stop; actual handling is in 'stopped' event above.
   Future<void> _stop() async {
     if (!_recording) return;
 
@@ -212,8 +280,6 @@ class _RecordSheetState extends State<RecordSheet> {
       });
 
       await RecordingService.stop();
-      // ✅ do NOT navigate here anymore (avoid duplicates)
-      // Navigation happens when we receive the 'stopped' callback with filePath.
     } catch (e) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Failed to stop recording: $e');
@@ -222,9 +288,9 @@ class _RecordSheetState extends State<RecordSheet> {
 
   Future<void> _cancel() async {
     try {
-      _handledStop = true; // prevent auto handler if any late events arrive
+      _handledStop = true;
 
-      final p = await RecordingService.stop(); // stop and discard
+      final p = await RecordingService.stop();
 
       setState(() {
         _recording = false;
@@ -249,13 +315,13 @@ class _RecordSheetState extends State<RecordSheet> {
 
   Future<void> _createTranscriptAndStartTranscription({
     required String wavPath,
+    int? targetSpeakers,
   }) async {
     final placeholderDuration =
         (_seconds.isFinite && _seconds >= 0) ? _seconds : 0.0;
 
     final obx = ObjectBox.I;
 
-    // 1) Create transcript placeholder
     final tId = obx.transcripts.put(
       TranscriptEntity(
         title: '',
@@ -267,7 +333,6 @@ class _RecordSheetState extends State<RecordSheet> {
       ),
     );
 
-    // 2) Create job row
     final jobId = obx.jobs.put(
       TranscriptionJobEntity(
         wavPath: wavPath,
@@ -279,12 +344,10 @@ class _RecordSheetState extends State<RecordSheet> {
       ),
     );
 
-    // 3) Mark busy immediately
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
 
     if (!mounted) return;
 
-    // close sheet then open transcript detail
     Navigator.of(context).pop();
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -292,16 +355,15 @@ class _RecordSheetState extends State<RecordSheet> {
       ),
     );
 
-    // 4) start background transcriber
     try {
       await BackgroundTranscriber.start(
         wavPath: wavPath,
         translateToEnglish: false,
         titleHint: null,
         existingTranscriptId: tId,
+        targetSpeakers: targetSpeakers,
       );
 
-      // mark job running
       final job = obx.jobs.get(jobId);
       if (job != null && job.status == 'PENDING') {
         job.status = 'RUNNING';
@@ -374,6 +436,46 @@ class _RecordSheetState extends State<RecordSheet> {
                     ),
                     const SizedBox(height: 10),
                     LevelBars(level: _level, height: 16, barCount: 20),
+
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Target speakers (0 = auto)',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 110,
+                          child: TextField(
+                            controller: _targetSpeakersCtrl,
+                            enabled: !_recording && !_starting,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            decoration: const InputDecoration(
+                              hintText: '0',
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'If you’re unsure, keep 0. We treat 0 as auto-detect (null).',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ),
+
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -429,7 +531,6 @@ class _RecordSheetState extends State<RecordSheet> {
   }
 }
 
-// keep your LevelBars as-is
 class LevelBars extends StatelessWidget {
   const LevelBars({
     super.key,
@@ -460,10 +561,8 @@ class LevelBars extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: List.generate(barCount, (i) {
-              final barH = (height * weights[i] * (0.2 + 0.8 * v)).clamp(
-                2.0,
-                height,
-              );
+              final barH =
+                  (height * weights[i] * (0.2 + 0.8 * v)).clamp(2.0, height);
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 1.5),

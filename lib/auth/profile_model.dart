@@ -3,6 +3,10 @@ class AppProfile {
   final String? email;
   final DateTime? dateJoined;
   final bool isUpgraded;
+
+  // ✅ NEW: lifetime flag (maps to Supabase `is_lifetime`)
+  final bool isLifetime;
+
   final DateTime? trialExpiresAt;
   final DateTime? proExpiresAt;
   final String? avatarUrl;
@@ -12,6 +16,10 @@ class AppProfile {
     required this.email,
     required this.dateJoined,
     required this.isUpgraded,
+
+    // ✅ NEW
+    required this.isLifetime,
+
     required this.trialExpiresAt,
     required this.proExpiresAt,
     required this.avatarUrl,
@@ -26,6 +34,10 @@ class AppProfile {
       email: m['email'] as String?,
       dateJoined: dt('date_joined'),
       isUpgraded: (m['is_upgraded'] as bool?) ?? false,
+
+      // ✅ NEW (backward compatible if column isn't present yet)
+      isLifetime: (m['is_lifetime'] as bool?) ?? false,
+
       trialExpiresAt: dt('trial_expires_at'),
       proExpiresAt: dt('pro_expires_at'),
       avatarUrl: m['avatar_url'] as String?,

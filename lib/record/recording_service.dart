@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
@@ -40,7 +41,9 @@ class RecordingService {
     FlutterForegroundTask.initCommunicationPort();
   }
 
-  static Future<String?> start() async {
+  /// ✅ UPDATED: accepts targetSpeakers (nullable).
+  /// Internally stored as int where 0 == null/auto.
+  static Future<String?> start({int? targetSpeakers}) async {
     await ensureInitialized();
 
     final already = await FlutterForegroundTask.isRunningService;
@@ -62,6 +65,13 @@ class RecordingService {
       await FlutterForegroundTask.saveData(
         key: _kAllowLongRecordingRuntime,
         value: allowLong,
+      );
+
+      // ✅ NEW: store target speakers (Object cannot be null)
+      // Rule: 0 means null/auto
+      await FlutterForegroundTask.saveData(
+        key: _kTargetSpeakersRuntime,
+        value: targetSpeakers ?? 0,
       );
 
       final result = await FlutterForegroundTask.startService(
@@ -133,6 +143,10 @@ const _kFilePath = 'rec_file_path';
 const _kStartEpochMs = 'rec_start_epoch_ms';
 const _kPaused = 'rec_paused';
 
+// ✅ NEW: target speakers stored for stop payload + downstream
+// stored as int where 0 == null/auto
+const String _kTargetSpeakersRuntime = 'rec_target_speakers_runtime';
+
 // messages between UI <-> Task
 const _kCmd = 'cmd';
 const _cmdPause = 'pause';
@@ -150,8 +164,8 @@ const String _kAllowLongRecordingPref = 'allow_long_recording';
 // ✅ runtime value passed into the task (read via FlutterForegroundTask.getData)
 const String _kAllowLongRecordingRuntime = 'allow_long_recording_runtime';
 
-// ✅ default limit (you said currently you want 30s; change later)
-const int _kDefaultMaxSeconds = (30*60)+1; // 30 min
+// ✅ default limit
+const int _kDefaultMaxSeconds = (30 * 60) + 1; // 30 min
 
 @pragma('vm:entry-point')
 void recordingStartCallback() {
@@ -178,6 +192,10 @@ class _RecordingTaskHandler extends TaskHandler {
   // ✅ config loaded from task storage
   bool _allowLongRecording = false;
 
+  // ✅ NEW: target speakers passed from UI
+  // stored as int where 0 == null/auto
+  int? _targetSpeakers;
+
   // ✅ prevent overlapping async tick calls
   bool _ticking = false;
 
@@ -188,18 +206,25 @@ class _RecordingTaskHandler extends TaskHandler {
     final p = await FlutterForegroundTask.getData(key: _kFilePath);
     final s = await FlutterForegroundTask.getData(key: _kStartEpochMs);
     final pa = await FlutterForegroundTask.getData(key: _kPaused);
-    final allow = await FlutterForegroundTask.getData(key: _kAllowLongRecordingRuntime);
+    final allow =
+        await FlutterForegroundTask.getData(key: _kAllowLongRecordingRuntime);
+
+    // ✅ NEW: read target speakers (stored int; 0 => null)
+    final ts = await FlutterForegroundTask.getData(key: _kTargetSpeakersRuntime);
 
     _path = (p is String) ? p : null;
     _startEpochMs = (s is int) ? s : DateTime.now().millisecondsSinceEpoch;
     _paused = (pa is bool) ? pa : false;
     _allowLongRecording = (allow is bool) ? allow : false;
 
+    final tsInt = (ts is int) ? ts : 0;
+    _targetSpeakers = (tsInt <= 0) ? null : tsInt;
+
     if (_path == null) {
       final docs = await getApplicationDocumentsDirectory();
       final dir = Directory('${docs.path}/recordings')..createSync(recursive: true);
-      final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
-      _path = '${dir.path}/rec_$ts.wav';
+      final tss = DateTime.now().toIso8601String().replaceAll(':', '-');
+      _path = '${dir.path}/rec_$tss.wav';
     }
 
     if (!await _rec.isRecording()) {
@@ -322,9 +347,11 @@ class _RecordingTaskHandler extends TaskHandler {
       await _rec.stop();
     } catch (_) {}
 
+    // ✅ include targetSpeakers in payload (can be null here; that's fine)
     FlutterForegroundTask.sendDataToMain({
       'type': 'stopped',
       'filePath': _path,
+      'targetSpeakers': _targetSpeakers,
     });
 
     if (stopServiceToo) {
@@ -387,7 +414,8 @@ class _RecordingTaskHandler extends TaskHandler {
   }
 
   int _elapsedSeconds(int nowMs) {
-    final pausedExtra = (_pauseStartedMs == null) ? 0 : (nowMs - _pauseStartedMs!);
+    final pausedExtra =
+        (_pauseStartedMs == null) ? 0 : (nowMs - _pauseStartedMs!);
     final effectiveMs = (nowMs - _startEpochMs) - _pausedAccumMs - pausedExtra;
 
     final sec = Duration(milliseconds: effectiveMs).inSeconds;

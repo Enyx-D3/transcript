@@ -83,7 +83,8 @@ class _AccountTabState extends State<AccountTab> {
         return;
       }
 
-      final row = await _sb.from('profiles').select().eq('id', user.id).maybeSingle();
+      final row =
+          await _sb.from('profiles').select().eq('id', user.id).maybeSingle();
 
       if (row == null) {
         final now = DateTime.now().toUtc();
@@ -95,7 +96,8 @@ class _AccountTabState extends State<AccountTab> {
           'trial_expires_at': now.add(const Duration(days: 7)).toIso8601String(),
         });
 
-        final row2 = await _sb.from('profiles').select().eq('id', user.id).maybeSingle();
+        final row2 =
+            await _sb.from('profiles').select().eq('id', user.id).maybeSingle();
         if (row2 == null) throw Exception('Profile creation failed.');
 
         setState(() {
@@ -137,14 +139,34 @@ class _AccountTabState extends State<AccountTab> {
     return ex.isAfter(DateTime.now().toUtc());
   }
 
+  // ✅ NEW: Lifetime helpers (requires you add `isLifetime` to AppProfile model)
+  bool get _isLifetime => (_profile?.isLifetime ?? false);
+
+  // ✅ NEW: Pro expiry label (Lifetime vs date)
+  String get _proExpiryLabel {
+    if (!_proActive) return '—';
+    if (_isLifetime) return 'Lifetime';
+    return _fmtDateLong(_profile?.proExpiresAt);
+  }
+
   // ---------------- Date format ----------------
 
   String _fmtDateLong(DateTime? d) {
     if (d == null) return '—';
     final local = d.toLocal();
     const months = [
-      'January','February','March','April','May','June',
-      'July','August','September','October','November','December',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return '${local.day} ${months[local.month - 1]} ${local.year}';
   }
@@ -256,11 +278,17 @@ class _AccountTabState extends State<AccountTab> {
     }
   }
 
-  // ---------------- Upgrade flow (single product) ----------------
+  // ---------------- Upgrade flow (subscription + lifetime) ----------------
 
   Future<void> _startUpgradeFlow() async {
     if (_upgrading || _restoring) return;
     await _upgradeWithStore(kProSubscriptionId);
+  }
+
+  // ✅ NEW: Lifetime flow (one-time managed product)
+  Future<void> _startLifetimeFlow() async {
+    if (_upgrading || _restoring) return;
+    await _upgradeWithStore(kProLifetimeId);
   }
 
   Future<void> _upgradeWithStore(String productId) async {
@@ -475,7 +503,10 @@ class _AccountTabState extends State<AccountTab> {
                           children: [
                             _pill('Joined ${_fmtDateLong(_profile?.dateJoined)}'),
                             if (_proActive)
-                              _pill('Plan Pro', color: const Color(0xFF8E7CFF))
+                              _pill(
+                                _isLifetime ? 'Plan Pro (Lifetime)' : 'Plan Pro',
+                                color: const Color(0xFF8E7CFF),
+                              )
                             else if (_trialActive)
                               _pill('Plan Trial', color: const Color(0xFF65D6FF))
                             else
@@ -556,8 +587,8 @@ class _AccountTabState extends State<AccountTab> {
 
                     if (_proActive)
                       _kvRow(
-                        'Pro expiry',
-                        _fmtDateLong(_profile!.proExpiresAt),
+                        _isLifetime ? 'Pro plan' : 'Pro expiry',
+                        _proExpiryLabel,
                         trailing: _pill('Active', color: const Color(0xFF8E7CFF)),
                       ),
 
@@ -576,6 +607,18 @@ class _AccountTabState extends State<AccountTab> {
                                 )
                               : const Icon(Icons.workspace_premium_outlined),
                           label: Text(_upgrading ? 'Upgrading…' : 'Upgrade to Pro'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // ✅ NEW: Lifetime button (managed product)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: (_upgrading || _restoring) ? null : _startLifetimeFlow,
+                          icon: const Icon(Icons.all_inclusive),
+                          label: const Text('Buy Lifetime'),
                         ),
                       ),
 

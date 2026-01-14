@@ -1,4 +1,3 @@
-// lib/transcript/background_transcriber.dart
 import 'dart:async';
 import 'dart:ui';
 
@@ -24,6 +23,10 @@ class BackgroundTranscriber {
   static const _kExistingId = 'bg_existing_id';
   static const _kResultId = 'bg_result_id';
   static const _kBusyTranscribing = 'busy_transcribing';
+
+  // ✅ NEW: stored int where 0 == null/auto
+  static const _kTargetSpeakers = 'bg_target_speakers';
+
   static Future<void> init() async {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -52,6 +55,9 @@ class BackgroundTranscriber {
     bool translateToEnglish = false,
     String? titleHint,
     int? existingTranscriptId,
+
+    // ✅ NEW
+    int? targetSpeakers,
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
     await FlutterForegroundTask.saveData(
@@ -59,6 +65,13 @@ class BackgroundTranscriber {
       value: translateToEnglish,
     );
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
+
+    // ✅ store int (0 means null/auto)
+    await FlutterForegroundTask.saveData(
+      key: _kTargetSpeakers,
+      value: targetSpeakers ?? 0,
+    );
+
     if (titleHint != null) {
       await FlutterForegroundTask.saveData(key: _kTitleHint, value: titleHint);
     }
@@ -110,6 +123,13 @@ class _TranscribeTaskHandler extends TaskHandler {
       key: BackgroundTranscriber._kExistingId,
     );
 
+    // ✅ read stored int (0 => null)
+    final tsRaw = await FlutterForegroundTask.getData(
+      key: BackgroundTranscriber._kTargetSpeakers,
+    );
+    final tsInt = (tsRaw is int) ? tsRaw : 0;
+    final int? targetSpeakers = (tsInt <= 0) ? null : tsInt;
+
     if (wavPath == null || wavPath.isEmpty) {
       await FlutterForegroundTask.updateService(
         notificationTitle: 'Transcription failed',
@@ -125,14 +145,13 @@ class _TranscribeTaskHandler extends TaskHandler {
         notificationText: 'Preparing Transcript',
       );
 
-      // Compute ONLY — no ObjectBox here.
       final TranscriptionResult result = await transcribeToResult(
         wavPath: wavPath,
         translateToEnglish: translate,
         titleHint: titleHint,
+        targetSpeakers: targetSpeakers, // ✅ pass
       );
 
-      // Send compute result to main isolate for persistence.
       FlutterForegroundTask.sendDataToMain({
         'type': 'transcribe_result',
         'existingId': existingId,
@@ -161,7 +180,6 @@ class _TranscribeTaskHandler extends TaskHandler {
         notificationText: 'See app',
       );
     } finally {
-      // ✅ always clear busy flag even if UI isolate is dead
       await FlutterForegroundTask.saveData(
         key: BackgroundTranscriber._kBusyTranscribing,
         value: false,
@@ -176,8 +194,8 @@ class _TranscribeTaskHandler extends TaskHandler {
   @override
   Future<void> onDestroy(DateTime timestamp, bool bySystem) async {
     await FlutterForegroundTask.saveData(
-    key: BackgroundTranscriber._kBusyTranscribing,
-    value: false,
-  );
+      key: BackgroundTranscriber._kBusyTranscribing,
+      value: false,
+    );
   }
 }

@@ -181,49 +181,33 @@ class SubscriptionService {
   /// For now:
   /// - We TRY that server path.
   /// - Otherwise fall back to MVP update (requires UPDATE RLS policy).
-  Future<bool> _applyEntitlementFromPurchase(PurchaseDetails p) async {
-    final user = _sb.auth.currentUser;
-    if (user == null) return false;
+Future<bool> _applyEntitlementFromPurchase(PurchaseDetails p) async {
+  final user = _sb.auth.currentUser;
+  if (user == null) return false;
 
-    final token = p.verificationData.serverVerificationData;
+  final token = p.verificationData.serverVerificationData;
+  if (token.isEmpty) return false;
 
-    // ---- 1) Try server verification ----
-    if (token.isNotEmpty) {
-      try {
-        final res = await _sb.functions.invoke(
-          'verify-play-subscription',
-          body: {
-            'product_id': p.productID,
-            'purchase_token': token,
-          },
-        );
+  try {
+    final res = await _sb.functions.invoke(
+      'verify-play-subscription', 
+      body: {
+        'product_id': p.productID,
+        'purchase_token': token,
+      },
+    );
 
-        final data = res.data;
-        if (data is Map && (data['ok'] == true || data['success'] == true)) {
-          return true; // server updated profiles
-        } else {
-          // ignore: avoid_print
-          print('verify-play-subscription returned: $data');
-        }
-      } catch (e) {
-        // ignore: avoid_print
-        print('verify-play-subscription exception: $e');
-        // ignore -> fallback
-      }
+    final data = res.data;
+    final ok = data is Map && (data['ok'] == true || data['success'] == true);
+    if (!ok) {
+      // ignore: avoid_print
+      print('verify-play-entitlement failed: $data');
     }
-
-    // ---- 2) MVP fallback (no duration guessing) ----
-    final now = DateTime.now().toUtc();
-
-    await _sb.from('profiles').update({
-      'is_upgraded': true,
-      // We don't know monthly vs yearly here — don't guess.
-      // Keep null so your _proActive logic stays true for upgraded users.
-      'pro_expires_at': null,
-      // End trial immediately
-      'trial_expires_at': now.toIso8601String(),
-    }).eq('id', user.id);
-
-    return true;
+    return ok;
+  } catch (e) {
+    // ignore: avoid_print
+    print('verify-play-entitlement exception: $e');
+    return false;
   }
+}
 }

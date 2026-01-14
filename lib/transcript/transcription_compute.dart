@@ -336,6 +336,9 @@ Future<TranscriptionResult> transcribeToResult({
   String? titleHint,
   bool useIsolatedDiarization = true,
   bool matchWithEnrolledSpeakers = true,
+
+  // ✅ NEW: if null => auto, if int => force merge-until-N
+  int? targetSpeakers,
 }) async {
   // 0) Preprocess
   final cleaned = await preprocessWav16kMono(wavPath);
@@ -388,16 +391,18 @@ Future<TranscriptionResult> transcribeToResult({
         stayThreshold: 0.68,
         switchThreshold: 0.80,
         switchConfirmWindows: 3,
-        mergeClustersThreshold: 0.86, // keep
-        stableMergeThreshold: 0.78, // ✅ ADD THIS (try 0.76–0.82)
+        mergeClustersThreshold: 0.86,
         minClusterTalkSec: 2.5,
         minSegmentSec: 0.8,
         maxSpeakersCap: 8,
-        matchSpeakers: matchWithEnrolledSpeakers,
+
+        // ✅ NEW: user provided number (0 => null already handled in UI)
+        targetSpeakers: targetSpeakers,
+
+        matchSpeakers: matchWithEnrolledSpeakers && speakerMemoryData.isNotEmpty,
         matchThreshold: 0.67,
         speakerMemoryData: speakerMemoryData,
       );
-
       diarizationTurns = enhancedResult.turns;
       speakerMatches = enhancedResult.speakerMatches;
 

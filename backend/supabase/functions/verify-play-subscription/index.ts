@@ -8,6 +8,10 @@ type Body = {
   purchase_token?: string;
 };
 
+const LIFETIME_PRODUCT_ID = "transcript_pro_lifetime";
+// (Optional) If you want, also hardcode subscription product id(s) for sanity.
+const SUBSCRIPTION_PRODUCT_ID = "transcript_pro";
+
 serve(async (req: Request) => {
   if (req.method !== "POST") {
     return json({ ok: false, error: "Method not allowed" }, 405);
@@ -15,17 +19,14 @@ serve(async (req: Request) => {
 
   try {
     const body = (await req.json()) as Body;
-    const productId = body.product_id;
-    const purchaseToken = body.purchase_token;
+    const productId = body.product_id?.trim();
+    const purchaseToken = body.purchase_token?.trim();
 
     if (!productId || !purchaseToken) {
-      return json(
-        { ok: false, error: "Missing product_id / purchase_token" },
-        400,
-      );
+      return json({ ok: false, error: "Missing product_id / purchase_token" }, 400);
     }
 
-    // ---- Read secrets (MATCH YOUR SECRET NAMES) ----
+    // ---- Read secrets ----
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -33,16 +34,9 @@ serve(async (req: Request) => {
     const svcEmail = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
     const rawPrivateKey = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
 
-    const packageName = Deno.env.get("ANDROID_PACKAGE_NAME") ??
-      "com.fllama.transcript";
+    const packageName = Deno.env.get("ANDROID_PACKAGE_NAME") ?? "com.fllama.transcript";
 
-    if (
-      !supabaseUrl ||
-      !supabaseAnonKey ||
-      !supabaseServiceRoleKey ||
-      !svcEmail ||
-      !rawPrivateKey
-    ) {
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey || !svcEmail || !rawPrivateKey) {
       return json(
         {
           ok: false,
@@ -53,7 +47,6 @@ serve(async (req: Request) => {
       );
     }
 
-    // Fix private key newlines if stored with \n
     const svcPrivateKey = rawPrivateKey.replaceAll("\\n", "\n");
 
     // ---- Identify user from Supabase JWT ----
@@ -74,10 +67,7 @@ serve(async (req: Request) => {
 
     // ---- Setup Google auth client ----
     const auth = new GoogleAuth({
-      credentials: {
-        client_email: svcEmail,
-        private_key: svcPrivateKey,
-      },
+      credentials: { client_email: svcEmail, private_key: svcPrivateKey },
       scopes: ["https://www.googleapis.com/auth/androidpublisher"],
     });
 
@@ -88,48 +78,82 @@ serve(async (req: Request) => {
       auth: authClient,
     }) as androidpublisher_v3.Androidpublisher;
 
-    // ---- Call Google Play API (Subscriptions v2) ----
-    const subs = await androidpublisher.purchases.subscriptionsv2.get({
-      packageName,
-      token: purchaseToken,
-    });
+    // ---- Branch: Lifetime product vs Subscription ----
+    const isLifetime = productId === LIFETIME_PRODUCT_ID;
 
-    const purchase = subs.data;
-    if (!purchase) {
-      return json({ ok: false, error: "No purchase data from Google Play" }, 400);
-    }
+    // We'll compute these and then write profiles once.
+    let proExpiresAt: string | null = null;
 
-    // Validate active state
-    const state = purchase.subscriptionState;
-    const activeStates = new Set([
-      "SUBSCRIPTION_STATE_ACTIVE",
-      "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
-    ]);
+    if (isLifetime) {
+      // ========== ONE-TIME MANAGED PRODUCT ==========
+      const prod = await androidpublisher.purchases.products.get({
+        packageName,
+        productId,
+        token: purchaseToken,
+      });
 
-    if (!state || !activeStates.has(state)) {
-      return json(
-        { ok: false, error: `Subscription not active: ${state ?? "unknown"}` },
-        400,
-      );
-    }
+      const purchase = prod.data;
+      if (!purchase) {
+        return json({ ok: false, error: "No product purchase data from Google Play" }, 400);
+      }
 
-    const lineItems = purchase.lineItems ?? [];
-    if (lineItems.length === 0) {
-      return json({ ok: false, error: "No lineItems in purchase" }, 400);
-    }
+      // purchaseState: 0 Purchased, 1 Canceled, 2 Pending (varies by doc versions but 0=OK)
+      const purchaseState = purchase.purchaseState;
+      if (purchaseState !== 0) {
+        return json(
+          { ok: false, error: `Lifetime purchase not completed: purchaseState=${purchaseState}` },
+          400,
+        );
+      }
 
-    // Prefer matching productId (if present), otherwise first item
-    const li = lineItems.find((x) => x.productId === productId) ?? lineItems[0];
+      // Lifetime: never expires
+      proExpiresAt = null;
+    } else {
+      // ========== SUBSCRIPTION (Subscriptions v2) ==========
+      // Note: subscriptionsv2.get does not require productId, only token.
+      const subs = await androidpublisher.purchases.subscriptionsv2.get({
+        packageName,
+        token: purchaseToken,
+      });
 
-    const expiryTime = li?.expiryTime;
-    if (!expiryTime) {
-      return json({ ok: false, error: "Missing expiryTime" }, 400);
-    }
+      const purchase = subs.data;
+      if (!purchase) {
+        return json({ ok: false, error: "No subscription data from Google Play" }, 400);
+      }
 
-    // expiryTime is an RFC3339 timestamp string
-    const expiryDate = new Date(expiryTime);
-    if (isNaN(expiryDate.getTime())) {
-      return json({ ok: false, error: `Bad expiryTime: ${expiryTime}` }, 400);
+      const state = purchase.subscriptionState;
+      const activeStates = new Set([
+        "SUBSCRIPTION_STATE_ACTIVE",
+        "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+      ]);
+
+      if (!state || !activeStates.has(state)) {
+        return json(
+          { ok: false, error: `Subscription not active: ${state ?? "unknown"}` },
+          400,
+        );
+      }
+
+      const lineItems = purchase.lineItems ?? [];
+      if (lineItems.length === 0) {
+        return json({ ok: false, error: "No lineItems in subscription purchase" }, 400);
+      }
+
+      // Prefer matching productId if present, else first item.
+      // (Some Play responses may have productId in lineItems.)
+      const li = lineItems.find((x) => x.productId === productId) ?? lineItems[0];
+      const expiryTime = li?.expiryTime;
+
+      if (!expiryTime) {
+        return json({ ok: false, error: "Missing expiryTime" }, 400);
+      }
+
+      const expiryDate = new Date(expiryTime);
+      if (isNaN(expiryDate.getTime())) {
+        return json({ ok: false, error: `Bad expiryTime: ${expiryTime}` }, 400);
+      }
+
+      proExpiresAt = expiryDate.toISOString();
     }
 
     // ---- Update profiles using service role (bypasses RLS) ----
@@ -139,7 +163,8 @@ serve(async (req: Request) => {
       .from("profiles")
       .update({
         is_upgraded: true,
-        pro_expires_at: expiryDate.toISOString(),
+        is_lifetime: isLifetime,
+        pro_expires_at: proExpiresAt,          // null for lifetime
         trial_expires_at: new Date().toISOString(),
       })
       .eq("id", userId);
@@ -152,10 +177,11 @@ serve(async (req: Request) => {
     return json({
       ok: true,
       product_id: productId,
-      expires_at: expiryDate.toISOString(),
+      is_lifetime: isLifetime,
+      expires_at: proExpiresAt, // null for lifetime
     });
   } catch (e) {
-    console.error("verify-play-subscription error", e);
+    console.error("verify-play-entitlement error", e);
     return json({ ok: false, error: String(e) }, 500);
   }
 });
