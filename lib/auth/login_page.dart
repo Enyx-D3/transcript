@@ -47,7 +47,7 @@ class _LoginPageState extends State<LoginPage> {
       'email': user.email,
       'date_joined': now.toIso8601String(),
       'is_upgraded': false,
-      'trial_expires_at': now.add(const Duration(days: 7)).toIso8601String(),
+      'trial_expires_at': now.add(const Duration(days: 1)).toIso8601String(),
     });
   }
 
@@ -193,15 +193,13 @@ class _LoginPageState extends State<LoginPage> {
                                   color: const Color(0xFF1A1A22),
                                   borderRadius: BorderRadius.circular(22),
                                   border: Border.all(
-                                    color: const Color(
-                                      0xFF8E7CFF,
-                                    ).withValues(alpha: 0.35),
+                                    color: Colors.white
                                   ),
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(18),
                                   child: Image.asset(
-                                    'assets/logo/logo-transparent.png',
+                                    'assets/logo/transcript-transparent.png',
                                     fit: BoxFit.cover,
                                   ),
                                 ),
@@ -245,6 +243,7 @@ class _LoginPageState extends State<LoginPage> {
                                               height: 18,
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 2,
+                                              color: Colors.black,
                                               ),
                                             )
                                           : const Icon(Icons.g_mobiledata),
@@ -252,67 +251,71 @@ class _LoginPageState extends State<LoginPage> {
                                         _busy
                                             ? 'Signing in…'
                                             : 'Continue with Google',
+                                            style: TextStyle(color: Colors.black),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor: Colors.white
                                       ),
                                     ),
 
-                                    const SizedBox(height: 16),
-                                    const Divider(),
-                                    const SizedBox(height: 12),
+                                    // const SizedBox(height: 16),
+                                    // const Divider(),
+                                    // const SizedBox(height: 12),
 
-                                    // EMAIL/PASSWORD
-                                    TextField(
-                                      controller: _emailCtrl,
-                                      keyboardType: TextInputType.emailAddress,
-                                      textInputAction: TextInputAction.next,
-                                      autofillHints: const [
-                                        AutofillHints.username,
-                                        AutofillHints.email,
-                                      ],
-                                      decoration: const InputDecoration(
-                                        labelText: 'Email',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    TextField(
-                                      controller: _passwordCtrl,
-                                      obscureText: _pwObscured,
-                                      textInputAction: TextInputAction.done,
-                                      onSubmitted: (_) => _busy
-                                          ? null
-                                          : _signInWithEmailPassword(),
-                                      autofillHints: const [
-                                        AutofillHints.password,
-                                      ],
-                                      decoration: InputDecoration(
-                                        labelText: 'Password',
-                                        border: const OutlineInputBorder(),
-                                        suffixIcon: IconButton(
-                                          onPressed: _busy
-                                              ? null
-                                              : () => setState(
-                                                  () => _pwObscured =
-                                                      !_pwObscured,
-                                                ),
-                                          icon: Icon(
-                                            _pwObscured
-                                                ? Icons.visibility
-                                                : Icons.visibility_off,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    FilledButton(
-                                      onPressed: _busy
-                                          ? null
-                                          : _signInWithEmailPassword,
-                                      child: Text(
-                                        _busy
-                                            ? 'Signing in…'
-                                            : 'Continue with Email',
-                                      ),
-                                    ),
+                                    // // EMAIL/PASSWORD
+                                    // TextField(
+                                    //   controller: _emailCtrl,
+                                    //   keyboardType: TextInputType.emailAddress,
+                                    //   textInputAction: TextInputAction.next,
+                                    //   autofillHints: const [
+                                    //     AutofillHints.username,
+                                    //     AutofillHints.email,
+                                    //   ],
+                                    //   decoration: const InputDecoration(
+                                    //     labelText: 'Email',
+                                    //     border: OutlineInputBorder(),
+                                    //   ),
+                                    // ),
+                                    // const SizedBox(height: 10),
+                                    // TextField(
+                                    //   controller: _passwordCtrl,
+                                    //   obscureText: _pwObscured,
+                                    //   textInputAction: TextInputAction.done,
+                                    //   onSubmitted: (_) => _busy
+                                    //       ? null
+                                    //       : _signInWithEmailPassword(),
+                                    //   autofillHints: const [
+                                    //     AutofillHints.password,
+                                    //   ],
+                                    //   decoration: InputDecoration(
+                                    //     labelText: 'Password',
+                                    //     border: const OutlineInputBorder(),
+                                    //     suffixIcon: IconButton(
+                                    //       onPressed: _busy
+                                    //           ? null
+                                    //           : () => setState(
+                                    //               () => _pwObscured =
+                                    //                   !_pwObscured,
+                                    //             ),
+                                    //       icon: Icon(
+                                    //         _pwObscured
+                                    //             ? Icons.visibility
+                                    //             : Icons.visibility_off,
+                                    //       ),
+                                    //     ),
+                                    //   ),
+                                    // ),
+                                    // const SizedBox(height: 10),
+                                    // FilledButton(
+                                    //   onPressed: _busy
+                                    //       ? null
+                                    //       : _signInWithEmailPassword,
+                                    //   child: Text(
+                                    //     _busy
+                                    //         ? 'Signing in…'
+                                    //         : 'Continue with Email',
+                                    //   ),
+                                    // ),
 
                                     const SizedBox(height: 10),
                                     RichText(
@@ -337,7 +340,7 @@ class _LoginPageState extends State<LoginPage> {
                                             recognizer: TapGestureRecognizer()
                                               ..onTap = () async {
                                                 final uri = Uri.parse(
-                                                  'https://yourdomain.com/terms-and-privacy',
+                                                  'https://enyx.app/privacy/enyx-transcriptor',
                                                 );
 
                                                 final ok = await launchUrl(

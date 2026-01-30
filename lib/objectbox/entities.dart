@@ -74,7 +74,8 @@ class TranscriptEntity {
   String lang;
 
   /// Optional original audio file (local path) if you keep it.
-  String? audioPath;
+String? audioPath;
+  String? processedAudioPath; // ✅ add
 
   /// Duration in seconds.
   double durationSec;
@@ -97,18 +98,49 @@ class TranscriptEntity {
   @Property(type: PropertyType.date)
   DateTime createdAt;
 
-  TranscriptEntity({
-    this.id = 0,
-    this.title,
-    required this.model,
-    required this.lang,
-    this.audioPath,
-    required this.durationSec,
-    this.editedText,
-    this.fullTextCache,
-    this.searchText,
-    DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+  /// 0 = voice, 1 = youtube (future: add more sources)
+@Index()
+int sourceType;
+
+/// If sourceType==1 (youtube), this links to YoutubeTranscriptMetaEntity.id
+@Index()
+int? youtubeMetaId;
+
+@Index()
+bool isFavourite; // ✅ default false
+
+/// Optional convenience for sorting/recency for youtube items too
+@Property(type: PropertyType.date)
+DateTime updatedAt;
+
+@Index()
+bool isDeleted; // soft delete flag
+
+@Property(type: PropertyType.date)
+DateTime? deletedAt; // when moved to trash
+
+
+
+TranscriptEntity({
+  this.id = 0,
+  this.title,
+  required this.model,
+  required this.lang,
+  this.sourceType = 0,      // ✅ default voice
+  this.youtubeMetaId,
+  this.audioPath,
+  this.processedAudioPath,
+  required this.durationSec,
+  this.editedText,
+  this.fullTextCache,
+  this.searchText,
+  DateTime? createdAt,
+  DateTime? updatedAt,
+  this.isFavourite = false,
+  this.isDeleted = false,
+  this.deletedAt,
+})  : createdAt = createdAt ?? DateTime.now(),
+      updatedAt = updatedAt ?? DateTime.now();
 }
 
 @Entity()
@@ -219,4 +251,69 @@ class AiChatMessageEntity {
     required this.text,
     int? createdAtMs,
   }) : createdAtMs = createdAtMs ?? DateTime.now().millisecondsSinceEpoch;
+}
+
+@Entity()
+class YoutubeTranscriptMetaEntity {
+  @Id()
+  int id = 0;
+
+  /// Unique so we can upsert by videoId
+  @Unique()
+  String videoId;
+
+  /// what user pasted
+  String inputUrl;
+
+  /// normalized url
+  String canonicalUrl;
+
+  /// optional fields (use later if you fetch video info)
+  String? title;
+  String? channel;
+
+  int createdAtMs;
+  int updatedAtMs;
+
+  @Backlink()
+  final transcripts = ToMany<YoutubeTranscriptTextEntity>();
+
+  YoutubeTranscriptMetaEntity({
+    required this.videoId,
+    required this.inputUrl,
+    required this.canonicalUrl,
+    this.title,
+    this.channel,
+    int? createdAtMs,
+    int? updatedAtMs,
+  })  : createdAtMs = createdAtMs ?? DateTime.now().millisecondsSinceEpoch,
+        updatedAtMs = updatedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+}
+
+@Entity()
+class YoutubeTranscriptTextEntity {
+  @Id()
+  int id = 0;
+
+  /// link back to meta
+  final meta = ToOne<YoutubeTranscriptMetaEntity>();
+
+  String? language;
+  String? languageCode;
+
+  /// true = auto generated, false = manual
+  bool isGenerated;
+
+  /// transcript text
+  String text;
+
+  int fetchedAtMs;
+
+  YoutubeTranscriptTextEntity({
+    this.language,
+    this.languageCode,
+    required this.isGenerated,
+    required this.text,
+    int? fetchedAtMs,
+  }) : fetchedAtMs = fetchedAtMs ?? DateTime.now().millisecondsSinceEpoch;
 }

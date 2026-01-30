@@ -273,6 +273,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.6"
+  csslib:
+    dependency: transitive
+    description:
+      name: csslib
+      sha256: "09bad715f418841f976c77db72d5398dc1253c21fb9c0c7f0b0b985860b2d58e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.2"
   cupertino_icons:
     dependency: "direct main"
     description:
@@ -513,6 +521,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  html:
+    dependency: transitive
+    description:
+      name: html
+      sha256: "6d1264f2dffa1b1101c25a91dff0dc2daee4c18e87cd8538729773c073dbf602"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.15.6"
   html_unescape:
     dependency: transitive
     description:
@@ -562,7 +578,7 @@ packages:
     source: hosted
     version: "3.2.3"
   in_app_purchase_android:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: in_app_purchase_android
       sha256: "67f135ca215b8cd84eca3ea46b934607709ab6826a8473129f01b12fd235c8c6"
@@ -585,6 +601,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.4.4"
+  in_app_review:
+    dependency: "direct main"
+    description:
+      name: in_app_review
+      sha256: ab26ac54dbd802896af78c670b265eaeab7ecddd6af4d0751e9604b60574817f
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.11"
+  in_app_review_platform_interface:
+    dependency: transitive
+    description:
+      name: in_app_review_platform_interface
+      sha256: fed2c755f2125caa9ae10495a3c163aa7fab5af3585a9c62ef4a6920c5b45f10
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.5"
   io:
     dependency: transitive
     description:
@@ -1414,6 +1446,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  youtube_transcript_api:
+    dependency: "direct main"
+    description:
+      name: youtube_transcript_api
+      sha256: "61404b66ba0743d0d5d2c114ccde990762c0720919021c32d6c48aba84e6c51b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0"
 sdks:
   dart: ">=3.8.0 <4.0.0"
   flutter: ">=3.32.0"

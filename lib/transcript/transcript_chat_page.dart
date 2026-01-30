@@ -15,6 +15,9 @@ import '../report/report_dialog.dart';
 import '../report/report_service.dart';
 import '../common/app_flushbar.dart';
 
+// ✅ NEW (for clickable "Download model" banner)
+import '../model_picker_page.dart';
+
 class TranscriptChatPage extends StatefulWidget {
   const TranscriptChatPage({super.key, required this.transcriptId});
 
@@ -32,8 +35,8 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
   StreamSubscription<ModelProgress>? _qwenSub;
 
   final ReportService _reportService = const ReportService(
-  baseUrl: 'https://enyx.app',
-);
+    baseUrl: 'https://enyx.app',
+  );
 
   bool _initializing = true;
   bool _modelAvailable = false;
@@ -72,7 +75,7 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
   void _scrollToBottom({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollCtrl.hasClients) return;
-      final to = _scrollCtrl.position.maxScrollExtent + 120;
+      final to = _scrollCtrl.position.maxScrollExtent + 160;
       if (!animate) {
         _scrollCtrl.jumpTo(to);
       } else {
@@ -116,9 +119,9 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
 
   Future<void> _loadMessages() async {
     final obx = ObjectBox.I;
-    final qb = obx.chatMessages
-        .query(TranscriptChatMessageEntity_.transcriptId.equals(widget.transcriptId))
-      ..order(TranscriptChatMessageEntity_.createdAt);
+    final qb = obx.chatMessages.query(
+      TranscriptChatMessageEntity_.transcriptId.equals(widget.transcriptId),
+    )..order(TranscriptChatMessageEntity_.createdAt);
     final q = qb.build();
     final rows = q.find();
     q.close();
@@ -156,6 +159,13 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
         }
       }
     });
+  }
+
+  Future<void> _openModelPicker() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
+    await _initModelState(); // refresh model availability on return
   }
 
   // =========================
@@ -209,9 +219,9 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
 
     try {
       // 3) Build transcript context
-      final qbTurns = obx.turns
-          .query(TranscriptTurnEntity_.transcript.equals(widget.transcriptId))
-        ..order(TranscriptTurnEntity_.startSec);
+      final qbTurns = obx.turns.query(
+        TranscriptTurnEntity_.transcript.equals(widget.transcriptId),
+      )..order(TranscriptTurnEntity_.startSec);
       final qTurns = qbTurns.build();
       final turns = qTurns.find();
       qTurns.close();
@@ -228,7 +238,7 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
         throw Exception('Transcript has no segments yet.');
       }
 
-      // 4) Stream QA (like summary, but update UI live)
+      // 4) Stream QA (update UI live)
       String latestFullText = '';
       String accum = '';
 
@@ -307,7 +317,7 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
 
       await _loadMessages();
     } catch (e) {
-      // remove placeholder (or mark as error)
+      // mark placeholder as error
       final msg = obx.chatMessages.get(placeholderId);
       if (msg != null) {
         msg.text = 'Failed to get answer.';
@@ -329,101 +339,288 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
   }
 
   // =========================
-  // UI
+  // UI helpers
   // =========================
 
-Future<void> _copyText(String text) async {
-  final t = text.trim();
-  if (t.isEmpty) {
+  Future<void> _copyText(String text) async {
+    final t = text.trim();
+    if (t.isEmpty) {
+      if (!mounted) return;
+      await AppFlushbar.error(context, message: 'Nothing to copy.');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: t));
     if (!mounted) return;
-    await AppFlushbar.error(context, message: 'Nothing to copy.');
-    return;
+    await AppFlushbar.success(context, message: 'Copied.');
   }
-  await Clipboard.setData(ClipboardData(text: t));
-  if (!mounted) return;
-  await AppFlushbar.success(context, message: 'Copied.');
-}
 
-Future<void> _reportAiMessage(TranscriptChatMessageEntity m) async {
-  final meta = <String, dynamic>{
-    'source': 'transcript_chat',
-    'transcriptId': widget.transcriptId,
-    'messageId': m.id,
-    'createdAt': m.createdAt.toIso8601String(),
-  };
+  Future<void> _reportAiMessage(TranscriptChatMessageEntity m) async {
+    final meta = <String, dynamic>{
+      'source': 'transcript_chat',
+      'transcriptId': widget.transcriptId,
+      'messageId': m.id,
+      'createdAt': m.createdAt.toIso8601String(),
+    };
 
-  await showReportDialog(
-    outerContext: context,
-    responseText: m.text,
-    meta: meta,
-    sendReport: ({
-      required String reason,
-      required String note,
-      required String response,
-      Map<String, dynamic>? meta,
-    }) {
-      return _reportService.sendReport(
-        reason: reason,
-        note: note,
-        response: response,
-        meta: meta,
-      );
-    },
-  );
-}
+    await showReportDialog(
+      outerContext: context,
+      responseText: m.text,
+      meta: meta,
+      sendReport:
+          ({
+            required String reason,
+            required String note,
+            required String response,
+            Map<String, dynamic>? meta,
+          }) {
+            return _reportService.sendReport(
+              reason: reason,
+              note: note,
+              response: response,
+              meta: meta,
+            );
+          },
+    );
+  }
 
-  Widget _buildBubble(TranscriptChatMessageEntity m) {
-  final isUser = m.isUser;
-  final align = isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-  final bgColor = isUser ? const Color(0xFF8E7CFF) : const Color(0xFF1E1E26);
-  final textColor = Colors.white;
-
-  return Column(
-    crossAxisAlignment: align,
-    children: [
-      Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        constraints: const BoxConstraints(maxWidth: 320),
+  Widget _chipAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(14),
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withOpacity(0.10)),
         ),
-        child: Text(
-          m.text,
-          style: TextStyle(color: textColor),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: Colors.white70),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.white70,
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
 
-      // ✅ Actions ONLY for AI messages
-      if (!isUser)
-        Padding(
-          padding: const EdgeInsets.only(top: 2, bottom: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+  Widget _buildBubble(TranscriptChatMessageEntity m) {
+    final isUser = m.isUser;
+
+    final align = isUser ? Alignment.centerRight : Alignment.centerLeft;
+    final bubbleColor = isUser
+        ? Colors.white30
+        : const Color(0xFF14141B);
+    final borderColor = isUser
+        ? Colors.transparent
+        : Colors.white.withOpacity(0.10);
+
+    return Align(
+      alignment: align,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            crossAxisAlignment: isUser
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
-              TextButton.icon(
-                onPressed: () => _copyText(m.text),
-                icon: const Icon(Icons.copy, size: 12),
-                label: const Text('Copy',style: TextStyle(fontSize: 12),),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: bubbleColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Text(
+                  m.text,
+                  style: const TextStyle(color: Colors.white, height: 1.35),
+                ),
               ),
-              const SizedBox(width: 6),
-              TextButton.icon(
-                onPressed: () => _reportAiMessage(m),
-                icon: const Icon(Icons.flag_outlined, size: 12),
-                label: const Text('Report',style: TextStyle(fontSize: 12),),
+
+              // ✅ Actions for AI only
+              if (!isUser)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 2),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _chipAction(
+                        icon: Icons.copy,
+                        label: 'Copy',
+                        onTap: () => _copyText(m.text),
+                      ),
+                      _chipAction(
+                        icon: Icons.flag_outlined,
+                        label: 'Report',
+                        onTap: () => _reportAiMessage(m),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modelBanner() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _openModelPicker, // ✅ clickable
+        child: Ink(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withOpacity(0.10)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.smart_toy_outlined, color: Colors.white70),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Model required to ask new questions.\nTap to open Model Download.',
+                  style: TextStyle(color: Colors.white70, height: 1.25),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color:  Colors.white.withOpacity(0.18),
+                  border: Border.all(
+                    color:  Colors.white.withOpacity(0.35),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.download, size: 16, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text(
+                      'Download',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
-    ],
-  );
-}
+      ),
+    );
+  }
+
+  Widget _composer(bool canSend) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF14141B),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.10)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  cursorColor: Colors.white,
+                  controller: _inputCtrl,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.newline,
+                  decoration: const InputDecoration(
+                    hintText: 'Ask about this transcript…',
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: canSend ? _send : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: _sending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2,color: Colors.white,),
+                      )
+                    : const Icon(Icons.send),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // =========================
+  // Build
+  // =========================
+
   @override
   Widget build(BuildContext context) {
     if (_initializing) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Ask AI')),
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          titleSpacing: 12, // ✅ nice left padding
+          title: Row(
+            children: [
+              _IconPillButton(
+                tooltip: 'Back',
+                icon: Icons.arrow_back,
+                onTap: () => Navigator.of(context).maybePop(),
+              ),
+              const SizedBox(width: 10),
+              const Text('Ask AI'),
+            ],
+          ),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -432,70 +629,97 @@ Future<void> _reportAiMessage(TranscriptChatMessageEntity m) async {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ask AI'),
+        automaticallyImplyLeading: false,
+        titleSpacing: 12, // ✅ nice left padding
+        title: Row(
+          children: [
+            _IconPillButton(
+              tooltip: 'Back',
+              icon: Icons.arrow_back,
+              onTap: () => Navigator.of(context).maybePop(),
+            ),
+            const SizedBox(width: 10),
+            const Text('Ask AI'),
+          ],
+        ),
       ),
       body: Column(
         children: [
-          if (!_modelAvailable)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: Text(
-                'Download the Qwen model in the Model picker to ask new questions. '
-                'You can still read past answers below.',
-                style: TextStyle(color: Colors.white70),
-              ),
-            ),
+          if (!_modelAvailable) _modelBanner(),
+
           if (_error != null)
             Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(
-                _error!,
-                style: const TextStyle(color: Colors.redAccent),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.redAccent.withOpacity(0.25)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.redAccent),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+
           Expanded(
             child: ListView.builder(
               controller: _scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               itemCount: _messages.length,
               itemBuilder: (ctx, i) => _buildBubble(_messages[i]),
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _inputCtrl,
-                      minLines: 1,
-                      maxLines: 4,
-                      textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(
-                        hintText: 'Ask about this transcript…',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: _sending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
-                    onPressed: canSend ? _send : null,
-                  ),
-                ],
-              ),
+
+          _composer(canSend),
+        ],
+      ),
+    );
+  }
+}
+
+class _IconPillButton extends StatelessWidget {
+  const _IconPillButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+            border: Border.all(
+              color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
             ),
           ),
-        ],
+          child: Icon(icon, size: 20),
+        ),
       ),
     );
   }

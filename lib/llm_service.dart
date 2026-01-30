@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:async';
 import 'package:fllama/fllama.dart';
@@ -58,16 +59,16 @@ List<Message> formatPromptForModel({
 }
 
 /// Build summary prompt over transcript (as user content)
-String _buildSummaryPrompt(String transcript) {
+String _buildSummaryPrompt(String transcript,int maxWord) {
   return '''
 Summarize the following *Transcript*.
-
+The summary should be at max $maxWord words.
 Focus on:
 - Overall summary
-- Key decisions
+- Key decisions if available
 - Action items if available (with owners if mentioned)
 - Risks / open questions if available
-
+- Dont add any thing
 Transcript:
 $transcript
 ''';
@@ -219,12 +220,13 @@ class LLMService {
         /// Meeting transcript summary
         case 'summary':
           final transcript = request['transcript'] as String;
+          final maxWord = request['max_tokens'] as int;
           final logicalMessages = <Message>[
             Message(
               Role.system,
               'You summarize meetings clearly and concisely.',
             ),
-            Message(Role.user, _buildSummaryPrompt(transcript)),
+            Message(Role.user, _buildSummaryPrompt(transcript,maxWord)),
           ];
 
           await _runChat(

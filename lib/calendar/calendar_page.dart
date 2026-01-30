@@ -1,5 +1,4 @@
 // lib/calendar/calendar_page.dart
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:objectbox/objectbox.dart';
 
@@ -36,8 +35,9 @@ class _CalendarPageState extends State<CalendarPage> {
 
   DateTime _startOfMonth(DateTime m) => DateTime(m.year, m.month, 1);
   DateTime _endOfMonthExclusive(DateTime m) {
-    final firstNext =
-        (m.month == 12) ? DateTime(m.year + 1, 1, 1) : DateTime(m.year, m.month + 1, 1);
+    final firstNext = (m.month == 12)
+        ? DateTime(m.year + 1, 1, 1)
+        : DateTime(m.year, m.month + 1, 1);
     return firstNext; // exclusive upper bound
   }
 
@@ -50,8 +50,7 @@ class _CalendarPageState extends State<CalendarPage> {
     final end = _endOfMonthExclusive(_monthAnchor);
 
     // Query all ordered by createdAt, filter to this month in Dart
-    final qb = obx.transcripts.query()
-      ..order(TranscriptEntity_.createdAt); // ascending
+    final qb = obx.transcripts.query()..order(TranscriptEntity_.createdAt);
     final q = qb.build();
     final all = q.find();
     q.close();
@@ -90,79 +89,174 @@ class _CalendarPageState extends State<CalendarPage> {
     _loadMonth();
   }
 
+  BoxDecoration _panelDecoration(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
+    final border = isDark
+        ? Colors.white.withOpacity(0.10)
+        : Colors.black.withOpacity(0.08);
+
+    return BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: border),
+      boxShadow: [
+        BoxShadow(
+          blurRadius: 18,
+          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
+          offset: const Offset(0, 10),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final days = _buildMonthDays(_monthAnchor);
     final today = _truncateDate(DateTime.now());
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Calendar'),
-        centerTitle: false,
-        actions: [
-          IconButton(
-            tooltip: 'Previous month',
-            icon: const Icon(Icons.chevron_left),
-            onPressed: _prevMonth,
-          ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                _monthLabel(_monthAnchor),
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Next month',
-            icon: const Icon(Icons.chevron_right),
-            onPressed: _nextMonth,
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.only(top: 24),
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            _legendTwoColor(),
-            const SizedBox(height: 8),
-            _weekHeader(),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: GridView.builder(
-                  physics: const BouncingScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 7, // Mon..Sun
-                    crossAxisSpacing: 6,
-                    mainAxisSpacing: 6,
+      // ✅ No default AppBar: custom header for uniqueness
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ---------- Header ----------
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Calendar',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Tap to view transcripts',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: isDark ? Colors.white70 : Colors.black54,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  itemCount: days.length,
-                  itemBuilder: (ctx, i) {
-                    final d = days[i];
-                    final inMonth = d.month == _monthAnchor.month;
-                    final isToday = _truncateDate(d) == today;
-        
-                    final key = _truncateDate(d);
-                    final count = _countByDate[key] ?? 0;
-                    final hasTranscripts = count > 0;
-        
-                    return _DayCell(
-                      date: d,
-                      inMonth: inMonth,
-                      isToday: isToday,
-                      hasTranscripts: hasTranscripts,
-                      count: count,                 // keep count visible
-                      onTap: () => _openDaySheet(d),
-                    );
-                  },
+                  const SizedBox(width: 8),
+
+                  _IconPillButton(
+                    tooltip: 'Previous month',
+                    icon: Icons.chevron_left,
+                    onTap: _prevMonth,
+                  ),
+                  const SizedBox(width: 6),
+
+                  // ✅ Flexible month pill so it never overflows
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: (isDark ? Colors.white : Colors.black)
+                            .withOpacity(0.06),
+                        border: Border.all(
+                          color: (isDark ? Colors.white : Colors.black)
+                              .withOpacity(0.10),
+                        ),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.center,
+                        child: Text(
+                          _monthLabel(_monthAnchor),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 6),
+                  _IconPillButton(
+                    tooltip: 'Next month',
+                    icon: Icons.chevron_right,
+                    onTap: _nextMonth,
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              // Legend + week header inside a panel
+              Container(
+                decoration: _panelDecoration(context),
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  children: [
+                    _legendTwoColor(),
+                    const SizedBox(height: 10),
+                    _weekHeader(),
+                  ],
                 ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 12),
+
+              // Calendar grid inside a panel
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(12), // 👈 adjust as needed
+                  child: GridView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 7,
+                          crossAxisSpacing: 6,
+                          mainAxisSpacing: 6,
+                        ),
+                    itemCount: days.length,
+                    itemBuilder: (ctx, i) {
+                      final d = days[i];
+                      final inMonth = d.month == _monthAnchor.month;
+                      final isToday = _truncateDate(d) == today;
+
+                      final key = _truncateDate(d);
+                      final count = _countByDate[key] ?? 0;
+                      final hasTranscripts = count > 0;
+
+                      return _DayCell(
+                        date: d,
+                        inMonth: inMonth,
+                        isToday: isToday,
+                        hasTranscripts: hasTranscripts,
+                        count: count,
+                        onTap: () => _openDaySheet(d),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 72), // space for bottom dock nav
+            ],
+          ),
         ),
       ),
     );
@@ -171,42 +265,45 @@ class _CalendarPageState extends State<CalendarPage> {
   // Monday-first labels
   Widget _weekHeader() {
     const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: labels
-            .map((t) => Expanded(
-                  child: Text(
-                    t,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                ))
-            .toList(),
-      ),
+    return Row(
+      children: labels
+          .map(
+            (t) => Expanded(
+              child: Text(
+                t,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  letterSpacing: 0.2,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 
   // Two-color legend (no intensity scale)
   Widget _legendTwoColor() {
     Widget box(Color c, String label) => Row(
-          children: [
-            Container(
-              width: 16,
-              height: 16,
-              margin: const EdgeInsets.only(right: 6),
-              decoration: BoxDecoration(
-                color: c,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            Text(label, style: const TextStyle(color: Colors.white60, fontSize: 12)),
-          ],
-        );
+      children: [
+        Container(
+          width: 14,
+          height: 14,
+          margin: const EdgeInsets.only(right: 6),
+          decoration: BoxDecoration(
+            color: c,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white60, fontSize: 12),
+        ),
+      ],
+    );
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -220,8 +317,18 @@ class _CalendarPageState extends State<CalendarPage> {
 
   String _monthLabel(DateTime a) {
     const months = [
-      'January','February','March','April','May','June',
-      'July','August','September','October','November','December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return '${months[a.month - 1]} ${a.year}';
   }
@@ -229,93 +336,147 @@ class _CalendarPageState extends State<CalendarPage> {
   /// Build a 6-row calendar (42 cells), Monday-first.
   List<DateTime> _buildMonthDays(DateTime anchor) {
     final first = _startOfMonth(anchor);
-    // weekday: Mon=1..Sun=7 → Monday-first offset:
     final leading = (first.weekday + 6) % 7; // 0..6; 0 if Mon
     final start = first.subtract(Duration(days: leading));
-
-    // Always show 6 rows → 42 days
     return List.generate(42, (i) => start.add(Duration(days: i)));
   }
 
   Future<void> _openDaySheet(DateTime day) async {
-  void unfocus() => FocusManager.instance.primaryFocus?.unfocus();
+    void unfocus() => FocusManager.instance.primaryFocus?.unfocus();
+    unfocus();
 
-  unfocus(); // ✅ prevent keyboard restore from Timeline search
+    final obx = ObjectBox.I;
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
 
-  final obx = ObjectBox.I;
-  final start = DateTime(day.year, day.month, day.day);
-  final end = start.add(const Duration(days: 1));
+    final qb = obx.transcripts.query()..order(TranscriptEntity_.createdAt);
+    final q = qb.build();
+    final all = q.find();
+    q.close();
 
-  final qb = obx.transcripts.query()..order(TranscriptEntity_.createdAt);
-  final q = qb.build();
-  final all = q.find();
-  q.close();
+    final items = all.where((t) {
+      final local = t.createdAt.toLocal();
+      return !local.isBefore(start) && local.isBefore(end);
+    }).toList();
 
-  final items = all.where((t) {
-    final local = t.createdAt.toLocal();
-    return !local.isBefore(start) && local.isBefore(end);
-  }).toList();
+    if (!mounted) return;
 
-  if (!mounted) return;
-
-  await showModalBottomSheet(
-    context: context,
-    showDragHandle: true,
-    backgroundColor: const Color(0xFF0B0C10),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-    ),
-    builder: (ctx) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-          child: items.isEmpty
-              ? const SizedBox(
-                  height: 120,
-                  child: Center(
-                    child: Text(
-                      'No transcripts on this day.',
-                      style: TextStyle(color: Colors.white70),
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF0B0C10),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Sheet header
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_month, color:Colors.white),
+                    const SizedBox(width: 10),
+                    Text(
+                      '${day.day.toString().padLeft(2, '0')} ${_monthLabel(DateTime(day.year, day.month, 1)).split(' ')[0]}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
-                )
-              : ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final t = items[i];
-                    final when = t.createdAt.toLocal();
-                    final hh = when.hour.toString().padLeft(2, '0');
-                    final mm = when.minute.toString().padLeft(2, '0');
-                    final title = (t.title?.trim().isNotEmpty ?? false)
-                        ? t.title!.trim()
-                        : 'Untitled';
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: Colors.white.withOpacity(0.06),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.10),
+                        ),
+                      ),
+                      child: Text(
+                        '${items.length} item${items.length == 1 ? '' : 's'}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
 
-                    return ListTile(
-                      leading: const Icon(Icons.description, color: Color(0xFFCD66FD)),
-                      title: Text(title),
-                      subtitle: Text('$hh:$mm • ${_fmtDuration(t.durationSec)}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        unfocus(); // ✅
-                        Navigator.of(context).pop(); // close sheet
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => TranscriptDetailPage(transcriptId: t.id),
+                if (items.isEmpty)
+                  const SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: Text(
+                        'No transcripts on this day.',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final t = items[i];
+                        final when = t.createdAt.toLocal();
+                        final hh = when.hour.toString().padLeft(2, '0');
+                        final mm = when.minute.toString().padLeft(2, '0');
+                        final title = (t.title?.trim().isNotEmpty ?? false)
+                            ? t.title!.trim()
+                            : 'Untitled';
+
+                        return ListTile(
+                          leading: const _LeadingPillIcon(
+                            icon: Icons.description,
                           ),
+                          title: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '$hh:$mm • ${_fmtDuration(t.durationSec)}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            unfocus();
+                            Navigator.of(context).pop();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    TranscriptDetailPage(transcriptId: t.id),
+                              ),
+                            );
+                          },
                         );
                       },
-                    );
-                  },
-                ),
-        ),
-      );
-    },
-  );
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
 
-  unfocus(); // ✅ ensure keyboard stays closed after dismiss
-}
+    unfocus();
+  }
 
   String _fmtDuration(double sec) {
     final s = sec.isFinite && sec >= 0 ? sec : 0.0;
@@ -323,6 +484,68 @@ class _CalendarPageState extends State<CalendarPage> {
     final m = (total ~/ 60).toString();
     final ss = (total % 60).toString().padLeft(2, '0');
     return '${m}m${ss}s';
+  }
+}
+
+class _IconPillButton extends StatelessWidget {
+  const _IconPillButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Ink(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+          border: Border.all(
+            color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
+          ),
+        ),
+        child: Tooltip(message: tooltip, child: Icon(icon)),
+      ),
+    );
+  }
+}
+
+class _LeadingPillIcon extends StatelessWidget {
+  const _LeadingPillIcon({required this.icon});
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final border = isDark
+        ? Colors.white.withOpacity(0.12)
+        : Colors.black.withOpacity(0.08);
+    final bg = isDark
+        ? Colors.white.withOpacity(0.06)
+        : Colors.black.withOpacity(0.04);
+
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Icon(icon, size: 20, color: Colors.white),
+    );
   }
 }
 
@@ -344,10 +567,9 @@ class _DayCell extends StatelessWidget {
     super.key,
   });
 
-  // Two fixed colors
-  static const neutralColor = Color.fromARGB(255, 28, 30, 43); //0xFF12131A
-  static const highlightColor = Color(0xFF463458);
-  static const todayBorder = Color(0xFF0CD8D8);
+  static const neutralColor = Color.fromARGB(255, 28, 30, 43);
+  static const highlightColor = Colors.white30;
+  static const todayBorder = Colors.white;
 
   @override
   Widget build(BuildContext context) {
@@ -355,16 +577,16 @@ class _DayCell extends StatelessWidget {
 
     return Material(
       color: hasTranscripts ? highlightColor : neutralColor,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
             border: isToday
-                ? Border.all(color: todayBorder.withValues(alpha: 0.9), width: 1.3)
+                ? Border.all(color: todayBorder.withOpacity(0.90), width: 1.4)
                 : null,
           ),
           child: Stack(
@@ -375,7 +597,7 @@ class _DayCell extends StatelessWidget {
                   dayNum,
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: inMonth ? Colors.white : Colors.white38,
                   ),
                 ),
@@ -384,16 +606,20 @@ class _DayCell extends StatelessWidget {
                 Align(
                   alignment: Alignment.bottomRight,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.25),
+                      color: Colors.black.withOpacity(0.25),
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
                     ),
                     child: Text(
                       '$count',
                       style: const TextStyle(
                         fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white,
                         letterSpacing: 0.2,
                       ),

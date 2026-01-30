@@ -1,9 +1,34 @@
+// lib/transcript/transcript_porter.dart
+//
+// ✅ Updated to export+import BOTH voice + YouTube transcripts.
+//
+// What changes:
+// - Manifest version bumped to 3
+// - For each TranscriptEntity we now export:
+//   - sourceType, youtubeMetaId, updatedAt (if you added them)
+// - For YouTube transcripts (sourceType==1) we ALSO export:
+//   - youtubeMeta: { videoId, inputUrl, canonicalUrl, title, channel, createdAtMs, updatedAtMs }
+//   - youtubeTracks: [{language, languageCode, isGenerated, text, fetchedAtMs}, ...]
+//
+// Import:
+// - Supports version 2 (old voice-only ZIP) and version 3 (voice+youtube ZIP)
+// - For youtube items: creates YoutubeTranscriptMetaEntity + YoutubeTranscriptTextEntity,
+//   then creates TranscriptEntity row pointing to youtubeMetaId.
+//
+// Notes:
+// - This file uses store.box<T>() so it works even if ObjectBox.I doesn't expose ytMeta/ytTexts directly.
+// - Requires you added to TranscriptEntity:
+//   - int sourceType (0 voice, 1 youtube)  // default 0
+//   - int? youtubeMetaId
+//   - DateTime updatedAt
+//
+// If you didn't add updatedAt yet, remove those lines in _toManifestMap/_fromManifestMap accordingly.
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
-import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -18,11 +43,15 @@ class TranscriptPorter {
   // Public API
   // ==========================
 
-  /// Export everything to ZIP (manifest.json + audio files).
+  /// Export everything to ZIP (manifest.json + audio files for voice).
   /// Returns created ZIP path.
   static Future<String> exportAllToZipFile({bool includeAudio = true}) async {
     final obx = ObjectBox.I;
-    final transcriptsBox = obx.store.box<TranscriptEntity>();
+    final store = obx.store;
+
+    final transcriptsBox = store.box<TranscriptEntity>();
+    final ytMetaBox = store.box<YoutubeTranscriptMetaEntity>();
+    final ytTextBox = store.box<YoutubeTranscriptTextEntity>();
 
     final qb = transcriptsBox.query()
       ..order(TranscriptEntity_.createdAt, flags: Order.descending);
@@ -31,7 +60,7 @@ class TranscriptPorter {
     q.close();
 
     final manifest = <String, dynamic>{
-      "version": 2, // ✅ ZIP version
+      "version": 3, // ✅ ZIP version (v3 includes YouTube)
       "exportedAt": DateTime.now().toUtc().toIso8601String(),
       "app": "transcript",
       "transcripts": <Map<String, dynamic>>[],
@@ -42,13 +71,75 @@ class TranscriptPorter {
     for (final t in transcripts) {
       final uid = _uidForTranscript(t);
 
-      String? audioRelPath;
-      if (includeAudio) {
-        audioRelPath = await _maybeAddAudioToArchive(archive, uid, t.audioPath);
+      final isYoutube = (t.sourceType == 1);
+
+      String? audioRelPath; // original
+      String? processedAudioRelPath; // enhanced
+
+      if (includeAudio && !isYoutube) {
+        audioRelPath = await _maybeAddAudioToArchive(
+          archive,
+          uid,
+          t.audioPath,
+          suffix: '_orig',
+        );
+
+        processedAudioRelPath = await _maybeAddAudioToArchive(
+          archive,
+          uid,
+          t.processedAudioPath,
+          suffix: '_enh',
+        );
+      }
+
+      // ✅ YouTube extra payload
+      Map<String, dynamic>? youtubeMeta;
+      List<Map<String, dynamic>> youtubeTracks = const [];
+
+      if (isYoutube && t.youtubeMetaId != null) {
+        final meta = ytMetaBox.get(t.youtubeMetaId!);
+        if (meta != null) {
+          youtubeMeta = {
+            "videoId": meta.videoId,
+            "inputUrl": meta.inputUrl,
+            "canonicalUrl": meta.canonicalUrl,
+            "title": meta.title,
+            "channel": meta.channel,
+            "createdAtMs": meta.createdAtMs,
+            "updatedAtMs": meta.updatedAtMs,
+          };
+
+          final tq = ytTextBox
+              .query(YoutubeTranscriptTextEntity_.meta.equals(meta.id))
+              .build();
+          try {
+            final tracks = tq.find();
+            youtubeTracks = tracks
+                .map(
+                  (x) => <String, dynamic>{
+                    "language": x.language,
+                    "languageCode": x.languageCode,
+                    "isGenerated": x.isGenerated,
+                    "text": x.text,
+                    "fetchedAtMs": x.fetchedAtMs,
+                  },
+                )
+                .toList();
+          } finally {
+            tq.close();
+          }
+        }
       }
 
       manifest["transcripts"].add(
-        _toManifestMap(t, uid: uid, audioRelPath: audioRelPath),
+        _toManifestMap(
+          t,
+          uid: uid,
+          audioRelPath: audioRelPath,
+          processedAudioRelPath: processedAudioRelPath,
+          youtubeMeta: youtubeMeta,
+          youtubeTracks: youtubeTracks,
+        ),
       );
     }
 
@@ -107,9 +198,15 @@ class TranscriptPorter {
   }
 
   /// Import from ZIP bytes. Inserts transcripts+turns and restores audio files.
+  /// Returns number of imported TranscriptEntity rows.
   static Future<int> importFromZipBytes(Uint8List zipBytes) async {
     final obx = ObjectBox.I;
     final store = obx.store;
+
+    final transcriptsBox = store.box<TranscriptEntity>();
+    final turnsBox = store.box<TranscriptTurnEntity>();
+    final ytMetaBox = store.box<YoutubeTranscriptMetaEntity>();
+    final ytTextBox = store.box<YoutubeTranscriptTextEntity>();
 
     final archive = ZipDecoder().decodeBytes(zipBytes);
 
@@ -128,7 +225,7 @@ class TranscriptPorter {
     }
 
     final version = decoded['version'];
-    if (version != 2) {
+    if (version != 2 && version != 3) {
       throw FormatException('Unsupported ZIP version: $version');
     }
 
@@ -142,7 +239,7 @@ class TranscriptPorter {
     final audioDir = Directory(p.join(docs.path, 'imports', 'audio'));
     if (!audioDir.existsSync()) audioDir.createSync(recursive: true);
 
-    // 3) Build a map: archive path -> bytes (for audio files)
+    // 3) Map: archive path -> file
     final Map<String, ArchiveFile> fileByName = {
       for (final f in archive.files) f.name: f,
     };
@@ -157,25 +254,157 @@ class TranscriptPorter {
         final uid = (m['uid'] ?? '').toString();
         if (uid.isEmpty) continue;
 
-        // Restore audio (if present)
+        final sourceType = (m['sourceType'] as num?)?.toInt() ?? 0;
+
+        if (sourceType == 1) {
+          // ==========================
+          // ✅ YouTube transcript import
+          // ==========================
+
+          final ytMetaMap = (m['youtubeMeta'] is Map)
+              ? (m['youtubeMeta'] as Map).cast<String, dynamic>()
+              : null;
+          final ytTracksList = (m['youtubeTracks'] is List)
+              ? (m['youtubeTracks'] as List)
+              : const [];
+
+          if (ytMetaMap == null) {
+            // If missing, skip (corrupt entry)
+            continue;
+          }
+
+          final videoId = (ytMetaMap['videoId'] ?? '').toString().trim();
+          if (videoId.isEmpty) continue;
+
+          // Upsert meta by videoId (Unique on entity)
+          int metaId;
+          {
+            final existingQ = ytMetaBox
+                .query(YoutubeTranscriptMetaEntity_.videoId.equals(videoId))
+                .build();
+            YoutubeTranscriptMetaEntity? existing;
+            try {
+              existing = existingQ.findFirst();
+            } finally {
+              existingQ.close();
+            }
+
+            if (existing != null) {
+              existing
+                ..inputUrl = (ytMetaMap['inputUrl'] ?? existing.inputUrl).toString()
+                ..canonicalUrl =
+                    (ytMetaMap['canonicalUrl'] ?? existing.canonicalUrl).toString()
+                ..title = (ytMetaMap['title'] as String?) ?? existing.title
+                ..channel = (ytMetaMap['channel'] as String?) ?? existing.channel
+                ..updatedAtMs =
+                    (ytMetaMap['updatedAtMs'] as num?)?.toInt() ??
+                        DateTime.now().millisecondsSinceEpoch;
+
+              metaId = ytMetaBox.put(existing);
+            } else {
+              final meta = YoutubeTranscriptMetaEntity(
+                videoId: videoId,
+                inputUrl: (ytMetaMap['inputUrl'] ?? '').toString(),
+                canonicalUrl: (ytMetaMap['canonicalUrl'] ?? '').toString(),
+                title: (ytMetaMap['title'] as String?),
+                channel: (ytMetaMap['channel'] as String?),
+                createdAtMs: (ytMetaMap['createdAtMs'] as num?)?.toInt(),
+                updatedAtMs: (ytMetaMap['updatedAtMs'] as num?)?.toInt(),
+              );
+              metaId = ytMetaBox.put(meta);
+            }
+          }
+
+          // Remove existing tracks for this meta (replace-all)
+          final rmQ = ytTextBox
+              .query(YoutubeTranscriptTextEntity_.meta.equals(metaId))
+              .build();
+          try {
+            final ids = rmQ.findIds();
+            if (ids.isNotEmpty) ytTextBox.removeMany(ids);
+          } finally {
+            rmQ.close();
+          }
+
+          // Insert tracks
+          for (final tr in ytTracksList) {
+            if (tr is! Map) continue;
+            final tm = tr.cast<String, dynamic>();
+
+            final textEntity = YoutubeTranscriptTextEntity(
+              language: (tm['language'] as String?),
+              languageCode: (tm['languageCode'] as String?),
+              isGenerated: (tm['isGenerated'] as bool?) ?? true,
+              text: (tm['text'] ?? '').toString(),
+              fetchedAtMs: (tm['fetchedAtMs'] as num?)?.toInt(),
+            )..meta.targetId = metaId;
+
+            ytTextBox.put(textEntity);
+          }
+
+          // Create TranscriptEntity "list row"
+          final t = _fromManifestMap(
+            m,
+            restoredAudioPath: null,
+            restoredProcessedAudioPath: null,
+          );
+
+          // Force youtube fields
+          t
+            ..sourceType = 1
+            ..youtubeMetaId = metaId
+            ..audioPath = null
+            ..processedAudioPath = null
+            ..durationSec = 0
+            ..model = (t.model.trim().isEmpty) ? 'youtube' : t.model
+            ..lang = (t.lang.trim().isEmpty) ? 'multi' : t.lang;
+
+          transcriptsBox.put(t);
+          importedCount++;
+          continue;
+        }
+
+        // ==========================
+        // ✅ Voice transcript import (v2/v3)
+        // ==========================
+
+        // Restore original audio (if present)
         String? restoredAudioPath;
         final audioRel = (m['audioRelPath'] ?? '').toString().trim();
         if (audioRel.isNotEmpty) {
-          final af = fileByName[audioRel];
-          if (af != null && af.content is List<int>) {
-            final bytes = af.content as List<int>;
-            final ext = p.extension(audioRel);
-            final outPath = p.join(audioDir.path, '$uid$ext');
+          restoredAudioPath = _restoreAudioFile(
+            fileByName: fileByName,
+            audioRel: audioRel,
+            audioDir: audioDir,
+            outBaseName: '${uid}_orig',
+          );
+        }
 
-            // write file (overwrite if exists)
-            File(outPath).writeAsBytesSync(bytes, flush: true);
-            restoredAudioPath = outPath;
-          }
+        // Restore processed/enhanced audio (if present)
+        String? restoredProcessedPath;
+        final procRel = (m['processedAudioRelPath'] ?? '').toString().trim();
+        if (procRel.isNotEmpty) {
+          restoredProcessedPath = _restoreAudioFile(
+            fileByName: fileByName,
+            audioRel: procRel,
+            audioDir: audioDir,
+            outBaseName: '${uid}_enh',
+          );
         }
 
         // Create transcript (new id)
-        final t = _fromManifestMap(m, restoredAudioPath: restoredAudioPath);
-        final newId = store.box<TranscriptEntity>().put(t);
+        final t = _fromManifestMap(
+          m,
+          restoredAudioPath: restoredAudioPath,
+          restoredProcessedAudioPath: restoredProcessedPath,
+        );
+
+        // Ensure voice defaults
+        t
+          ..sourceType = 0
+          ..youtubeMetaId = null;
+
+        final newId = transcriptsBox.put(t);
 
         // Create turns
         final turns = (m['turns'] is List) ? (m['turns'] as List) : const [];
@@ -188,7 +417,7 @@ class TranscriptPorter {
             text: (turnObj['text'] ?? '').toString(),
           )..transcript.targetId = newId;
 
-          store.box<TranscriptTurnEntity>().put(u);
+          turnsBox.put(u);
         }
 
         importedCount++;
@@ -203,8 +432,6 @@ class TranscriptPorter {
   // ==========================
 
   static String _uidForTranscript(TranscriptEntity t) {
-    // Stable enough, avoids collisions:
-    // createdAt millis + duration + id (if present)
     final ms = t.createdAt.toUtc().millisecondsSinceEpoch;
     final dur = (t.durationSec * 1000).round();
     final id = t.id;
@@ -215,10 +442,18 @@ class TranscriptPorter {
     TranscriptEntity t, {
     required String uid,
     required String? audioRelPath,
+    required String? processedAudioRelPath,
+    required Map<String, dynamic>? youtubeMeta,
+    required List<Map<String, dynamic>> youtubeTracks,
   }) {
     final turns = t.turns; // lazy load
+
+    final isYoutube = (t.sourceType == 1);
+
     return <String, dynamic>{
       "uid": uid,
+
+      // ✅ common fields
       "title": t.title,
       "model": t.model,
       "lang": t.lang,
@@ -227,31 +462,55 @@ class TranscriptPorter {
       "fullTextCache": t.fullTextCache,
       "searchText": t.searchText,
       "createdAt": t.createdAt.toUtc().toIso8601String(),
-      "audioRelPath": audioRelPath, // e.g. audio/t_xxx.m4a
-      "turns": turns
-          .map(
-            (u) => {
-              "speakerLabel": u.speakerLabel,
-              "startSec": u.startSec,
-              "endSec": u.endSec,
-              "text": u.text,
-            },
-          )
-          .toList(),
+
+      // ✅ new in v3
+      "updatedAt": t.updatedAt.toUtc().toIso8601String(),
+      "sourceType": t.sourceType,
+      "youtubeMetaId": t.youtubeMetaId,
+
+      // ✅ audio pointers in ZIP (voice only)
+      "audioRelPath": isYoutube ? null : audioRelPath,
+      "processedAudioRelPath": isYoutube ? null : processedAudioRelPath,
+
+      // ✅ turns (voice only)
+      "turns": isYoutube
+          ? const []
+          : turns
+              .map(
+                (u) => {
+                  "speakerLabel": u.speakerLabel,
+                  "startSec": u.startSec,
+                  "endSec": u.endSec,
+                  "text": u.text,
+                },
+              )
+              .toList(),
+
+      // ✅ youtube payload (youtube only)
+      "youtubeMeta": isYoutube ? youtubeMeta : null,
+      "youtubeTracks": isYoutube ? youtubeTracks : const [],
     };
   }
 
   static TranscriptEntity _fromManifestMap(
     Map<String, dynamic> m, {
     required String? restoredAudioPath,
+    required String? restoredProcessedAudioPath,
   }) {
     final createdRaw = m['createdAt']?.toString();
     final createdAt =
         DateTime.tryParse(createdRaw ?? '')?.toLocal() ?? DateTime.now();
 
+    final updatedRaw = m['updatedAt']?.toString();
+    final updatedAt =
+        DateTime.tryParse(updatedRaw ?? '')?.toLocal() ?? createdAt;
+
     final edited = (m['editedText']?.toString() ?? '').trim();
     final full = (m['fullTextCache']?.toString() ?? '').trim();
     final computedSearch = edited.isNotEmpty ? edited : full;
+
+    final sourceType = (m['sourceType'] as num?)?.toInt() ?? 0;
+    final youtubeMetaId = (m['youtubeMetaId'] as num?)?.toInt();
 
     return TranscriptEntity(
       id: 0,
@@ -260,12 +519,22 @@ class TranscriptPorter {
           : (m['title'] as String?)?.trim(),
       model: (m['model'] ?? 'unknown').toString(),
       lang: (m['lang'] ?? 'unknown').toString(),
-      audioPath: restoredAudioPath, // ✅ restored file path
+
+      // audio (voice only)
+      audioPath: restoredAudioPath,
+      processedAudioPath: restoredProcessedAudioPath,
+
       durationSec: (m['durationSec'] as num?)?.toDouble() ?? 0.0,
       editedText: edited.isEmpty ? null : edited,
       fullTextCache: full.isEmpty ? null : full,
       searchText: computedSearch.isEmpty ? null : computedSearch,
+
       createdAt: createdAt,
+
+      // ✅ new fields
+      updatedAt: updatedAt,
+      sourceType: sourceType,
+      youtubeMetaId: youtubeMetaId,
     );
   }
 
@@ -276,8 +545,9 @@ class TranscriptPorter {
   static Future<String?> _maybeAddAudioToArchive(
     Archive archive,
     String uid,
-    String? audioPath,
-  ) async {
+    String? audioPath, {
+    required String suffix, // '_orig' or '_enh'
+  }) async {
     if (audioPath == null) return null;
     final path = audioPath.trim();
     if (path.isEmpty) return null;
@@ -286,13 +556,34 @@ class TranscriptPorter {
     if (!await f.exists()) return null;
 
     final ext = p.extension(path).toLowerCase();
-    // if no extension, default
-    final safeExt = ext.isEmpty ? '.m4a' : ext;
+    final safeExt = ext.isEmpty ? '.wav' : ext;
 
     final bytes = await f.readAsBytes();
-    final rel = 'audio/$uid$safeExt';
+
+    // ✅ unique name inside zip so both can coexist
+    final rel = 'audio/$uid$suffix$safeExt';
 
     archive.addFile(ArchiveFile(rel, bytes.length, bytes));
     return rel;
+  }
+
+  static String? _restoreAudioFile({
+    required Map<String, ArchiveFile> fileByName,
+    required String audioRel,
+    required Directory audioDir,
+    required String outBaseName, // e.g. '${uid}_orig' or '${uid}_enh'
+  }) {
+    final af = fileByName[audioRel];
+    if (af == null) return null;
+    if (af.content is! List<int>) return null;
+
+    final bytes = af.content as List<int>;
+    final ext = p.extension(audioRel);
+    final safeExt = ext.isEmpty ? '.wav' : ext;
+
+    final outPath = p.join(audioDir.path, '$outBaseName$safeExt');
+
+    File(outPath).writeAsBytesSync(bytes, flush: true);
+    return outPath;
   }
 }

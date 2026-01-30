@@ -1,14 +1,14 @@
 // lib/home_shell.dart
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'tabs/timeline_tab.dart';
 import 'calendar/calendar_page.dart';
 import 'record/record_sheet.dart';
-import 'tabs/ai_chat_tab.dart';
-import 'tabs/account_tab.dart';
 import 'tabs/search_tab.dart';
-// IMPORTANT: import the result type for callback return value
+import 'tabs/favourites_tab.dart';
+import 'settings/settings_page.dart';
 import 'auth/eligibility_gate.dart';
 
 class HomeShell extends StatefulWidget {
@@ -22,7 +22,6 @@ class HomeShell extends StatefulWidget {
   final bool initialEligible;
   final String? eligibilityError;
 
-  /// ✅ Retry will call AppGate to re-check and return latest result
   final Future<EligibilityGateResult> Function() onRetryEligibility;
 
   @override
@@ -30,6 +29,7 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  /// 0 Timeline, 1 Calendar, 2 Record(action), 3 Search, 4 Favourites
   int _index = 0;
 
   late bool _eligible;
@@ -54,7 +54,9 @@ class _HomeShellState extends State<HomeShell> {
   void _unfocus() => FocusManager.instance.primaryFocus?.unfocus();
 
   Future<void> _goTo(int i) async {
-     _unfocus();
+    _unfocus();
+
+    // Record is an ACTION (opens sheet) — do not switch tabs.
     if (i == 2) {
       await _openRecordSheet();
       return;
@@ -64,19 +66,39 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _index = i);
   }
 
-  void _jumpToAccount() {
-    if (!mounted) return;
-    setState(() => _index = 4);
+  bool get _showLockOverlay => !_eligible;
+
+  void _handleUpgradeSuccess() {
+    // AccountTab/Settings expects a VoidCallback (sync).
+    // Trigger the async refresh without awaiting.
+    if (_retrying) return;
+    // ignore: unawaited_futures
+    _retryEligibility();
   }
 
-  bool get _showLockOverlay => !_eligible && _index != 4;
+  void _openSettingsToAccount() {
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          openAccount: true, // ✅ Settings auto-opens Account page
+          onUpgradeSuccess: _handleUpgradeSuccess, // ✅ flows to AccountTab
+        ),
+      ),
+    );
+  }
 
   Future<void> _retryEligibility() async {
     if (_retrying) return;
     setState(() => _retrying = true);
 
     try {
-      final res = await widget.onRetryEligibility();
+      // ✅ hard timeout so UI never freezes
+      final res = await widget.onRetryEligibility().timeout(
+        const Duration(seconds: 12),
+        onTimeout: () => const EligibilityGateResult(eligible: false),
+      );
 
       if (!mounted) return;
       setState(() {
@@ -84,7 +106,6 @@ class _HomeShellState extends State<HomeShell> {
         _eligibilityError = res.error;
       });
 
-      // If retry succeeds, you may want to auto-close overlay by going Timeline
       if (res.eligible) {
         setState(() => _index = 0);
       }
@@ -105,22 +126,15 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      TimelineTab(onNavigateToTab: _goTo), // 0
-      const CalendarPage(),               // 1
-      const SizedBox.shrink(),            // 2
-      const SearchTab(),                  // 3
-      AccountTab(
-        onUpgradeSuccess: () async {
-          // After upgrade, do a real retry check (not optimistic)
-          await _retryEligibility();
-          if (!mounted) return;
-          if (_eligible) {
-            setState(() => _index = 0);
-          } else {
-            setState(() => _index = 4);
-          }
-        },
-      ), // 4
+      TimelineTab(
+        onNavigateToTab: _goTo,
+        onUpgradeSuccess:
+            _handleUpgradeSuccess, // ✅ Timeline -> Settings -> Account
+      ), // 0
+      const CalendarPage(), // 1
+      const SizedBox.shrink(), // 2 (never shown; record is action)
+      const SearchTab(), // 3
+      const FavouritesTab(), // 4
     ];
 
     return Scaffold(
@@ -128,41 +142,204 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           IgnorePointer(
             ignoring: _showLockOverlay,
-            child: IndexedStack(index: _index, children: pages),
+            child: _AnimatedIndexedStack(index: _index, children: pages),
           ),
-
           if (_showLockOverlay)
-            _AccessLockedOverlay(
+            _AccessLockedOverlaySheet(
               error: _eligibilityError,
               retrying: _retrying,
-              onUpgrade: _jumpToAccount,
-              onRetry: _retryEligibility, // ✅ real retry
+              onUpgrade:
+                  _openSettingsToAccount, // ✅ Upgrade -> Settings -> Account
+              onRetry: _retryEligibility,
             ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) async {
-          _unfocus();
-          if (!_eligible && i != 4) return;
-          await _goTo(i);
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.timeline), label: 'Timeline'),
-          NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Calendar'),
-          NavigationDestination(icon: Icon(Icons.mic), label: 'Record'),
-          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Account'),
-        ],
+
+      // ✅ Still a bottom nav, but styled as a dock
+      bottomNavigationBar: IgnorePointer(
+        ignoring: _showLockOverlay,
+        child: _BottomDockNav(
+          index: _index,
+          eligible: _eligible,
+          onSelect: (i) async {
+            _unfocus();
+            if (!_eligible) return;
+            await _goTo(i);
+          },
+        ),
       ),
     );
   }
 }
 
-// ---------------- Overlay ----------------
+/// Keeps tab state but adds a subtle fade when switching.
+class _AnimatedIndexedStack extends StatelessWidget {
+  const _AnimatedIndexedStack({required this.index, required this.children});
 
-class _AccessLockedOverlay extends StatelessWidget {
-  const _AccessLockedOverlay({
+  final int index;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, anim) =>
+          FadeTransition(opacity: anim, child: child),
+      child: _KeyedIndexedStack(
+        key: ValueKey(index),
+        index: index,
+        children: children,
+      ),
+    );
+  }
+}
+
+class _KeyedIndexedStack extends StatelessWidget {
+  const _KeyedIndexedStack({
+    super.key,
+    required this.index,
+    required this.children,
+  });
+
+  final int index;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return IndexedStack(index: index, children: children);
+  }
+}
+
+class _BottomDockNav extends StatelessWidget {
+  const _BottomDockNav({
+    required this.index,
+    required this.onSelect,
+    required this.eligible,
+  });
+
+  final int index;
+  final ValueChanged<int> onSelect;
+  final bool eligible;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bg = isDark ? const Color(0xFF101018) : Colors.white;
+    final border = isDark
+        ? Colors.white.withOpacity(0.10)
+        : Colors.black.withOpacity(0.08);
+
+    // Record gets a distinctive “capsule” icon so the nav doesn’t look generic.
+    Widget recordIcon(bool selected) {
+      final base = selected
+          ? (isDark ? Colors.white : Colors.black)
+          : (isDark ? Colors.white70 : Colors.black54);
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: base.withOpacity(selected ? 0.10 : 0.06),
+          border: Border.all(color: base.withOpacity(0.14)),
+        ),
+        child: Icon(Icons.mic, size: 22, color: base),
+      );
+    }
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: bg.withOpacity(0.92),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: border),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 20,
+                spreadRadius: 0,
+                color: Colors.black.withOpacity(isDark ? 0.35 : 0.12),
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: NavigationBarTheme(
+            data: NavigationBarThemeData(
+              height: 66,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              indicatorColor: (isDark ? Colors.white : Colors.black)
+                  .withOpacity(0.08),
+              indicatorShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              labelTextStyle: MaterialStateProperty.resolveWith((states) {
+                final selected = states.contains(MaterialState.selected);
+                return TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  color: selected
+                      ? (isDark ? Colors.white : Colors.black)
+                      : (isDark ? Colors.white70 : Colors.black54),
+                );
+              }),
+              iconTheme: MaterialStateProperty.resolveWith((states) {
+                final selected = states.contains(MaterialState.selected);
+                return IconThemeData(
+                  size: 22,
+                  color: selected
+                      ? (isDark ? Colors.white : Colors.black)
+                      : (isDark ? Colors.white70 : Colors.black54),
+                );
+              }),
+            ),
+            child: NavigationBar(
+              selectedIndex: index,
+              onDestinationSelected: onSelect,
+              destinations: [
+                const NavigationDestination(
+                  icon: Icon(Icons.timeline),
+                  label: 'Timeline',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.calendar_month),
+                  label: 'Calendar',
+                ),
+
+                // ✅ Record stays INSIDE the nav, but visually distinct
+                NavigationDestination(
+                  icon: recordIcon(false),
+                  selectedIcon: recordIcon(true),
+                  label: 'Record',
+                ),
+
+                const NavigationDestination(
+                  icon: Icon(Icons.search),
+                  label: 'Search',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.favorite_outline),
+                  label: 'Favourites',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- Overlay (Bottom Sheet style) ----------------
+
+class _AccessLockedOverlaySheet extends StatelessWidget {
+  const _AccessLockedOverlaySheet({
     required this.onUpgrade,
     required this.onRetry,
     this.error,
@@ -176,105 +353,207 @@ class _AccessLockedOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final panelBg = isDark ? const Color(0xFF141422) : const Color(0xFFF7F7FB);
+    final panelBorder = isDark
+        ? Colors.white.withOpacity(0.10)
+        : Colors.black.withOpacity(0.08);
+
     return Positioned.fill(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {},
-        child: Container(
-          color: Colors.black.withOpacity(0.50),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Card(
-                  elevation: 0.8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            // ✅ dim + blur background
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.35),
+                      Colors.black.withOpacity(0.60),
+                    ],
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          height: 64,
-                          width: 64,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A1A22),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: const Color(0xFF8E7CFF).withOpacity(0.35),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.lock_outline,
-                            size: 30,
-                            color: Color(0xFF8E7CFF),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        const Text(
-                          'Access locked',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Your trial has ended or your Pro plan is inactive.\nUpgrade to continue using the app.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white70),
-                        ),
+                ),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
 
-                        if (error != null) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            "Internet is required to verify the access",
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontSize: 11.5,
-                            ),
+            // ✅ CENTERED panel (middle of screen)
+            Center(
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: panelBg,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: panelBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: 30,
+                            color: Colors.black.withOpacity(0.25),
+                            offset: const Offset(0, 18),
                           ),
                         ],
-
-                        const SizedBox(height: 14),
-
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: retrying ? null : onRetry,
-                                child: retrying
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : const Text('Retry'),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // ✅ removed "drag handle" since this is not a bottom sheet
+                          Row(
+                            children: [
+                              Container(
+                                height: 44,
+                                width: 44,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  color: (isDark ? Colors.white : Colors.black)
+                                      .withOpacity(0.06),
+                                  border: Border.all(
+                                    color:
+                                        (isDark ? Colors.white : Colors.black)
+                                            .withOpacity(0.10),
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.lock_outline,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
                               ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Access locked',
+                                      style: TextStyle(
+                                        fontSize: 16.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black87,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Trial ended or Pro inactive',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark
+                                            ? Colors.white70
+                                            : Colors.black54,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          Text(
+                            'Upgrade to continue using the app.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.black54,
+                              fontWeight: FontWeight.w600,
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: onUpgrade,
-                                icon: const Icon(Icons.workspace_premium_outlined),
-                                label: const Text('Upgrade'),
+                          ),
+
+                          if (error != null && error!.trim().isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Colors.red.withOpacity(0.20),
+                                ),
+                              ),
+                              child: Text(
+                                'Internet is required to verify access.\nDetails: $error',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                      ],
+
+                          const SizedBox(height: 12),
+
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: retrying ? null : onRetry,
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  child: retrying
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text('Retry'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: onUpgrade,
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.workspace_premium_outlined,
+                                  ),
+                                  label: const Text('Upgrade'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 }
+

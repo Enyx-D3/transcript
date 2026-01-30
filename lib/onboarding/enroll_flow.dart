@@ -21,7 +21,7 @@ import 'enroll_prompts.dart';
 class EnrollmentFlowPage extends StatefulWidget {
   final List<EnrollmentPrompt> prompts;
   const EnrollmentFlowPage({super.key, List<EnrollmentPrompt>? prompts})
-    : prompts = prompts ?? kDefaultEnrollmentPrompts;
+      : prompts = prompts ?? kDefaultEnrollmentPrompts;
 
   @override
   State<EnrollmentFlowPage> createState() => _EnrollmentFlowPageState();
@@ -37,14 +37,10 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   double _seconds = 0.0;
   Timer? _ticker;
 
-  // 🔊 playback state
   bool _playingGuide = false;
   bool _playingUser = false;
 
-  /// One vector per prompt (mean-pooled windows). We keep them separate → multi-prototype.
   final List<Float32List?> _vectors = [];
-
-  /// Cleaned .wav per prompt (previewable & can delete)
   final List<String?> _clips = [];
 
   final _nameCtrl = TextEditingController(text: '');
@@ -55,7 +51,6 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
     _vectors.length = widget.prompts.length;
     _clips.length = widget.prompts.length;
 
-    // Keep UI in sync with player
     _player.onPlayerComplete.listen((_) {
       if (!mounted) return;
       setState(() {
@@ -98,14 +93,11 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
     if (_busy) return;
     try {
       await _ensureMic();
-
-      // Stop any playback while recording
       await _stopPlayback();
 
-      // Use your MicRecorder API that writes to a known path
       final dir = await getApplicationDocumentsDirectory();
       final path = '${dir.path}/enroll_${widget.prompts[_index].id}.wav';
-      await _rec.startToPath(path); // ✅ you said this exists
+      await _rec.startToPath(path);
 
       setState(() {
         _recording = true;
@@ -164,11 +156,9 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   Future<void> _processClip(String wavPath) async {
     setState(() => _busy = true);
     try {
-      // 1) same preprocessing as runtime (consistency!)
       final cleaned = await preprocessWav16kMono(wavPath);
 
-      // 2) embedding windows over this clip, then mean-pool
-      final mp = await ensureDiarizationModels(); // gives embOnnx
+      final mp = await ensureDiarizationModels();
       final embedder = await SpeakerEmbedder.instance(mp.embOnnx);
 
       final dur = await readWavDuration(cleaned);
@@ -179,7 +169,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       while (pos < dur) {
         final end = (pos + window <= dur) ? pos + window : dur;
         final take = end - pos;
-        if (take < 0.5) break; // too tiny
+        if (take < 0.5) break;
         final v = await embedder.embedFromWav(
           cleaned,
           startSec: pos,
@@ -187,7 +177,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         );
         if (v.isNotEmpty) parts.add(v);
         pos += window;
-        if (parts.length >= 4) break; // cap windows per prompt
+        if (parts.length >= 4) break;
       }
 
       if (parts.isEmpty) {
@@ -203,7 +193,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       _vectors[_index] = centroid;
       _clips[_index] = cleaned;
 
-      setState(() {}); // refresh UI
+      setState(() {});
     } catch (e) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Processing Failed');
@@ -228,15 +218,12 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   Future<void> _next() async {
     if (_busy) return;
     if (_vectors[_index] == null) {
-      await AppFlushbar.error(
-        context,
-        message: 'Please record this step first.',
-      );
+      await AppFlushbar.error(context, message: 'Please record this step first.');
       return;
     }
     if (_index + 1 < widget.prompts.length) {
       setState(() => _index++);
-      await _stopPlayback(); // stop when switching steps
+      await _stopPlayback();
     } else {
       await _askAndSaveName();
     }
@@ -281,9 +268,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       await _stopPlayback();
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => const SplashGate(),
-        ),
+        MaterialPageRoute(builder: (_) => const SplashGate()),
         (route) => false,
       );
     } catch (e) {
@@ -294,7 +279,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
     }
   }
 
-  // ---------- 🔊 Playback helpers ----------
+  // ---------- Playback helpers ----------
 
   bool _isUrl(String s) => s.startsWith('http://') || s.startsWith('https://');
 
@@ -307,26 +292,21 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
     if (mounted) setState(() {});
   }
 
-  /// Plays either an asset (e.g. assets/guides/neutral.mp3) or a remote URL.
   Future<void> _togglePlayGuide() async {
     final src = widget.prompts[_index].audioAsset;
     if (src == null) return;
 
-    // if already playing, stop
     if (_playingGuide) {
       await _stopPlayback();
       return;
     }
 
-    // switching sources → stop first
     await _stopPlayback();
 
     try {
       if (_isUrl(src)) {
         await _player.play(UrlSource(src));
       } else {
-        // treat anything else as an asset path inside your Flutter assets
-        // (ensure it's listed under `flutter: assets:` in pubspec.yaml)
         await _player.play(AssetSource(src));
       }
       if (!mounted) return;
@@ -337,14 +317,10 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
     }
   }
 
-  /// Plays back the user’s own cleaned recording (local file).
   Future<void> _togglePlayMyRecording() async {
     final clip = _clips[_index];
     if (clip == null || !File(clip).existsSync()) {
-      await AppFlushbar.error(
-        context,
-        message: 'No recording for this step yet.',
-      );
+      await AppFlushbar.error(context, message: 'No recording for this step yet.');
       return;
     }
 
@@ -361,100 +337,259 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       setState(() => _playingUser = true);
     } catch (e) {
       if (!mounted) return;
-      await AppFlushbar.error(
-        context,
-        message: 'Could not play your recording',
-      );
+      await AppFlushbar.error(context, message: 'Could not play your recording');
     }
   }
 
-  // ---------- UI ----------
+  // ---------- UI helpers ----------
+  BoxDecoration _panelDecoration(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
+    final border = isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.08);
+
+    return BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: border),
+      boxShadow: [
+        BoxShadow(
+          blurRadius: 18,
+          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
+          offset: const Offset(0, 10),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     final p = widget.prompts[_index];
     final done = _vectors[_index] != null;
+    final progress = (widget.prompts.length <= 1)
+        ? 1.0
+        : (_index / (widget.prompts.length - 1)).clamp(0.0, 1.0);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Voice Setup (${_index + 1}/${widget.prompts.length})'),
-        actions: [
-          IconButton(
-            tooltip: 'Stop audio',
-            onPressed: _playingGuide || _playingUser ? _stopPlayback : null,
-            icon: const Icon(Icons.stop_circle_outlined),
-          ),
-        ],
-      ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _stepHeader(p),
-              const SizedBox(height: 16),
-              _scriptCard(p),
-              const Spacer(),
-              if (_recording) _recordingHint(p.minSec),
-              const SizedBox(height: 8),
-              _recordButton(done),
-              const SizedBox(height: 8),
+              // ---------- Header ----------
               Row(
                 children: [
-                  // Left: three options in a single, scrollable row
                   Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _smallActionButton(
-                            icon: Icons.replay,
-                            label: 'Re-record',
-                            onPressed: (!done || _busy) ? null : _reRecord,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Voice setup',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.2,
                           ),
-                          const SizedBox(width: 8),
-                          _smallActionButton(
-                            icon: _playingGuide
-                                ? Icons.pause_circle_filled
-                                : Icons.volume_up,
-                            label: _playingGuide ? 'Stop guide' : 'Play guide',
-                            onPressed: (p.audioAsset == null || _busy)
-                                ? null
-                                : _togglePlayGuide,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Step ${_index + 1} of ${widget.prompts.length}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: isDark ? Colors.white70 : Colors.black54,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(width: 8),
-                          _smallActionButton(
-                            icon: _playingUser
-                                ? Icons.pause_circle_filled
-                                : Icons.graphic_eq,
-                            label: _playingUser
-                                ? 'Stop my clip'
-                                : 'Play my clip',
-                            onPressed: (_clips[_index] == null || _busy)
-                                ? null
-                                : _togglePlayMyRecording,
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
+                  _IconPillButton(
+                    tooltip: 'Stop audio',
+                    icon: Icons.stop_circle_outlined,
+                    onTap: (_playingGuide || _playingUser) ? _stopPlayback : null,
+                  ),
                   const SizedBox(width: 8),
-
-                  // Right: primary action
-                  FilledButton.icon(
-                    onPressed: _busy ? null : _next,
-                    icon: Icon(
-                      _index + 1 < widget.prompts.length
-                          ? Icons.arrow_forward
-                          : Icons.check,
-                    ),
-                    label: Text(
-                      _index + 1 < widget.prompts.length ? 'Next' : 'Finish',
-                    ),
+                  _IconPillButton(
+                    tooltip: 'Close',
+                    icon: Icons.close,
+                    onTap: () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
+
+              const SizedBox(height: 10),
+
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  minHeight: 6,
+                  value: progress,
+                  color: Colors.green,
+                  backgroundColor: Colors.white,
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ---------- Prompt panel ----------
+              Container(
+                decoration: _panelDecoration(context),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _StatusChip(
+                          label: done ? 'Recorded' : 'Not recorded',
+                          tone: done ? _ChipTone.good : _ChipTone.neutral,
+                        ),
+                        const SizedBox(width: 8),
+                        _StatusChip(
+                          label: 'Min ${p.minSec.toStringAsFixed(1)}s',
+                          tone: _ChipTone.neutral,
+                        ),
+                        const Spacer(),
+                        Text(
+                          p.title,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      p.subtitle,
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.black54,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        color: (isDark ? Colors.white : Colors.black).withOpacity(0.04),
+                        border: Border.all(
+                          color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
+                        ),
+                      ),
+                      child: Text(
+                        p.script,
+                        style: const TextStyle(fontSize: 16, height: 1.35, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    if (p.audioAsset != null) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Tip: use “Play guide” to hear an example.',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ---------- Record panel ----------
+              Expanded(
+                child: Container(
+                  decoration: _panelDecoration(context),
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          // const Icon(Icons.mic, color: Color(0xFF8E7CFF)),
+                          // const SizedBox(width: 8),
+                          // const Text(
+                          //   'Recording',
+                          //   style: TextStyle(fontWeight: FontWeight.w900),
+                          // ),
+                          const Spacer(),
+                          if (_recording)
+                            _StatusChip(
+                              label: _fmt(_seconds),
+                              tone: _ChipTone.neutral,
+                            ),
+                          if (_busy) ...[
+                            const SizedBox(width: 10),
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ]
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+
+                      if (_recording) _recordingHint(p.minSec),
+
+                      const Spacer(),
+
+                      _recordButton(done),
+
+                      const SizedBox(height: 12),
+
+                      // Tools row (no overflow)
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _toolButton(
+                              icon: Icons.replay,
+                              label: 'Re-record',
+                              onPressed: (!done || _busy) ? null : _reRecord,
+                            ),
+                            const SizedBox(width: 8),
+                            _toolButton(
+                              icon: _playingGuide ? Icons.pause_circle_filled : Icons.volume_up,
+                              label: _playingGuide ? 'Stop guide' : 'Play guide',
+                              onPressed: (p.audioAsset == null || _busy) ? null : _togglePlayGuide,
+                            ),
+                            const SizedBox(width: 8),
+                            _toolButton(
+                              icon: _playingUser ? Icons.pause_circle_filled : Icons.graphic_eq,
+                              label: _playingUser ? 'Stop my clip' : 'Play my clip',
+                              onPressed: (_clips[_index] == null || _busy) ? null : _togglePlayMyRecording,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Primary action
+                      SizedBox(
+                        height: 46,
+                        child: FilledButton.icon(
+                          onPressed: _busy ? null : _next,
+                          icon: Icon(
+                            _index + 1 < widget.prompts.length ? Icons.arrow_forward : Icons.check,
+                          ),
+                          label: Text(
+                            _index + 1 < widget.prompts.length ? 'Next step' : 'Finish setup',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -462,114 +597,45 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
     );
   }
 
-  Widget _smallActionButton({
+  Widget _toolButton({
     required IconData icon,
     required String label,
     required VoidCallback? onPressed,
   }) {
-    return TextButton.icon(
+    return OutlinedButton.icon(
       onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(label, overflow: TextOverflow.ellipsis),
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        minimumSize: const Size(0, 40), // reduce horizontal footprint
+      icon: Icon(icon, size: 18,color: Colors.white),
+      label: Text(label,style: TextStyle(color: Colors.white),),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         visualDensity: VisualDensity.compact,
       ),
     );
   }
 
-  Widget _stepHeader(EnrollmentPrompt p) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          p.title,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 6),
-        Text(p.subtitle, style: const TextStyle(color: Colors.white70)),
-      ],
-    );
-  }
-
-  Widget _scriptCard(EnrollmentPrompt p) {
-    final done = _vectors[_index] != null;
-    return Card(
-      elevation: 0.6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              done ? Icons.check_circle : Icons.info,
-              color: done ? Colors.greenAccent : Colors.amber,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Say this',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    p.script,
-                    style: const TextStyle(fontSize: 16, height: 1.35),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Minimum ${p.minSec.toStringAsFixed(1)} seconds.',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  if (p.audioAsset != null) ...[
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Tip: Tap “Play guide” to hear an example.',
-                      style: TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _recordButton(bool done) {
-    final glow = _recording ? 1.0 : 0.0;
     return GestureDetector(
       onLongPressStart: (_) => _onHoldStart(),
       onLongPressEnd: (_) => _onHoldEnd(),
       onLongPressCancel: _cancelRecording,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        height: 72,
+        height: 78,
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A22),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: glow > 0
+          boxShadow: _recording
               ? [
                   BoxShadow(
-                    color: const Color(
-                      0xFF8E7CFF,
-                    ).withValues(alpha: _recording ? 0.45 : 0.0),
-                    blurRadius: 24,
+                    color: const Color(0xFF8E7CFF).withOpacity(0.45),
+                    blurRadius: 26,
                     spreadRadius: 1,
                   ),
                 ]
               : [],
           border: Border.all(
-            color: const Color(
-              0xFF8E7CFF,
-            ).withValues(alpha: _recording ? 0.9 : 0.3),
+            color: Colors.white.withOpacity(_recording ? 1 : 0.30),
             width: 1.4,
           ),
         ),
@@ -580,19 +646,19 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
               Icon(
                 _recording ? Icons.mic_rounded : Icons.mic_none_rounded,
                 size: 28,
-                color: const Color(0xFF8E7CFF),
+                color: Colors.white,
               ),
               const SizedBox(width: 12),
-              Text(
-                _recording
-                    ? 'Recording… release to finish'
-                    : (done ? 'Recorded — hold to replace' : 'Hold to record'),
-                style: const TextStyle(fontSize: 16),
+              Flexible(
+                child: Text(
+                  _recording
+                      ? 'Recording… release to finish'
+                      : (done ? 'Recorded — hold to replace' : 'Hold to record'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              if (_recording) ...[
-                const SizedBox(width: 12),
-                Text(_fmt(_seconds), style: const TextStyle(fontFeatures: [])),
-              ],
             ],
           ),
         ),
@@ -605,21 +671,81 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
     return Align(
       alignment: Alignment.center,
       child: Text(
-        need > 0.05
-            ? 'Keep holding… ${need.toStringAsFixed(1)}s more'
-            : 'Good! You can release now.',
-        style: const TextStyle(color: Colors.white70),
+        need > 0.05 ? 'Keep holding… ${need.toStringAsFixed(1)}s more' : 'Good! You can release now.',
+        style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
       ),
     );
   }
 }
 
-// void _toast(BuildContext ctx, String msg) {
-//   ScaffoldMessenger.of(ctx).hideCurrentSnackBar();
-//   ScaffoldMessenger.of(ctx).showSnackBar(
-//     SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
-//   );
-// }
+class _IconPillButton extends StatelessWidget {
+  const _IconPillButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Ink(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+          border: Border.all(
+            color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
+          ),
+        ),
+        child: Tooltip(
+          message: tooltip,
+          child: Icon(icon, color: onTap == null ? Colors.white38 : null),
+        ),
+      ),
+    );
+  }
+}
+
+enum _ChipTone { neutral, good, bad }
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label, required this.tone});
+  final String label;
+  final _ChipTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    Color? c;
+    if (tone == _ChipTone.good) c = Colors.black;
+    if (tone == _ChipTone.bad) c = Colors.redAccent;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: (c ?? Colors.black),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color:Colors.white.withOpacity(0.45)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: Colors.white70,
+        ),
+      ),
+    );
+  }
+}
 
 String _fmt(double s) {
   final mm = (s ~/ 60).toString().padLeft(2, '0');

@@ -106,7 +106,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(3, 8951984836733702572),
     name: 'TranscriptEntity',
-    lastPropertyId: const obx_int.IdUid(10, 6997765070573863445),
+    lastPropertyId: const obx_int.IdUid(17, 6726383822376668723),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -170,6 +170,52 @@ final _entities = <obx_int.ModelEntity>[
         type: 9,
         flags: 2048,
         indexId: const obx_int.IdUid(9, 7148887307430447360),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 682874281539402827),
+        name: 'processedAudioPath',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 4259134649983807254),
+        name: 'sourceType',
+        type: 6,
+        flags: 8,
+        indexId: const obx_int.IdUid(12, 2556319517628238594),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(13, 2296440804667566794),
+        name: 'youtubeMetaId',
+        type: 6,
+        flags: 8,
+        indexId: const obx_int.IdUid(13, 1216155967549140524),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(14, 4415613626623737405),
+        name: 'updatedAt',
+        type: 10,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(15, 4195730957137773808),
+        name: 'isDeleted',
+        type: 1,
+        flags: 8,
+        indexId: const obx_int.IdUid(14, 146728917524599977),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(16, 1191570307902756028),
+        name: 'deletedAt',
+        type: 10,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(17, 6726383822376668723),
+        name: 'isFavourite',
+        type: 1,
+        flags: 8,
+        indexId: const obx_int.IdUid(15, 3109755727906842626),
       ),
     ],
     relations: <obx_int.ModelRelation>[],
@@ -398,6 +444,126 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(9, 1512235372072818379),
+    name: 'YoutubeTranscriptMetaEntity',
+    lastPropertyId: const obx_int.IdUid(8, 4673293284464775153),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 6995658686155663738),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 5254907368542396257),
+        name: 'videoId',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(10, 1680990679404193192),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 2312303597402293432),
+        name: 'inputUrl',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 3809900726028320561),
+        name: 'canonicalUrl',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 2371882317663392674),
+        name: 'title',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 8745189172432791459),
+        name: 'channel',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 8881568375987462922),
+        name: 'createdAtMs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 4673293284464775153),
+        name: 'updatedAtMs',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[
+      obx_int.ModelBacklink(
+        name: 'transcripts',
+        srcEntity: 'YoutubeTranscriptTextEntity',
+        srcField: '',
+      ),
+    ],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(10, 6743079949151911291),
+    name: 'YoutubeTranscriptTextEntity',
+    lastPropertyId: const obx_int.IdUid(7, 3568458887769558237),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 33767166013426516),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 4300686104240791653),
+        name: 'metaId',
+        type: 11,
+        flags: 520,
+        indexId: const obx_int.IdUid(11, 2914587628380169176),
+        relationField: 'meta',
+        relationTarget: 'YoutubeTranscriptMetaEntity',
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 8926590191105879388),
+        name: 'language',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 2235907402314170686),
+        name: 'languageCode',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 5848171509632846259),
+        name: 'isGenerated',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 7313075205586847892),
+        name: 'text',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 3568458887769558237),
+        name: 'fetchedAtMs',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -438,8 +604,8 @@ Future<obx.Store> openStore({
 obx_int.ModelDefinition getObjectBoxModel() {
   final model = obx_int.ModelInfo(
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(8, 2255608453628138765),
-    lastIndexId: const obx_int.IdUid(9, 7148887307430447360),
+    lastEntityId: const obx_int.IdUid(10, 6743079949151911291),
+    lastIndexId: const obx_int.IdUid(15, 3109755727906842626),
     lastRelationId: const obx_int.IdUid(1, 2617604582228853530),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -600,7 +766,10 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final searchTextOffset = object.searchText == null
             ? null
             : fbb.writeString(object.searchText!);
-        fbb.startTable(11);
+        final processedAudioPathOffset = object.processedAudioPath == null
+            ? null
+            : fbb.writeString(object.processedAudioPath!);
+        fbb.startTable(18);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, titleOffset);
         fbb.addOffset(2, modelOffset);
@@ -611,12 +780,24 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addOffset(7, editedTextOffset);
         fbb.addOffset(8, fullTextCacheOffset);
         fbb.addOffset(9, searchTextOffset);
+        fbb.addOffset(10, processedAudioPathOffset);
+        fbb.addInt64(11, object.sourceType);
+        fbb.addInt64(12, object.youtubeMetaId);
+        fbb.addInt64(13, object.updatedAt.millisecondsSinceEpoch);
+        fbb.addBool(14, object.isDeleted);
+        fbb.addInt64(15, object.deletedAt?.millisecondsSinceEpoch);
+        fbb.addBool(16, object.isFavourite);
         fbb.finish(fbb.endTable());
         return object.id;
       },
       objectFromFB: (obx.Store store, ByteData fbData) {
         final buffer = fb.BufferContext(fbData);
         final rootOffset = buffer.derefObject(0);
+        final deletedAtValue = const fb.Int64Reader().vTableGetNullable(
+          buffer,
+          rootOffset,
+          34,
+        );
         final idParam = const fb.Int64Reader().vTableGet(
           buffer,
           rootOffset,
@@ -632,9 +813,23 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final langParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 10, '');
+        final sourceTypeParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          26,
+          0,
+        );
+        final youtubeMetaIdParam = const fb.Int64Reader().vTableGetNullable(
+          buffer,
+          rootOffset,
+          28,
+        );
         final audioPathParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGetNullable(buffer, rootOffset, 16);
+        final processedAudioPathParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 24);
         final durationSecParam = const fb.Float64Reader().vTableGet(
           buffer,
           rootOffset,
@@ -653,17 +848,42 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final createdAtParam = DateTime.fromMillisecondsSinceEpoch(
           const fb.Int64Reader().vTableGet(buffer, rootOffset, 14, 0),
         );
+        final updatedAtParam = DateTime.fromMillisecondsSinceEpoch(
+          const fb.Int64Reader().vTableGet(buffer, rootOffset, 30, 0),
+        );
+        final isFavouriteParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          36,
+          false,
+        );
+        final isDeletedParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          32,
+          false,
+        );
+        final deletedAtParam = deletedAtValue == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(deletedAtValue);
         final object = TranscriptEntity(
           id: idParam,
           title: titleParam,
           model: modelParam,
           lang: langParam,
+          sourceType: sourceTypeParam,
+          youtubeMetaId: youtubeMetaIdParam,
           audioPath: audioPathParam,
+          processedAudioPath: processedAudioPathParam,
           durationSec: durationSecParam,
           editedText: editedTextParam,
           fullTextCache: fullTextCacheParam,
           searchText: searchTextParam,
           createdAt: createdAtParam,
+          updatedAt: updatedAtParam,
+          isFavourite: isFavouriteParam,
+          isDeleted: isDeletedParam,
+          deletedAt: deletedAtParam,
         );
         obx_int.InternalToManyAccess.setRelInfo<TranscriptEntity>(
           object.turns,
@@ -980,6 +1200,164 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    YoutubeTranscriptMetaEntity:
+        obx_int.EntityDefinition<YoutubeTranscriptMetaEntity>(
+          model: _entities[8],
+          toOneRelations: (YoutubeTranscriptMetaEntity object) => [],
+          toManyRelations: (YoutubeTranscriptMetaEntity object) => {
+            obx_int.RelInfo<YoutubeTranscriptTextEntity>.toOneBacklink(
+              2,
+              object.id,
+              (YoutubeTranscriptTextEntity srcObject) => srcObject.meta,
+            ): object.transcripts,
+          },
+          getId: (YoutubeTranscriptMetaEntity object) => object.id,
+          setId: (YoutubeTranscriptMetaEntity object, int id) {
+            object.id = id;
+          },
+          objectToFB: (YoutubeTranscriptMetaEntity object, fb.Builder fbb) {
+            final videoIdOffset = fbb.writeString(object.videoId);
+            final inputUrlOffset = fbb.writeString(object.inputUrl);
+            final canonicalUrlOffset = fbb.writeString(object.canonicalUrl);
+            final titleOffset = object.title == null
+                ? null
+                : fbb.writeString(object.title!);
+            final channelOffset = object.channel == null
+                ? null
+                : fbb.writeString(object.channel!);
+            fbb.startTable(9);
+            fbb.addInt64(0, object.id);
+            fbb.addOffset(1, videoIdOffset);
+            fbb.addOffset(2, inputUrlOffset);
+            fbb.addOffset(3, canonicalUrlOffset);
+            fbb.addOffset(4, titleOffset);
+            fbb.addOffset(5, channelOffset);
+            fbb.addInt64(6, object.createdAtMs);
+            fbb.addInt64(7, object.updatedAtMs);
+            fbb.finish(fbb.endTable());
+            return object.id;
+          },
+          objectFromFB: (obx.Store store, ByteData fbData) {
+            final buffer = fb.BufferContext(fbData);
+            final rootOffset = buffer.derefObject(0);
+            final videoIdParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 6, '');
+            final inputUrlParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 8, '');
+            final canonicalUrlParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 10, '');
+            final titleParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGetNullable(buffer, rootOffset, 12);
+            final channelParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGetNullable(buffer, rootOffset, 14);
+            final createdAtMsParam = const fb.Int64Reader().vTableGet(
+              buffer,
+              rootOffset,
+              16,
+              0,
+            );
+            final updatedAtMsParam = const fb.Int64Reader().vTableGet(
+              buffer,
+              rootOffset,
+              18,
+              0,
+            );
+            final object = YoutubeTranscriptMetaEntity(
+              videoId: videoIdParam,
+              inputUrl: inputUrlParam,
+              canonicalUrl: canonicalUrlParam,
+              title: titleParam,
+              channel: channelParam,
+              createdAtMs: createdAtMsParam,
+              updatedAtMs: updatedAtMsParam,
+            )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+            obx_int
+                .InternalToManyAccess.setRelInfo<YoutubeTranscriptMetaEntity>(
+              object.transcripts,
+              store,
+              obx_int.RelInfo<YoutubeTranscriptTextEntity>.toOneBacklink(
+                2,
+                object.id,
+                (YoutubeTranscriptTextEntity srcObject) => srcObject.meta,
+              ),
+            );
+            return object;
+          },
+        ),
+    YoutubeTranscriptTextEntity:
+        obx_int.EntityDefinition<YoutubeTranscriptTextEntity>(
+          model: _entities[9],
+          toOneRelations: (YoutubeTranscriptTextEntity object) => [object.meta],
+          toManyRelations: (YoutubeTranscriptTextEntity object) => {},
+          getId: (YoutubeTranscriptTextEntity object) => object.id,
+          setId: (YoutubeTranscriptTextEntity object, int id) {
+            object.id = id;
+          },
+          objectToFB: (YoutubeTranscriptTextEntity object, fb.Builder fbb) {
+            final languageOffset = object.language == null
+                ? null
+                : fbb.writeString(object.language!);
+            final languageCodeOffset = object.languageCode == null
+                ? null
+                : fbb.writeString(object.languageCode!);
+            final textOffset = fbb.writeString(object.text);
+            fbb.startTable(8);
+            fbb.addInt64(0, object.id);
+            fbb.addInt64(1, object.meta.targetId);
+            fbb.addOffset(2, languageOffset);
+            fbb.addOffset(3, languageCodeOffset);
+            fbb.addBool(4, object.isGenerated);
+            fbb.addOffset(5, textOffset);
+            fbb.addInt64(6, object.fetchedAtMs);
+            fbb.finish(fbb.endTable());
+            return object.id;
+          },
+          objectFromFB: (obx.Store store, ByteData fbData) {
+            final buffer = fb.BufferContext(fbData);
+            final rootOffset = buffer.derefObject(0);
+            final languageParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGetNullable(buffer, rootOffset, 8);
+            final languageCodeParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGetNullable(buffer, rootOffset, 10);
+            final isGeneratedParam = const fb.BoolReader().vTableGet(
+              buffer,
+              rootOffset,
+              12,
+              false,
+            );
+            final textParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 14, '');
+            final fetchedAtMsParam = const fb.Int64Reader().vTableGet(
+              buffer,
+              rootOffset,
+              16,
+              0,
+            );
+            final object = YoutubeTranscriptTextEntity(
+              language: languageParam,
+              languageCode: languageCodeParam,
+              isGenerated: isGeneratedParam,
+              text: textParam,
+              fetchedAtMs: fetchedAtMsParam,
+            )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+            object.meta.targetId = const fb.Int64Reader().vTableGet(
+              buffer,
+              rootOffset,
+              6,
+              0,
+            );
+            object.meta.attach(store);
+            return object;
+          },
+        ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -1093,6 +1471,41 @@ class TranscriptEntity_ {
   /// See [TranscriptEntity.searchText].
   static final searchText = obx.QueryStringProperty<TranscriptEntity>(
     _entities[2].properties[9],
+  );
+
+  /// See [TranscriptEntity.processedAudioPath].
+  static final processedAudioPath = obx.QueryStringProperty<TranscriptEntity>(
+    _entities[2].properties[10],
+  );
+
+  /// See [TranscriptEntity.sourceType].
+  static final sourceType = obx.QueryIntegerProperty<TranscriptEntity>(
+    _entities[2].properties[11],
+  );
+
+  /// See [TranscriptEntity.youtubeMetaId].
+  static final youtubeMetaId = obx.QueryIntegerProperty<TranscriptEntity>(
+    _entities[2].properties[12],
+  );
+
+  /// See [TranscriptEntity.updatedAt].
+  static final updatedAt = obx.QueryDateProperty<TranscriptEntity>(
+    _entities[2].properties[13],
+  );
+
+  /// See [TranscriptEntity.isDeleted].
+  static final isDeleted = obx.QueryBooleanProperty<TranscriptEntity>(
+    _entities[2].properties[14],
+  );
+
+  /// See [TranscriptEntity.deletedAt].
+  static final deletedAt = obx.QueryDateProperty<TranscriptEntity>(
+    _entities[2].properties[15],
+  );
+
+  /// See [TranscriptEntity.isFavourite].
+  static final isFavourite = obx.QueryBooleanProperty<TranscriptEntity>(
+    _entities[2].properties[16],
   );
 
   /// see [TranscriptEntity.turns]
@@ -1253,4 +1666,100 @@ class AiChatMessageEntity_ {
   static final createdAtMs = obx.QueryIntegerProperty<AiChatMessageEntity>(
     _entities[7].properties[3],
   );
+}
+
+/// [YoutubeTranscriptMetaEntity] entity fields to define ObjectBox queries.
+class YoutubeTranscriptMetaEntity_ {
+  /// See [YoutubeTranscriptMetaEntity.id].
+  static final id = obx.QueryIntegerProperty<YoutubeTranscriptMetaEntity>(
+    _entities[8].properties[0],
+  );
+
+  /// See [YoutubeTranscriptMetaEntity.videoId].
+  static final videoId = obx.QueryStringProperty<YoutubeTranscriptMetaEntity>(
+    _entities[8].properties[1],
+  );
+
+  /// See [YoutubeTranscriptMetaEntity.inputUrl].
+  static final inputUrl = obx.QueryStringProperty<YoutubeTranscriptMetaEntity>(
+    _entities[8].properties[2],
+  );
+
+  /// See [YoutubeTranscriptMetaEntity.canonicalUrl].
+  static final canonicalUrl =
+      obx.QueryStringProperty<YoutubeTranscriptMetaEntity>(
+        _entities[8].properties[3],
+      );
+
+  /// See [YoutubeTranscriptMetaEntity.title].
+  static final title = obx.QueryStringProperty<YoutubeTranscriptMetaEntity>(
+    _entities[8].properties[4],
+  );
+
+  /// See [YoutubeTranscriptMetaEntity.channel].
+  static final channel = obx.QueryStringProperty<YoutubeTranscriptMetaEntity>(
+    _entities[8].properties[5],
+  );
+
+  /// See [YoutubeTranscriptMetaEntity.createdAtMs].
+  static final createdAtMs =
+      obx.QueryIntegerProperty<YoutubeTranscriptMetaEntity>(
+        _entities[8].properties[6],
+      );
+
+  /// See [YoutubeTranscriptMetaEntity.updatedAtMs].
+  static final updatedAtMs =
+      obx.QueryIntegerProperty<YoutubeTranscriptMetaEntity>(
+        _entities[8].properties[7],
+      );
+
+  /// see [YoutubeTranscriptMetaEntity.transcripts]
+  static final transcripts =
+      obx.QueryBacklinkToMany<
+        YoutubeTranscriptTextEntity,
+        YoutubeTranscriptMetaEntity
+      >(YoutubeTranscriptTextEntity_.meta);
+}
+
+/// [YoutubeTranscriptTextEntity] entity fields to define ObjectBox queries.
+class YoutubeTranscriptTextEntity_ {
+  /// See [YoutubeTranscriptTextEntity.id].
+  static final id = obx.QueryIntegerProperty<YoutubeTranscriptTextEntity>(
+    _entities[9].properties[0],
+  );
+
+  /// See [YoutubeTranscriptTextEntity.meta].
+  static final meta =
+      obx.QueryRelationToOne<
+        YoutubeTranscriptTextEntity,
+        YoutubeTranscriptMetaEntity
+      >(_entities[9].properties[1]);
+
+  /// See [YoutubeTranscriptTextEntity.language].
+  static final language = obx.QueryStringProperty<YoutubeTranscriptTextEntity>(
+    _entities[9].properties[2],
+  );
+
+  /// See [YoutubeTranscriptTextEntity.languageCode].
+  static final languageCode =
+      obx.QueryStringProperty<YoutubeTranscriptTextEntity>(
+        _entities[9].properties[3],
+      );
+
+  /// See [YoutubeTranscriptTextEntity.isGenerated].
+  static final isGenerated =
+      obx.QueryBooleanProperty<YoutubeTranscriptTextEntity>(
+        _entities[9].properties[4],
+      );
+
+  /// See [YoutubeTranscriptTextEntity.text].
+  static final text = obx.QueryStringProperty<YoutubeTranscriptTextEntity>(
+    _entities[9].properties[5],
+  );
+
+  /// See [YoutubeTranscriptTextEntity.fetchedAtMs].
+  static final fetchedAtMs =
+      obx.QueryIntegerProperty<YoutubeTranscriptTextEntity>(
+        _entities[9].properties[6],
+      );
 }

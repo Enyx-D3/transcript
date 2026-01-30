@@ -1,3 +1,4 @@
+// lib/transcript/background_transcriber.dart
 import 'dart:async';
 import 'dart:ui';
 
@@ -24,8 +25,11 @@ class BackgroundTranscriber {
   static const _kResultId = 'bg_result_id';
   static const _kBusyTranscribing = 'busy_transcribing';
 
-  // ✅ NEW: stored int where 0 == null/auto
+  // ✅ target speakers stored int where 0 == null/auto
   static const _kTargetSpeakers = 'bg_target_speakers';
+
+  // ✅ NEW: language (always stored as non-null String; default 'auto')
+  static const _kLang = 'bg_lang';
 
   static Future<void> init() async {
     FlutterForegroundTask.init(
@@ -56,8 +60,11 @@ class BackgroundTranscriber {
     String? titleHint,
     int? existingTranscriptId,
 
-    // ✅ NEW
+    // ✅ diarization
     int? targetSpeakers,
+
+    // ✅ NEW: language code ('auto','en','bn','hi','es')
+    String lang = 'auto',
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
     await FlutterForegroundTask.saveData(
@@ -70,6 +77,12 @@ class BackgroundTranscriber {
     await FlutterForegroundTask.saveData(
       key: _kTargetSpeakers,
       value: targetSpeakers ?? 0,
+    );
+
+    // ✅ store language (must be non-null Object)
+    await FlutterForegroundTask.saveData(
+      key: _kLang,
+      value: (lang.trim().isEmpty) ? 'auto' : lang.trim(),
     );
 
     if (titleHint != null) {
@@ -130,6 +143,13 @@ class _TranscribeTaskHandler extends TaskHandler {
     final tsInt = (tsRaw is int) ? tsRaw : 0;
     final int? targetSpeakers = (tsInt <= 0) ? null : tsInt;
 
+    // ✅ read language (default auto)
+    final langRaw = await FlutterForegroundTask.getData(
+      key: BackgroundTranscriber._kLang,
+    );
+    final String lang =
+        (langRaw is String && langRaw.trim().isNotEmpty) ? langRaw.trim() : 'auto';
+
     if (wavPath == null || wavPath.isEmpty) {
       await FlutterForegroundTask.updateService(
         notificationTitle: 'Transcription failed',
@@ -147,9 +167,10 @@ class _TranscribeTaskHandler extends TaskHandler {
 
       final TranscriptionResult result = await transcribeToResult(
         wavPath: wavPath,
-        translateToEnglish: translate,
+        // translateToEnglish: translate,
         titleHint: titleHint,
-        targetSpeakers: targetSpeakers, // ✅ pass
+        targetSpeakers: targetSpeakers,
+        lang: lang, // ✅ NEW
       );
 
       FlutterForegroundTask.sendDataToMain({
@@ -176,7 +197,8 @@ class _TranscribeTaskHandler extends TaskHandler {
         'error': e.toString(),
       });
       await FlutterForegroundTask.updateService(
-        notificationTitle: 'Transcription failed',
+        // notificationTitle: 'Transcription failed',
+        notificationTitle: e.toString(),
         notificationText: 'See app',
       );
     } finally {

@@ -16,7 +16,7 @@ Future<EligibilityGateResult> checkEligibilityOnce(SupabaseClient sb) async {
 
     final row = await sb
         .from('profiles')
-        .select('is_upgraded, trial_expires_at, pro_expires_at')
+        .select('is_upgraded, is_lifetime, trial_expires_at, pro_expires_at')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -33,8 +33,11 @@ Future<EligibilityGateResult> checkEligibilityOnce(SupabaseClient sb) async {
     final now = DateTime.now().toUtc();
 
     final bool trialActive = trialExpires != null && trialExpires.isAfter(now);
+    final bool isLifetime = (map['is_lifetime'] as bool?) ?? false;
+
     final bool proActive =
-        isUpgraded && (proExpires == null || proExpires.isAfter(now));
+        isUpgraded &&
+        (isLifetime || (proExpires != null && proExpires.isAfter(now)));
 
     return EligibilityGateResult(eligible: trialActive || proActive);
   } catch (e) {

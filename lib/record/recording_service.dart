@@ -41,7 +41,7 @@ class RecordingService {
     FlutterForegroundTask.initCommunicationPort();
   }
 
-  /// ✅ UPDATED: accepts targetSpeakers (nullable).
+  /// Accepts targetSpeakers (nullable).
   /// Internally stored as int where 0 == null/auto.
   static Future<String?> start({int? targetSpeakers}) async {
     await ensureInitialized();
@@ -50,9 +50,12 @@ class RecordingService {
     if (!already) {
       final filePath = await _newWavPath();
 
-      // ✅ Read SharedPreferences HERE (UI isolate) and pass value to task storage
+      // ✅ Read SharedPreferences HERE (UI isolate) and pass to task storage
       final prefs = await SharedPreferences.getInstance();
-      final allowLong = prefs.getBool(_kAllowLongRecordingPref) ?? false;
+      final maxMinutes = prefs.getInt(_kPrefMaxRecordingMinutes) ?? 60;
+
+      // Safety clamp (matches your settings options)
+      final safeMinutes = _kMaxMinutesOptions.contains(maxMinutes) ? maxMinutes : 60;
 
       await FlutterForegroundTask.saveData(key: _kFilePath, value: filePath);
       await FlutterForegroundTask.saveData(
@@ -61,13 +64,13 @@ class RecordingService {
       );
       await FlutterForegroundTask.saveData(key: _kPaused, value: false);
 
-      // ✅ runtime config for the task
+      // ✅ NEW: store max minutes for runtime limit
       await FlutterForegroundTask.saveData(
-        key: _kAllowLongRecordingRuntime,
-        value: allowLong,
+        key: _kMaxMinutesRuntime,
+        value: safeMinutes,
       );
 
-      // ✅ NEW: store target speakers (Object cannot be null)
+      // ✅ store target speakers (Object cannot be null)
       // Rule: 0 means null/auto
       await FlutterForegroundTask.saveData(
         key: _kTargetSpeakersRuntime,
@@ -143,7 +146,7 @@ const _kFilePath = 'rec_file_path';
 const _kStartEpochMs = 'rec_start_epoch_ms';
 const _kPaused = 'rec_paused';
 
-// ✅ NEW: target speakers stored for stop payload + downstream
+// target speakers stored for stop payload + downstream
 // stored as int where 0 == null/auto
 const String _kTargetSpeakersRuntime = 'rec_target_speakers_runtime';
 
@@ -158,14 +161,14 @@ const _btnPause = 'btn_pause';
 const _btnResume = 'btn_resume';
 const _btnStop = 'btn_stop';
 
-// ✅ SharedPreferences key
-const String _kAllowLongRecordingPref = 'allow_long_recording';
+// ✅ SharedPreferences key (must match SettingsPage)
+const String _kPrefMaxRecordingMinutes = 'pref_max_recording_minutes';
 
 // ✅ runtime value passed into the task (read via FlutterForegroundTask.getData)
-const String _kAllowLongRecordingRuntime = 'allow_long_recording_runtime';
+const String _kMaxMinutesRuntime = 'rec_max_recording_minutes_runtime';
 
-// ✅ default limit
-const int _kDefaultMaxSeconds = (30 * 60) + 1; // 30 min
+// ✅ allowed options (same as SettingsPage)
+const List<int> _kMaxMinutesOptions = [30, 60, 90, 120,6000];
 
 @pragma('vm:entry-point')
 void recordingStartCallback() {
@@ -189,14 +192,14 @@ class _RecordingTaskHandler extends TaskHandler {
 
   int _lastNotifSec = -1;
 
-  // ✅ config loaded from task storage
-  bool _allowLongRecording = false;
+  // ✅ NEW: max limit config (in seconds)
+  int _maxSeconds = 60 * 60; // default 60 min
 
-  // ✅ NEW: target speakers passed from UI
+  // target speakers passed from UI
   // stored as int where 0 == null/auto
   int? _targetSpeakers;
 
-  // ✅ prevent overlapping async tick calls
+  // prevent overlapping async tick calls
   bool _ticking = false;
 
   @override
@@ -206,16 +209,20 @@ class _RecordingTaskHandler extends TaskHandler {
     final p = await FlutterForegroundTask.getData(key: _kFilePath);
     final s = await FlutterForegroundTask.getData(key: _kStartEpochMs);
     final pa = await FlutterForegroundTask.getData(key: _kPaused);
-    final allow =
-        await FlutterForegroundTask.getData(key: _kAllowLongRecordingRuntime);
 
-    // ✅ NEW: read target speakers (stored int; 0 => null)
+    // ✅ read max minutes (stored int)
+    final mm = await FlutterForegroundTask.getData(key: _kMaxMinutesRuntime);
+
+    // ✅ read target speakers (stored int; 0 => null)
     final ts = await FlutterForegroundTask.getData(key: _kTargetSpeakersRuntime);
 
     _path = (p is String) ? p : null;
     _startEpochMs = (s is int) ? s : DateTime.now().millisecondsSinceEpoch;
     _paused = (pa is bool) ? pa : false;
-    _allowLongRecording = (allow is bool) ? allow : false;
+
+    final maxMin = (mm is int) ? mm : 60;
+    final safeMinutes = _kMaxMinutesOptions.contains(maxMin) ? maxMin : 60;
+    _maxSeconds = safeMinutes * 60;
 
     final tsInt = (ts is int) ? ts : 0;
     _targetSpeakers = (tsInt <= 0) ? null : tsInt;
@@ -347,7 +354,7 @@ class _RecordingTaskHandler extends TaskHandler {
       await _rec.stop();
     } catch (_) {}
 
-    // ✅ include targetSpeakers in payload (can be null here; that's fine)
+    // include targetSpeakers in payload (can be null)
     FlutterForegroundTask.sendDataToMain({
       'type': 'stopped',
       'filePath': _path,
@@ -366,12 +373,12 @@ class _RecordingTaskHandler extends TaskHandler {
     try {
       final elapsed = _elapsedSeconds(ts.millisecondsSinceEpoch);
 
-      // ✅ enforce limit here
-      if (!_allowLongRecording && elapsed >= _kDefaultMaxSeconds) {
+      // ✅ enforce selected limit
+      if (elapsed >= _maxSeconds) {
         FlutterForegroundTask.sendDataToMain({
           'type': 'limit_reached',
           'elapsedSec': elapsed,
-          'maxSec': _kDefaultMaxSeconds,
+          'maxSec': _maxSeconds,
         });
 
         try {

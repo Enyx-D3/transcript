@@ -73,7 +73,7 @@
     },
     {
       "id": "3:8951984836733702572",
-      "lastPropertyId": "10:6997765070573863445",
+      "lastPropertyId": "17:6726383822376668723",
       "name": "TranscriptEntity",
       "properties": [
         {
@@ -130,6 +130,49 @@
           "indexId": "9:7148887307430447360",
           "type": 9,
           "flags": 2048
+        },
+        {
+          "id": "11:682874281539402827",
+          "name": "processedAudioPath",
+          "type": 9
+        },
+        {
+          "id": "12:4259134649983807254",
+          "name": "sourceType",
+          "indexId": "12:2556319517628238594",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "13:2296440804667566794",
+          "name": "youtubeMetaId",
+          "indexId": "13:1216155967549140524",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "14:4415613626623737405",
+          "name": "updatedAt",
+          "type": 10
+        },
+        {
+          "id": "15:4195730957137773808",
+          "name": "isDeleted",
+          "indexId": "14:146728917524599977",
+          "type": 1,
+          "flags": 8
+        },
+        {
+          "id": "16:1191570307902756028",
+          "name": "deletedAt",
+          "type": 10
+        },
+        {
+          "id": "17:6726383822376668723",
+          "name": "isFavourite",
+          "indexId": "15:3109755727906842626",
+          "type": 1,
+          "flags": 8
         }
       ],
       "relations": []
@@ -320,10 +363,108 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "9:1512235372072818379",
+      "lastPropertyId": "8:4673293284464775153",
+      "name": "YoutubeTranscriptMetaEntity",
+      "properties": [
+        {
+          "id": "1:6995658686155663738",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:5254907368542396257",
+          "name": "videoId",
+          "indexId": "10:1680990679404193192",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:2312303597402293432",
+          "name": "inputUrl",
+          "type": 9
+        },
+        {
+          "id": "4:3809900726028320561",
+          "name": "canonicalUrl",
+          "type": 9
+        },
+        {
+          "id": "5:2371882317663392674",
+          "name": "title",
+          "type": 9
+        },
+        {
+          "id": "6:8745189172432791459",
+          "name": "channel",
+          "type": 9
+        },
+        {
+          "id": "7:8881568375987462922",
+          "name": "createdAtMs",
+          "type": 6
+        },
+        {
+          "id": "8:4673293284464775153",
+          "name": "updatedAtMs",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "10:6743079949151911291",
+      "lastPropertyId": "7:3568458887769558237",
+      "name": "YoutubeTranscriptTextEntity",
+      "properties": [
+        {
+          "id": "1:33767166013426516",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4300686104240791653",
+          "name": "metaId",
+          "indexId": "11:2914587628380169176",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "YoutubeTranscriptMetaEntity"
+        },
+        {
+          "id": "3:8926590191105879388",
+          "name": "language",
+          "type": 9
+        },
+        {
+          "id": "4:2235907402314170686",
+          "name": "languageCode",
+          "type": 9
+        },
+        {
+          "id": "5:5848171509632846259",
+          "name": "isGenerated",
+          "type": 1
+        },
+        {
+          "id": "6:7313075205586847892",
+          "name": "text",
+          "type": 9
+        },
+        {
+          "id": "7:3568458887769558237",
+          "name": "fetchedAtMs",
+          "type": 6
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "8:2255608453628138765",
-  "lastIndexId": "9:7148887307430447360",
+  "lastEntityId": "10:6743079949151911291",
+  "lastIndexId": "15:3109755727906842626",
   "lastRelationId": "1:2617604582228853530",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

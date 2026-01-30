@@ -1,7 +1,10 @@
 // lib/billing/subscription_service.dart
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'subscription_products.dart';
@@ -23,6 +26,13 @@ class SubscriptionService {
       StreamController<void>.broadcast();
 
   SupabaseClient get _sb => Supabase.instance.client;
+
+  // ✅ NEW: expose last server result for UI
+  String? lastVerifyCode;   // e.g. TOKEN_ALREADY_CLAIMED
+  String? lastVerifyError;  // human readable
+
+  // ✅ IMPORTANT: must match your deployed edge function name
+  static const String _fnVerify = 'verify-play-subscription';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -55,8 +65,21 @@ class SubscriptionService {
       throw Exception(resp.error!.message);
     }
 
+    // Keep a stable order: lifetime, monthly, yearly
     final list = resp.productDetails.toList()
-      ..sort((a, b) => a.id.compareTo(b.id));
+      ..sort((a, b) {
+        int rank(String id) {
+          if (id == kProLifetimeId) return 0;
+          if (id == kProMonthlyId) return 1;
+          if (id == kProYearlyId) return 2;
+          return 99;
+        }
+
+        final ra = rank(a.id);
+        final rb = rank(b.id);
+        if (ra != rb) return ra.compareTo(rb);
+        return a.id.compareTo(b.id);
+      });
 
     return list;
   }
@@ -69,6 +92,10 @@ class SubscriptionService {
   Future<bool> buy(ProductDetails product) async {
     await initialize();
 
+    // reset last verify info
+    lastVerifyCode = null;
+    lastVerifyError = null;
+
     // If another pending exists for same product, complete it false.
     final old = _pending.remove(product.id);
     if (old != null && !old.isCompleted) old.complete(false);
@@ -78,7 +105,7 @@ class SubscriptionService {
 
     final param = PurchaseParam(productDetails: product);
 
-    // For subscriptions, use buyNonConsumable in this plugin.
+    // For subscriptions + non-consumables, use buyNonConsumable in this plugin.
     final started = await _iap.buyNonConsumable(purchaseParam: param);
 
     if (!started) {
@@ -97,13 +124,13 @@ class SubscriptionService {
   }
 
   /// Restore purchases and return true if an entitlement gets applied.
-  /// This is useful for:
-  /// - already-owned subscription
-  /// - users who purchased before your server/profile updates worked
   Future<bool> restore({Duration timeout = const Duration(seconds: 30)}) async {
     await initialize();
 
-    // Listen for the next successful entitlement application.
+    // reset last verify info
+    lastVerifyCode = null;
+    lastVerifyError = null;
+
     final completer = Completer<bool>();
     late StreamSubscription sub;
     sub = _entitlementAppliedCtrl.stream.listen((_) {
@@ -113,7 +140,6 @@ class SubscriptionService {
     try {
       await _iap.restorePurchases();
 
-      // Wait for entitlementApplied or timeout
       final ok = await completer.future.timeout(
         timeout,
         onTimeout: () => false,
@@ -124,21 +150,61 @@ class SubscriptionService {
     }
   }
 
+  /// Immediate reconcile: query past purchases and verify tokens.
+  Future<bool> reconcileNow({Duration timeout = const Duration(seconds: 25)}) async {
+    await initialize();
+
+    // reset last verify info
+    lastVerifyCode = null;
+    lastVerifyError = null;
+
+    // We consider success if any entitlement gets applied.
+    final completer = Completer<bool>();
+    late StreamSubscription sub;
+    sub = _entitlementAppliedCtrl.stream.listen((_) {
+      if (!completer.isCompleted) completer.complete(true);
+    });
+
+    try {
+      // Android: query past purchases + verify them
+      if (Platform.isAndroid) {
+        final addition =
+            _iap.getPlatformAddition<InAppPurchaseAndroidPlatformAddition>();
+        final resp = await addition.queryPastPurchases();
+
+        for (final p in resp.pastPurchases) {
+          if (!kProProductIds.contains(p.productID)) continue;
+
+          final ok = await _applyEntitlementFromPurchase(p);
+
+          if (p.pendingCompletePurchase) {
+            await _iap.completePurchase(p);
+          }
+
+          if (ok && !_entitlementAppliedCtrl.isClosed) {
+            _entitlementAppliedCtrl.add(null);
+          }
+        }
+      } else {
+        // fallback for other platforms
+        await _iap.restorePurchases();
+      }
+
+      return await completer.future.timeout(timeout, onTimeout: () => false);
+    } finally {
+      await sub.cancel();
+    }
+  }
+
   // ---------------- Purchase handler ----------------
 
   Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {
     for (final p in purchases) {
       try {
-        if (p.status == PurchaseStatus.pending) {
-          continue;
-        }
+        if (p.status == PurchaseStatus.pending) continue;
 
-        if (p.status == PurchaseStatus.error) {
-          _completePending(p.productID, false);
-          continue;
-        }
-
-        if (p.status == PurchaseStatus.canceled) {
+        if (p.status == PurchaseStatus.error ||
+            p.status == PurchaseStatus.canceled) {
           _completePending(p.productID, false);
           continue;
         }
@@ -154,7 +220,6 @@ class SubscriptionService {
           _completePending(p.productID, ok);
 
           if (ok) {
-            // Signal restore/purchase success
             if (!_entitlementAppliedCtrl.isClosed) {
               _entitlementAppliedCtrl.add(null);
             }
@@ -173,41 +238,72 @@ class SubscriptionService {
 
   // ---------------- Entitlement logic ----------------
 
-  /// Best practice:
-  /// 1) Send purchaseToken to a Supabase Edge Function.
-  /// 2) Server verifies with Google Play.
-  /// 3) Server writes is_upgraded + real pro_expires_at.
-  ///
-  /// For now:
-  /// - We TRY that server path.
-  /// - Otherwise fall back to MVP update (requires UPDATE RLS policy).
-Future<bool> _applyEntitlementFromPurchase(PurchaseDetails p) async {
-  final user = _sb.auth.currentUser;
-  if (user == null) return false;
-
-  final token = p.verificationData.serverVerificationData;
-  if (token.isEmpty) return false;
-
-  try {
-    final res = await _sb.functions.invoke(
-      'verify-play-subscription', 
-      body: {
-        'product_id': p.productID,
-        'purchase_token': token,
-      },
-    );
-
-    final data = res.data;
-    final ok = data is Map && (data['ok'] == true || data['success'] == true);
-    if (!ok) {
-      // ignore: avoid_print
-      print('verify-play-entitlement failed: $data');
+  /// Prefer BillingClient token for Android.
+  String? extractPurchaseToken(PurchaseDetails p) {
+    if (Platform.isAndroid && p is GooglePlayPurchaseDetails) {
+      final token = p.billingClientPurchase.purchaseToken;
+      if (token.isNotEmpty) return token;
     }
-    return ok;
-  } catch (e) {
-    // ignore: avoid_print
-    print('verify-play-entitlement exception: $e');
-    return false;
+
+    // Fallback: localVerificationData sometimes contains purchaseToken JSON
+    if (Platform.isAndroid) {
+      try {
+        final obj = jsonDecode(p.verificationData.localVerificationData);
+        final token = obj['purchaseToken'];
+        if (token is String && token.isNotEmpty) return token;
+      } catch (_) {}
+    }
+
+    // Last fallback: serverVerificationData sometimes holds token too
+    final sv = p.verificationData.serverVerificationData;
+    if (Platform.isAndroid && sv.isNotEmpty) return sv;
+
+    return null;
   }
-}
+
+  Future<bool> _applyEntitlementFromPurchase(PurchaseDetails p) async {
+    final user = _sb.auth.currentUser;
+    if (user == null) return false;
+
+    // Only verify known products
+    if (!kProProductIds.contains(p.productID)) return false;
+
+    final token = extractPurchaseToken(p);
+    if (token == null || token.isEmpty) return false;
+
+    try {
+      // ✅ Supabase client automatically includes Authorization for the signed-in user.
+      final res = await _sb.functions.invoke(
+        _fnVerify,
+        body: {
+          'product_id': p.productID,
+          'purchase_token': token,
+        },
+      );
+
+      final data = res.data;
+
+      // store last error/code for UI
+      if (data is Map) {
+        lastVerifyCode = data['code'] as String?;
+        lastVerifyError = data['error'] as String?;
+      } else {
+        lastVerifyCode = null;
+        lastVerifyError = null;
+      }
+
+      final ok = data is Map && (data['ok'] == true || data['success'] == true);
+      if (!ok) {
+        // ignore: avoid_print
+        print('$_fnVerify failed: $data');
+      }
+      return ok;
+    } catch (e) {
+      // ignore: avoid_print
+      print('$_fnVerify exception: $e');
+      lastVerifyCode = null;
+      lastVerifyError = e.toString();
+      return false;
+    }
+  }
 }

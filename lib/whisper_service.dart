@@ -191,6 +191,7 @@ Future<String> _ensureTinyModelDirOnDisk() async {
 
 Future<String> transcribeWav({
   required String wavPath,
+  required String lang,
   bool translateToEnglish = false,
   bool noTimestamps = false,
   bool splitOnWord = true,
@@ -213,6 +214,7 @@ Future<String> transcribeWav({
   final transcript = await _whisper!.transcribe(
     transcribeRequest: TranscribeRequest(
       audio: wavPath,
+      language: lang,
       isTranslate: translateToEnglish,
       isNoTimestamps: noTimestamps,
       splitOnWord: splitOnWord,
