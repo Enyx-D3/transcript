@@ -1,6 +1,9 @@
 // lib/auth/login_page.dart
+import 'dart:convert';
+import 'dart:math';
 import 'dart:io' show Platform;
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -39,6 +42,13 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  /// Generate a random string for nonce
+  String _generateRandomString([int length = 32]) {
+    const charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
+    final random = Random.secure();
+    return List.generate(length, (_) => charset[random.nextInt(charset.length)]).join();
+  }
+
   Future<void> _ensureProfile(User user) async {
     final now = DateTime.now().toUtc();
 
@@ -54,13 +64,6 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _signInWithGoogle() async {
     if (_busy) return;
 
-    if (!Platform.isAndroid) {
-      setState(
-        () => _error = 'This login flow is configured for Android only.',
-      );
-      return;
-    }
-
     FocusScope.of(context).unfocus();
 
     setState(() {
@@ -71,9 +74,23 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final GoogleSignIn signIn = GoogleSignIn.instance;
 
-      await signIn.initialize(
-        serverClientId: _serverClientId, // Web OAuth client ID
-      );
+      String? rawNonce;
+
+      if (Platform.isIOS) {
+        // iOS requires nonce for token validation
+        rawNonce = _generateRandomString();
+        final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+
+        await signIn.initialize(
+          serverClientId: _serverClientId,
+          nonce: hashedNonce,
+        );
+      } else {
+        // Android doesn't need nonce
+        await signIn.initialize(
+          serverClientId: _serverClientId,
+        );
+      }
 
       final googleAccount = await signIn.authenticate();
       final googleAuthentication = googleAccount.authentication;
@@ -86,6 +103,7 @@ class _LoginPageState extends State<LoginPage> {
       final res = await _sb.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
+        nonce: rawNonce, // null for Android, set for iOS
       );
 
       final user = res.user;
@@ -103,6 +121,7 @@ class _LoginPageState extends State<LoginPage> {
       setState(() {
         _busy = false;
         _error = 'Login Failed';
+        debugPrint('Google sign-in error: $e');
       });
     }
   }

@@ -52,7 +52,7 @@ dependencies:
   fllama:
       git:
         url: https://github.com/Telosnex/fllama.git
-        ref: d341e65d596e4d9dd888eab21e04eef1736fd661
+        ref: 03f7b56
   google_sign_in: ^7.2.0
   supabase_flutter: ^2.10.3
   in_app_purchase: ^3.2.3

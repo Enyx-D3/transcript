@@ -1,4 +1,6 @@
 // lib/main.dart
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -167,8 +169,14 @@ class _SplashGateState extends State<SplashGate> {
       });
 
       final perm = await Permission.microphone.request();
+      
+      // Allow bypassing for development and testing
       if (!perm.isGranted) {
-        throw Exception('Microphone permission is required');
+        if (kDebugMode && Platform.isIOS) {
+          debugPrint('⚠️ Microphone permission denied - running in debug mode, allowing to continue');
+        } else {
+          throw Exception('Microphone permission is required');
+        }
       }
 
       final p = await FlutterForegroundTask.checkNotificationPermission();
@@ -195,6 +203,7 @@ class _SplashGateState extends State<SplashGate> {
       setState(() {
         _failed = true;
         _status = 'Failed to initialize: $e';
+        debugPrint('SplashGate boot error: $e');
       });
     }
   }
