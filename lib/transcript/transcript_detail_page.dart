@@ -648,45 +648,75 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   // ============================================================
 
   Future<void> _editTitle() async {
-    final t = _t;
-    if (t == null) return;
+  final t = _t;
+  if (t == null) return;
 
-    final ctrl = TextEditingController(text: t.title ?? '');
-    final newTitle = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit title'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Title',
-            hintText: 'e.g. Team meeting',
+  final ctrl = TextEditingController(text: t.title ?? '');
+
+  final newTitle = await showDialog<String>(
+    context: context,
+    builder: (ctx) {
+      const accent = Colors.white; // 👈 change if you want
+
+      return Theme(
+        data: Theme.of(ctx).copyWith(
+          textSelectionTheme: const TextSelectionThemeData(
+            selectionHandleColor: Colors.white, // ✅ droplet = white
+            cursorColor: accent,                // cursor color
+            selectionColor: Color(0x337C4DFF),  // selection highlight
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+        child: AlertDialog(
+          title: const Text('Edit title'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            cursorColor: accent,
+            decoration: const InputDecoration(
+              labelText: 'Title',
+              labelStyle: TextStyle(color: Colors.white),
+              hintText: 'e.g. Team meeting',
+              hintStyle: TextStyle(color: Colors.white54),
+
+              // ✅ underline when not focused
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: accent, width: 1.5),
+              ),
+
+              // ✅ underline when focused
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: accent, width: 2),
+              ),
+            ),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (newTitle == null) return;
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
+              child: const Text('Save', style: TextStyle(color: Colors.black)),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 
-    final obx = ObjectBox.I;
-    final latest = obx.transcripts.get(t.id);
-    if (latest == null) return;
+  if (newTitle == null) return;
 
-    latest.title = newTitle.isEmpty ? null : newTitle;
-    obx.transcripts.put(latest);
+  final obx = ObjectBox.I;
+  final latest = obx.transcripts.get(t.id);
+  if (latest == null) return;
 
-    _refreshTick();
-  }
+  latest.title = newTitle.isEmpty ? null : newTitle;
+  obx.transcripts.put(latest);
+
+  _refreshTick();
+}
 
   // ============================================================
   // Rename speaker within transcript
@@ -1306,8 +1336,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                         children: [
                           Expanded(
                             child: FilledButton.icon(
-                              icon: const Icon(Icons.summarize_outlined,color: Colors.black,),
-                              label: const Text('Summary',style: TextStyle(color: Colors.black),),
+                              icon: const Icon(
+                                Icons.summarize_outlined,
+                                color: Colors.black,
+                              ),
+                              label: const Text(
+                                'Summary',
+                                style: TextStyle(color: Colors.black),
+                              ),
                               style: OutlinedButton.styleFrom(
                                 minimumSize: const Size(0, 40),
                                 padding: const EdgeInsets.symmetric(
@@ -1334,8 +1370,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: FilledButton.icon(
-                              icon: const Icon(Icons.chat_bubble_outline,color: Colors.black,),
-                              label: const Text('Ask AI',style:TextStyle(color: Colors.black)),
+                              icon: const Icon(
+                                Icons.chat_bubble_outline,
+                                color: Colors.black,
+                              ),
+                              label: const Text(
+                                'Ask AI',
+                                style: TextStyle(color: Colors.black),
+                              ),
                               style: OutlinedButton.styleFrom(
                                 minimumSize: const Size(0, 40),
                                 padding: const EdgeInsets.symmetric(

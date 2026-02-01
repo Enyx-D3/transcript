@@ -130,7 +130,8 @@ class _SettingsPageState extends State<SettingsPage> {
       context,
     ).push(MaterialPageRoute(builder: (_) => const WhatsNewPage()));
   }
-   Future<void> _openModelPage() async {
+
+  Future<void> _openModelPage() async {
     if (!mounted) return;
     await Navigator.of(
       context,
@@ -404,6 +405,10 @@ class _SettingsPageState extends State<SettingsPage> {
         items: items,
         onChanged: onChanged,
         decoration: InputDecoration(
+          focusedBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.white, width: 1),
+          ),
+
           isDense: true,
           border: const OutlineInputBorder(),
           contentPadding: const EdgeInsets.symmetric(
@@ -498,10 +503,11 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(width: 10),
             Switch(
-              value: value, onChanged: onChanged,
-              activeColor: Colors.black,                 // thumb
-              activeTrackColor: Colors.green,      // track
-              ),
+              value: value,
+              onChanged: onChanged,
+              activeColor: Colors.black, // thumb
+              activeTrackColor: Colors.green, // track
+            ),
           ],
         ),
       ),

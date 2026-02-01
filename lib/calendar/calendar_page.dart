@@ -50,7 +50,7 @@ class _CalendarPageState extends State<CalendarPage> {
     final end = _endOfMonthExclusive(_monthAnchor);
 
     // Query all ordered by createdAt, filter to this month in Dart
-    final qb = obx.transcripts.query()..order(TranscriptEntity_.createdAt);
+    final qb = obx.transcripts.query(TranscriptEntity_.isDeleted.equals(false))..order(TranscriptEntity_.createdAt);
     final q = qb.build();
     final all = q.find();
     q.close();
