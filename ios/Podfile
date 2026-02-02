@@ -39,35 +39,45 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    
     target.build_configurations.each do |config|
-      # Set minimum deployment target
-      config.build_settings['IPHONOS_DEPLOYMENT_TARGET'] = '14.0'
-      
-      # C++ language standard
+      # 1. Set minimum deployment target and C++ standards
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
       config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++17'
       config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
       
-      # Allow non-modular includes
-      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      # 2. Disable bitcode
+      config.build_settings['ENABLE_BITCODE'] = 'NO'
       
-      # Make headers private to avoid conflicts between fllama and whisper_flutter_new
-      if target.name == 'fllama' || target.name == 'whisper_flutter_new'
+      # 3. Critical: Add preprocessor namespacing for each plugin
+      if target.name == 'fllama'
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'GGML_NAMESPACE_FLLAMA=1'
         config.build_settings['DEFINES_MODULE'] = 'NO'
         config.build_settings['USE_HEADERMAP'] = 'NO'
-        config.build_settings['ALWAYS_SEARCH_USER_PATHS'] = 'NO'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
       end
       
-      # Disable bitcode
-      config.build_settings['ENABLE_BITCODE'] = 'NO'
+      if target.name == 'whisper_flutter_new'
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'GGML_NAMESPACE_WHISPER=1'
+        config.build_settings['DEFINES_MODULE'] = 'NO'
+        config.build_settings['USE_HEADERMAP'] = 'NO'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      end
     end
   end
   
-  # Remove ggml.h from public headers if present
+  # 4. Force all ggml/llama headers to be private
   installer.pods_project.targets.each do |target|
-    if target.name == 'whisper_flutter_new' || target.name == 'fllama'
-      target.headers_build_phase.files.each do |file|
-        if file.file_ref.path.include?('ggml.h')
-          file.settings = { 'ATTRIBUTES' => ['Private'] }
+    if ['whisper_flutter_new', 'fllama'].include?(target.name)
+      if target.respond_to?(:headers_build_phase)
+        target.headers_build_phase.files.each do |file|
+          if file.file_ref && file.file_ref.path
+            if file.file_ref.path.include?('ggml') || file.file_ref.path.include?('llama')
+              file.settings = { 'ATTRIBUTES' => ['Private'] }
+            end
+          end
         end
       end
     end
