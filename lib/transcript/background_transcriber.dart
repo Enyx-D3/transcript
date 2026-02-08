@@ -24,7 +24,7 @@ class BackgroundTranscriber {
   static const _kExistingId = 'bg_existing_id';
   static const _kResultId = 'bg_result_id';
   static const _kBusyTranscribing = 'busy_transcribing';
-
+  static const _kSourceType = 'bg_source_type';
   // ✅ target speakers stored int where 0 == null/auto
   static const _kTargetSpeakers = 'bg_target_speakers';
 
@@ -59,7 +59,6 @@ class BackgroundTranscriber {
     bool translateToEnglish = false,
     String? titleHint,
     int? existingTranscriptId,
-
     // ✅ diarization
     int? targetSpeakers,
 
@@ -136,6 +135,7 @@ class _TranscribeTaskHandler extends TaskHandler {
       key: BackgroundTranscriber._kExistingId,
     );
 
+
     // ✅ read stored int (0 => null)
     final tsRaw = await FlutterForegroundTask.getData(
       key: BackgroundTranscriber._kTargetSpeakers,
@@ -147,8 +147,9 @@ class _TranscribeTaskHandler extends TaskHandler {
     final langRaw = await FlutterForegroundTask.getData(
       key: BackgroundTranscriber._kLang,
     );
-    final String lang =
-        (langRaw is String && langRaw.trim().isNotEmpty) ? langRaw.trim() : 'auto';
+    final String lang = (langRaw is String && langRaw.trim().isNotEmpty)
+        ? langRaw.trim()
+        : 'auto';
 
     if (wavPath == null || wavPath.isEmpty) {
       await FlutterForegroundTask.updateService(

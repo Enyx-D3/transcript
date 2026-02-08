@@ -380,7 +380,7 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color? accent;
-    if (tone == _PillTone.good) accent = Colors.green;
+    if (tone == _PillTone.good) accent = Color(0xFFff8143);
     if (tone == _PillTone.bad) accent = Colors.redAccent;
 
     return Container(

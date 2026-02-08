@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:transcript/transcript/import_audio_sheet.dart';
+import 'package:transcript/transcript/import_video_sheet.dart';
 
 import '../onboarding/enroll_flow.dart';
 import '../debug/speaker_memory_page.dart';
@@ -653,10 +655,11 @@ class _TimelineTabState extends State<TimelineTab> {
 
                 _QuickActionGrid(
                   children: [
+                     
                     _QuickTile(
-                      icon: Icons.video_library_outlined,
-                      label: 'YouTube Transcript',
-                      onTap: () => _openPage(const TranscriptYoutubePage()),
+                      icon: Icons.people,
+                      label: 'Enroll Voice',
+                      onTap: () => _openPage(const EnrollmentFlowPage()),
                     ),
                     _QuickTile(
                       icon: Icons.person_search,
@@ -664,19 +667,20 @@ class _TimelineTabState extends State<TimelineTab> {
                       onTap: () => _openPage(const SpeakerMemoryPage()),
                     ),
                     _QuickTile(
-                      icon: Icons.people,
-                      label: 'Enroll Voice',
-                      onTap: () => _openPage(const EnrollmentFlowPage()),
+                      icon: Icons.video_library_outlined,
+                      label: 'YouTube Transcript',
+                      onTap: () => _openPage(const TranscriptYoutubePage()),
                     ),
+                    
                     _QuickTile(
                       icon: Icons.audio_file,
                       label: 'Audio File',
-                      onTap: () => _comingSoon(),
+                      onTap: () => ImportAudioSheet.show(context),
                     ),
                     _QuickTile(
                       icon: Icons.video_file,
                       label: 'Video File',
-                      onTap: () => _comingSoon(),
+                      onTap: () => ImportVideoSheet.show(context),
                     ),
                     _QuickTile(
                       icon: Icons.call,
@@ -755,18 +759,42 @@ class _TimelineTabState extends State<TimelineTab> {
     return ListView.separated(
       itemCount: _items.length,
       padding: EdgeInsets.zero,
-      physics: const BouncingScrollPhysics(), // ✅ scroll inside only
+      physics: const BouncingScrollPhysics(),
       separatorBuilder: (_, __) => const Divider(height: 1, thickness: 0.6),
       itemBuilder: (ctx, i) {
         final t = _items[i];
+
         final title = (t.title?.trim().isNotEmpty ?? false)
             ? t.title!.trim()
             : 'Untitled transcript';
 
-        final isYoutube = (t.sourceType) == 1;
+        final st =
+            t.sourceType; // 0=record, 1=youtube, 2=audio import, 3=video import
 
-        final sub = isYoutube
-            ? '${_fmtDate(t.createdAt)} • YouTube'
+        final isYoutube = st == 1;
+        final isAudio = st == 2;
+        final isVideo = st == 3;
+
+        final IconData leadingIcon = isYoutube
+            ? Icons.subtitles
+            : (isAudio
+                  ? Icons.audio_file
+                  : (isVideo ? Icons.video_file : Icons.article_outlined));
+
+        final Widget? tag = isYoutube
+            ? const SourceTag(type: 'youtube', label: 'YOUTUBE')
+            : (isAudio
+                  ? const SourceTag(type: 'audio', label: 'AUDIO')
+                  : (isVideo
+                        ? const SourceTag(type: 'video', label: 'VIDEO')
+                        : null));
+
+        final String sourceLabel = isYoutube
+            ? 'YouTube'
+            : (isAudio ? 'Audio file' : (isVideo ? 'Video file' : ''));
+        // '${_fmtDate(t.createdAt)} • $sourceLabel'
+        final sub = (isYoutube || isAudio || isVideo)
+            ? '${_fmtDate(t.createdAt)}'
             : '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
 
         return ListTile(
@@ -774,9 +802,7 @@ class _TimelineTabState extends State<TimelineTab> {
             horizontal: 14,
             vertical: 4,
           ),
-          leading: _LeadingPillIcon(
-            icon: isYoutube ? Icons.subtitles : Icons.article_outlined,
-          ),
+          leading: _LeadingPillIcon(icon: leadingIcon),
           title: Row(
             children: [
               Expanded(
@@ -787,10 +813,7 @@ class _TimelineTabState extends State<TimelineTab> {
                   style: const TextStyle(color: Colors.white),
                 ),
               ),
-              if (isYoutube) ...[
-                const SizedBox(width: 8),
-                const _SourceTagYoutube(),
-              ],
+              if (tag != null) ...[const SizedBox(width: 8), tag],
             ],
           ),
           subtitle: Text(sub, style: const TextStyle(color: Colors.white)),
@@ -801,7 +824,7 @@ class _TimelineTabState extends State<TimelineTab> {
                 tooltip: t.isFavourite ? 'Unfavourite' : 'Favourite',
                 icon: Icon(
                   t.isFavourite ? Icons.favorite : Icons.favorite_border,
-                  color: t.isFavourite ? Colors.red : null,
+                  color: t.isFavourite ? const Color(0xFFff8143) : null,
                 ),
                 onPressed: () => _toggleFavourite(t),
               ),
@@ -905,6 +928,80 @@ class _SourceTagYoutube extends StatelessWidget {
           letterSpacing: 0.3,
           color: Colors.red,
           fontSize: 6,
+        ),
+      ),
+    );
+  }
+}
+
+class SourceTag extends StatelessWidget {
+  const SourceTag({
+    super.key,
+    required this.type,
+    this.label,
+    this.color,
+    this.fontSize = 6,
+    this.horizontalPadding = 10,
+    this.verticalPadding = 6,
+  });
+
+  /// e.g. "youtube", "call", "audio", "video"
+  final String type;
+
+  /// Optional custom label (otherwise uses type.toUpperCase()).
+  final String? label;
+
+  /// Optional base color (otherwise auto-picked from type).
+  final Color? color;
+
+  final double fontSize;
+  final double horizontalPadding;
+  final double verticalPadding;
+
+  Color _defaultColorForType(String t) {
+    switch (t.toLowerCase()) {
+      case 'youtube':
+        return Colors.red;
+      case 'call':
+        return Colors.green;
+      case 'audio':
+        return Colors.blue;
+      case 'video':
+        return Colors.purple;
+      case 'file':
+        return Colors.orange;
+      default:
+        return Colors.white; // fallback
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final base = color ?? _defaultColorForType(type);
+    final border = base.withOpacity(isDark ? 0.45 : 0.35);
+    final bg = base.withOpacity(isDark ? 0.16 : 0.10);
+
+    final text = (label ?? type).toUpperCase();
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: verticalPadding,
+      ),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.3,
+          color: base,
+          fontSize: fontSize,
         ),
       ),
     );
@@ -1063,7 +1160,7 @@ class _QuickTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: border),
+          border: Border.all(color: Color(0xFFff8143).withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [
@@ -1171,6 +1268,64 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SourceTagAudio extends StatelessWidget {
+  const _SourceTagAudio();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = Colors.blue.withOpacity(isDark ? 0.45 : 0.35);
+    final bg = Colors.blue.withOpacity(isDark ? 0.16 : 0.10);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: const Text(
+        'AUDIO',
+        style: TextStyle(
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.3,
+          color: Colors.blue,
+          fontSize: 9,
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceTagVideo extends StatelessWidget {
+  const _SourceTagVideo();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border = Colors.purple.withOpacity(isDark ? 0.45 : 0.35);
+    final bg = Colors.purple.withOpacity(isDark ? 0.16 : 0.10);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: const Text(
+        'VIDEO',
+        style: TextStyle(
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.3,
+          color: Colors.purple,
+          fontSize: 9,
+        ),
       ),
     );
   }

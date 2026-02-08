@@ -109,7 +109,9 @@ class _TrashPageState extends State<TrashPage> {
         }
 
         final chatQ = chatsBox
-            .query(TranscriptChatMessageEntity_.transcriptId.equals(transcriptId))
+            .query(
+              TranscriptChatMessageEntity_.transcriptId.equals(transcriptId),
+            )
             .build();
         try {
           final ids = chatQ.findIds();
@@ -140,7 +142,8 @@ class _TrashPageState extends State<TrashPage> {
     final ok = await showConfirmDeleteDialog(
       context,
       title: 'Delete permanently?',
-      message: 'This will permanently delete the transcript and its related data.',
+      message:
+          'This will permanently delete the transcript and its related data.',
     );
     if (!ok) return;
 
@@ -249,7 +252,10 @@ class _TrashPageState extends State<TrashPage> {
                   children: const [
                     Text(
                       'Trash is empty',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
                     ),
                     SizedBox(height: 6),
                     Text(
@@ -280,7 +286,9 @@ class _TrashPageState extends State<TrashPage> {
                     ? t.title!.trim()
                     : 'Untitled transcript';
 
-                final isYoutube = (t.sourceType ?? 0) == 1;
+                final isYoutube = (t.sourceType) == 1;
+                final isAudio = (t.sourceType) == 2;
+                final isVideo = (t.sourceType) == 3;
                 final when = _fmtDeleted(t.deletedAt);
 
                 return Padding(
@@ -288,7 +296,9 @@ class _TrashPageState extends State<TrashPage> {
                   child: _TrashCard(
                     title: title,
                     subtitle: 'Deleted: $when',
-                    badge: isYoutube ? 'YouTube' : 'Voice',
+                    badge: isYoutube
+                        ? 'YouTube'
+                        : (isAudio ? 'Audio' : (isVideo ? 'Video' : 'Voice')),
                     onRestore: () => _restore(t.id),
                     onDeleteNow: () => _deleteNow(t.id),
                     isDark: isDark,

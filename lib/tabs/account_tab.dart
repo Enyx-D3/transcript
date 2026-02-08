@@ -744,7 +744,7 @@ class _AccountTabState extends State<AccountTab> {
                   title: 'Lifetime',
                   subtitle: 'One-time purchase. Keep Pro forever.',
                   priceRight: rightLifetime(),
-                  badge: badgePill('Best offer', Colors.green),
+                  badge: badgePill('Best offer', Color(0xFFff8143)),
                   onTap: () async {
                     Navigator.of(ctx).pop();
                     await _startLifetimeFlow();
@@ -1039,7 +1039,7 @@ class _AccountTabState extends State<AccountTab> {
                       'Trial ends',
                       _fmtDateLong(_profile!.trialExpiresAt),
                       trailing: _trialActive
-                          ? _pill('Active', color: Colors.green)
+                          ? _pill('Active', color: Color(0xFFff8143))
                           : _pill('Expired', color: Colors.redAccent),
                     ),
 

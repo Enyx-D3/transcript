@@ -429,7 +429,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                 child: LinearProgressIndicator(
                   minHeight: 6,
                   value: progress,
-                  color: Colors.green,
+                  color: Color(0xFFff8143),
                   backgroundColor: Colors.white,
                 ),
               ),

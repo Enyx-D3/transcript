@@ -244,10 +244,10 @@ class _SettingsPageState extends State<SettingsPage> {
     await sp.setInt(_kPrefMaxRecordingMinutes, v);
     if (!mounted) return;
     setState(() => _maxRecordingMinutes = v);
-    await AppFlushbar.success(
-      context,
-      message: 'Max recording time set to ${_fmtMaxTime(v)}',
-    );
+    // await AppFlushbar.success(
+    //   context,
+    //   message: 'Max recording time set to ${_fmtMaxTime(v)}',
+    // );
   }
 
   Future<void> _setAutoEmailTranscript(bool v) async {
@@ -256,10 +256,10 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     setState(() => _autoEmailTranscript = v);
 
-    await AppFlushbar.success(
-      context,
-      message: v ? 'Auto email enabled.' : 'Auto email disabled.',
-    );
+    // await AppFlushbar.success(
+    //   context,
+    //   message: v ? 'Auto email enabled.' : 'Auto email disabled.',
+    // );
   }
 
   // =========================
@@ -405,12 +405,15 @@ class _SettingsPageState extends State<SettingsPage> {
         items: items,
         onChanged: onChanged,
         decoration: InputDecoration(
+          enabledBorder:  const OutlineInputBorder(
+            borderSide: BorderSide(color:  Color(0xFFff8143), width: 1),
+          ),
           focusedBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color: Colors.white, width: 1),
+            borderSide: BorderSide(color:  Color(0xFFff8143), width: 1),
           ),
 
           isDense: true,
-          border: const OutlineInputBorder(),
+          border: const OutlineInputBorder(borderSide: BorderSide(color:Color(0xFFff8143) )),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 10,
             vertical: 10,
@@ -506,7 +509,7 @@ class _SettingsPageState extends State<SettingsPage> {
               value: value,
               onChanged: onChanged,
               activeColor: Colors.black, // thumb
-              activeTrackColor: Colors.green, // track
+              activeTrackColor: const Color(0xFFff8143), // track
             ),
           ],
         ),
