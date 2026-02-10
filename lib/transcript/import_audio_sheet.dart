@@ -8,8 +8,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:ffmpeg_kit_flutter_new_audio/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_audio/return_code.dart';
+import '../audio_converter_service.dart';
 
 import '../common/app_flushbar.dart';
 import '../objectbox/entities.dart';
@@ -225,25 +224,15 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
     final outPath = '${dir.path}/import_$ts.wav';
 
-    String q(String p) => '"${p.replaceAll('"', '\\"')}"';
-
-    // 16kHz mono PCM WAV for Whisper pipeline
-    final cmd =
-        '-y -i ${q(inputPath)} -vn -ac 1 -ar 16000 -c:a pcm_s16le ${q(outPath)}';
-
-    final session = await FFmpegKit.execute(cmd);
-    final rc = await session.getReturnCode();
-
-    if (!ReturnCode.isSuccess(rc)) {
-      final out = await session.getOutput();
-      throw Exception('FFmpeg convert failed (rc=$rc)\n$out');
+    // Use native audio converter (MediaCodec on Android, AVFoundation on iOS)
+    try {
+      return await AudioConverterService.convertToWav16kMono(
+        inputPath,
+        outputPath: outPath,
+      );
+    } on AudioConversionException catch (e) {
+      throw Exception('Audio conversion failed: ${e.message}');
     }
-
-    if (!File(outPath).existsSync()) {
-      throw Exception('Converted WAV missing: $outPath');
-    }
-
-    return outPath;
   }
 
   Future<void> _start() async {

@@ -63,7 +63,7 @@ Future<void> main() async {
 
   await Supabase.initialize(
     url: 'https://ncpxlqykawquordwnxmw.supabase.co',
-    anonKey: '...',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcHhscXlrYXdxdW9yZHdueG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNzQwMjAsImV4cCI6MjA3OTc1MDAyMH0.eDYqntQBhp_AxfhFw1PdR6gIFp50zDKzhqYKUzSs0EU',
   );
 
   await ObjectBox.init();

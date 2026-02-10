@@ -11,6 +11,11 @@
 -keep class * implements io.flutter.embedding.engine.plugins.activity.ActivityAware { *; }
 
 ############################################################
+# App-specific native code
+############################################################
+-keep class com.enyxd.transcript.AudioConverter { *; }
+
+############################################################
 # Android components instantiated by name (CRITICAL for bg)
 ############################################################
 -keep class * extends androidx.work.ListenableWorker { *; }
@@ -48,14 +53,6 @@
 ############################################################
 -dontwarn com.android.billingclient.**
 -keep class com.android.billingclient.** { *; }
-
-############################################################
-# FFmpegKit
-############################################################
--keep class com.arthenica.ffmpegkit.** { *; }
--dontwarn com.arthenica.ffmpegkit.**
--keep class com.arthenica.smartexception.** { *; }
--dontwarn com.arthenica.smartexception.**
 
 ############################################################
 # ObjectBox

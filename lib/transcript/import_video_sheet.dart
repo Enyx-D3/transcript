@@ -7,8 +7,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:ffmpeg_kit_flutter_new_audio/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_audio/return_code.dart';
+import '../audio_converter_service.dart';
 
 import '../common/app_flushbar.dart';
 import '../objectbox/entities.dart';
@@ -216,29 +215,16 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
     final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
     final outPath = '${dir.path}/import_video_$ts.wav';
 
-    String q(String p) => '"${p.replaceAll('"', '\\"')}"';
-
-    // Extract audio and normalize for Whisper:
-    // -vn: ignore video
-    // -ac 1: mono
-    // -ar 16000: 16 kHz
-    // -c:a pcm_s16le: PCM 16-bit WAV
-    final cmd =
-        '-y -i ${q(inputVideoPath)} -vn -ac 1 -ar 16000 -c:a pcm_s16le ${q(outPath)}';
-
-    final session = await FFmpegKit.execute(cmd);
-    final rc = await session.getReturnCode();
-
-    if (!ReturnCode.isSuccess(rc)) {
-      final out = await session.getOutput();
-      throw Exception('FFmpeg extract failed (rc=$rc)\n$out');
+    // Use native audio converter (MediaCodec on Android, AVFoundation on iOS)
+    // This extracts audio from video and converts to 16kHz mono WAV
+    try {
+      return await AudioConverterService.convertToWav16kMono(
+        inputVideoPath,
+        outputPath: outPath,
+      );
+    } on AudioConversionException catch (e) {
+      throw Exception('Audio extraction failed: ${e.message}');
     }
-
-    if (!File(outPath).existsSync()) {
-      throw Exception('Extracted WAV missing: $outPath');
-    }
-
-    return outPath;
   }
 
   Future<void> _start() async {
