@@ -372,7 +372,7 @@ class _LoginPageState extends State<LoginPage> {
                                             recognizer: TapGestureRecognizer()
                                               ..onTap = () async {
                                                 final uri = Uri.parse(
-                                                  'https://enyx.app/privacy/enyx-transcriptor',
+                                                  'https://enyx.app/privacy/meeting-transcript-unlimited',
                                                 );
 
                                                 final ok = await launchUrl(

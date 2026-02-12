@@ -194,10 +194,10 @@ class _RecordSheetState extends State<RecordSheet> {
     await _hydrateFromRecordingService();
   }
 
-void _setDiarizationEnabledLocal(bool v) {
-  if (!mounted) return;
-  setState(() => _diarizationEnabled = v);
-}
+  void _setDiarizationEnabledLocal(bool v) {
+    if (!mounted) return;
+    setState(() => _diarizationEnabled = v);
+  }
 
   Future<void> _hydrateFromRecordingService() async {
     final running = await FlutterForegroundTask.isRunningService;
@@ -732,28 +732,45 @@ void _setDiarizationEnabledLocal(bool v) {
                                     ),
                                     SizedBox(
                                       width: 120,
-                                      child: TextField(
-                                        controller: _targetSpeakersCtrl,
-                                        enabled: !_recording && !_starting,
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: [
-                                          FilteringTextInputFormatter
-                                              .digitsOnly,
-                                        ],
-                                        decoration: const InputDecoration(
-                                          hintText: '0',
-                                          isDense: true,
-                                          border: OutlineInputBorder(),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderSide: BorderSide(
-                                              color: Color(0xFFff8143),
-                                              width: 1,
+                                      child: Theme(
+                                        data: Theme.of(context).copyWith(
+                                          textSelectionTheme:
+                                              const TextSelectionThemeData(
+                                                selectionHandleColor: Colors
+                                                    .white, // ✅ bubble color
+                                                cursorColor: Colors.white,
+                                                selectionColor: Color.fromARGB(
+                                                  128,
+                                                  255,
+                                                  130,
+                                                  67,
+                                                ),
+                                              ),
+                                        ),
+                                        child: TextField(
+                                          cursorColor: Colors.white,
+                                          controller: _targetSpeakersCtrl,
+                                          enabled: !_recording && !_starting,
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter
+                                                .digitsOnly,
+                                          ],
+                                          decoration: const InputDecoration(
+                                            hintText: '0',
+                                            isDense: true,
+                                            border: OutlineInputBorder(),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: Color(0xFFff8143),
+                                                width: 1,
+                                              ),
                                             ),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderSide: BorderSide(
-                                              color: Color(0xFFff8143),
-                                              width: 1,
+                                            focusedBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: Color(0xFFff8143),
+                                                width: 1,
+                                              ),
                                             ),
                                           ),
                                         ),
