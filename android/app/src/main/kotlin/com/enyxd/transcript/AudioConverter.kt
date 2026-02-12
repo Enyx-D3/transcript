@@ -5,15 +5,16 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.util.Log
 import java.io.File
-import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
  * Native Android audio converter using MediaCodec.
  * Converts various audio formats to 16kHz mono PCM WAV for Whisper.
+ * Uses streaming to handle long audio files without running out of memory.
  */
 class AudioConverter {
     
@@ -23,10 +24,14 @@ class AudioConverter {
         private const val TARGET_CHANNELS = 1
         private const val BITS_PER_SAMPLE = 16
         private const val TIMEOUT_US = 10000L
+        
+        // Throttling: yield every N output buffers to reduce CPU heat
+        private const val YIELD_EVERY_BUFFERS = 50
+        private const val YIELD_DURATION_MS = 5L
     }
 
     /**
-     * Convert audio/video file to 16kHz mono WAV.
+     * Convert audio/video file to 16kHz mono WAV using streaming.
      * @param inputPath Path to input audio/video file
      * @param outputPath Path for output WAV file
      * @return true if successful
@@ -36,7 +41,7 @@ class AudioConverter {
         
         val extractor = MediaExtractor()
         var decoder: MediaCodec? = null
-        var outputStream: FileOutputStream? = null
+        var outputFile: RandomAccessFile? = null
         
         try {
             extractor.setDataSource(inputPath)
@@ -62,13 +67,19 @@ class AudioConverter {
             decoder.configure(format, null, null, 0)
             decoder.start()
             
-            // Collect all decoded PCM data
-            val pcmData = mutableListOf<ByteArray>()
-            var totalPcmBytes = 0
+            // Open output file and write placeholder header
+            outputFile = RandomAccessFile(outputPath, "rw")
+            outputFile.setLength(0)
+            writeWavHeaderPlaceholder(outputFile)
             
             val bufferInfo = MediaCodec.BufferInfo()
             var inputDone = false
             var outputDone = false
+            var totalOutputBytes = 0L
+            var bufferCount = 0
+            
+            // Resampler state for streaming
+            val resampler = StreamingResampler(inputSampleRate, TARGET_SAMPLE_RATE, inputChannels)
             
             while (!outputDone) {
                 // Feed input
@@ -94,7 +105,7 @@ class AudioConverter {
                     }
                 }
                 
-                // Get output
+                // Get output and process in streaming fashion
                 val outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
                 if (outputBufferIndex >= 0) {
                     if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
@@ -105,36 +116,40 @@ class AudioConverter {
                         val outputBuffer = decoder.getOutputBuffer(outputBufferIndex)!!
                         val chunk = ByteArray(bufferInfo.size)
                         outputBuffer.get(chunk)
-                        pcmData.add(chunk)
-                        totalPcmBytes += chunk.size
+                        
+                        // Process chunk through resampler and write directly to file
+                        val processed = resampler.process(chunk)
+                        if (processed.isNotEmpty()) {
+                            outputFile.write(processed)
+                            totalOutputBytes += processed.size
+                        }
+                        
+                        // Throttle: yield periodically to prevent CPU overheating
+                        bufferCount++
+                        if (bufferCount % YIELD_EVERY_BUFFERS == 0) {
+                            Thread.sleep(YIELD_DURATION_MS)
+                        }
                     }
                     
                     decoder.releaseOutputBuffer(outputBufferIndex, false)
                 }
             }
             
+            // Flush any remaining samples from resampler
+            val remaining = resampler.flush()
+            if (remaining.isNotEmpty()) {
+                outputFile.write(remaining)
+                totalOutputBytes += remaining.size
+            }
+            
             decoder.stop()
             decoder.release()
             decoder = null
             
-            Log.d(TAG, "Decoded $totalPcmBytes bytes of PCM")
-            
-            // Combine all chunks
-            val allPcm = ByteArray(totalPcmBytes)
-            var offset = 0
-            for (chunk in pcmData) {
-                System.arraycopy(chunk, 0, allPcm, offset, chunk.size)
-                offset += chunk.size
-            }
-            
-            // Convert to 16kHz mono
-            val converted = resampleAndMix(allPcm, inputSampleRate, inputChannels)
-            
-            // Write WAV file
-            outputStream = FileOutputStream(outputPath)
-            writeWavFile(outputStream, converted, TARGET_SAMPLE_RATE, TARGET_CHANNELS)
-            outputStream.close()
-            outputStream = null
+            // Update WAV header with actual size
+            updateWavHeader(outputFile, totalOutputBytes)
+            outputFile.close()
+            outputFile = null
             
             Log.d(TAG, "Conversion complete: ${File(outputPath).length()} bytes")
             return true
@@ -144,7 +159,7 @@ class AudioConverter {
             return false
         } finally {
             try { decoder?.release() } catch (_: Exception) {}
-            try { outputStream?.close() } catch (_: Exception) {}
+            try { outputFile?.close() } catch (_: Exception) {}
             try { extractor.release() } catch (_: Exception) {}
         }
     }
@@ -160,109 +175,149 @@ class AudioConverter {
         return -1
     }
     
-    /**
-     * Resample to 16kHz and mix to mono if needed.
-     * Input is assumed to be 16-bit PCM (little-endian).
-     */
-    private fun resampleAndMix(
-        input: ByteArray, 
-        inputSampleRate: Int, 
-        inputChannels: Int
-    ): ByteArray {
-        // Convert bytes to shorts
-        val shortBuffer = ByteBuffer.wrap(input).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val inputSamples = ShortArray(shortBuffer.remaining())
-        shortBuffer.get(inputSamples)
+    private fun writeWavHeaderPlaceholder(file: RandomAccessFile) {
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
         
-        // Mix to mono if stereo
-        val monoSamples = if (inputChannels > 1) {
-            val numFrames = inputSamples.size / inputChannels
-            ShortArray(numFrames) { frame ->
-                var sum = 0
-                for (ch in 0 until inputChannels) {
-                    sum += inputSamples[frame * inputChannels + ch]
-                }
-                (sum / inputChannels).toShort()
-            }
-        } else {
-            inputSamples
-        }
-        
-        // Resample if needed
-        val resampled = if (inputSampleRate != TARGET_SAMPLE_RATE) {
-            resample(monoSamples, inputSampleRate, TARGET_SAMPLE_RATE)
-        } else {
-            monoSamples
-        }
-        
-        // Convert back to bytes
-        val outputBytes = ByteArray(resampled.size * 2)
-        val outBuffer = ByteBuffer.wrap(outputBytes).order(ByteOrder.LITTLE_ENDIAN)
-        for (sample in resampled) {
-            outBuffer.putShort(sample)
-        }
-        
-        return outputBytes
-    }
-    
-    /**
-     * Simple linear interpolation resampling.
-     */
-    private fun resample(input: ShortArray, fromRate: Int, toRate: Int): ShortArray {
-        if (fromRate == toRate) return input
-        
-        val ratio = fromRate.toDouble() / toRate.toDouble()
-        val outputLength = (input.size / ratio).toInt()
-        val output = ShortArray(outputLength)
-        
-        for (i in 0 until outputLength) {
-            val srcPos = i * ratio
-            val srcIndex = srcPos.toInt()
-            val frac = srcPos - srcIndex
-            
-            val sample1 = input[srcIndex]
-            val sample2 = if (srcIndex + 1 < input.size) input[srcIndex + 1] else sample1
-            
-            output[i] = (sample1 + frac * (sample2 - sample1)).roundToInt().coerceIn(-32768, 32767).toShort()
-        }
-        
-        return output
-    }
-    
-    /**
-     * Write WAV file header and data.
-     */
-    private fun writeWavFile(
-        output: FileOutputStream, 
-        pcmData: ByteArray, 
-        sampleRate: Int, 
-        channels: Int
-    ) {
-        val byteRate = sampleRate * channels * BITS_PER_SAMPLE / 8
-        val blockAlign = channels * BITS_PER_SAMPLE / 8
-        
-        val buffer = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
-        
-        // RIFF header
-        buffer.put("RIFF".toByteArray())
-        buffer.putInt(36 + pcmData.size)  // file size - 8
-        buffer.put("WAVE".toByteArray())
+        // RIFF header with placeholder sizes
+        header.put("RIFF".toByteArray())
+        header.putInt(0)  // placeholder for file size - 8
+        header.put("WAVE".toByteArray())
         
         // fmt chunk
-        buffer.put("fmt ".toByteArray())
-        buffer.putInt(16)  // chunk size
-        buffer.putShort(1)  // PCM format
-        buffer.putShort(channels.toShort())
-        buffer.putInt(sampleRate)
-        buffer.putInt(byteRate)
-        buffer.putShort(blockAlign.toShort())
-        buffer.putShort(BITS_PER_SAMPLE.toShort())
+        header.put("fmt ".toByteArray())
+        header.putInt(16)  // chunk size
+        header.putShort(1)  // PCM format
+        header.putShort(TARGET_CHANNELS.toShort())
+        header.putInt(TARGET_SAMPLE_RATE)
+        header.putInt(TARGET_SAMPLE_RATE * TARGET_CHANNELS * BITS_PER_SAMPLE / 8)  // byte rate
+        header.putShort((TARGET_CHANNELS * BITS_PER_SAMPLE / 8).toShort())  // block align
+        header.putShort(BITS_PER_SAMPLE.toShort())
         
         // data chunk
-        buffer.put("data".toByteArray())
-        buffer.putInt(pcmData.size)
+        header.put("data".toByteArray())
+        header.putInt(0)  // placeholder for data size
         
-        output.write(buffer.array())
-        output.write(pcmData)
+        file.write(header.array())
+    }
+    
+    private fun updateWavHeader(file: RandomAccessFile, dataSize: Long) {
+        val dataSizeInt = dataSize.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        
+        // Update RIFF chunk size (file size - 8)
+        file.seek(4)
+        file.writeInt(Integer.reverseBytes(36 + dataSizeInt))
+        
+        // Update data chunk size
+        file.seek(40)
+        file.writeInt(Integer.reverseBytes(dataSizeInt))
+    }
+    
+    /**
+     * Streaming resampler that processes chunks without loading entire file into memory.
+     * Optimized to pre-allocate buffers and avoid dynamic lists.
+     */
+    private class StreamingResampler(
+        private val inputRate: Int,
+        private val outputRate: Int,
+        private val inputChannels: Int
+    ) {
+        private val ratio = inputRate.toDouble() / outputRate.toDouble()
+        private var srcPosition = 0.0
+        private var lastSample: Short = 0
+        
+        // Pre-allocated work buffer for mono conversion (reused each call)
+        private var monoBuffer = ShortArray(0)
+        // Pre-allocated output buffer (reused each call)
+        private var outputBuffer = ByteArray(0)
+        
+        /**
+         * Process a chunk of input PCM data (16-bit little-endian).
+         * Returns resampled mono 16kHz output.
+         */
+        fun process(input: ByteArray): ByteArray {
+            if (input.isEmpty()) return ByteArray(0)
+            
+            // Convert bytes to shorts directly
+            val numShorts = input.size / 2
+            val inputSamples = ShortArray(numShorts)
+            val bb = ByteBuffer.wrap(input).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until numShorts) {
+                inputSamples[i] = bb.short
+            }
+            
+            // Mix to mono in-place if needed
+            val monoSamples = if (inputChannels > 1) {
+                val numFrames = numShorts / inputChannels
+                ensureMonoBuffer(numFrames)
+                for (frame in 0 until numFrames) {
+                    var sum = 0
+                    for (ch in 0 until inputChannels) {
+                        sum += inputSamples[frame * inputChannels + ch]
+                    }
+                    monoBuffer[frame] = (sum / inputChannels).toShort()
+                }
+                monoBuffer.copyOf(numFrames)
+            } else {
+                inputSamples
+            }
+            
+            // Resample
+            return resampleChunk(monoSamples)
+        }
+        
+        fun flush(): ByteArray = ByteArray(0)
+        
+        private fun ensureMonoBuffer(size: Int) {
+            if (monoBuffer.size < size) {
+                monoBuffer = ShortArray(size)
+            }
+        }
+        
+        private fun resampleChunk(input: ShortArray): ByteArray {
+            if (input.isEmpty()) return ByteArray(0)
+            
+            if (inputRate == outputRate) {
+                // No resampling needed
+                val output = ByteArray(input.size * 2)
+                val buffer = ByteBuffer.wrap(output).order(ByteOrder.LITTLE_ENDIAN)
+                for (sample in input) {
+                    buffer.putShort(sample)
+                }
+                return output
+            }
+            
+            // Pre-calculate exact output size for this chunk
+            val maxOutputSamples = ceil((input.size - srcPosition) / ratio).toInt() + 1
+            val outputSamples = ShortArray(maxOutputSamples)
+            var outputIndex = 0
+            
+            while (srcPosition < input.size - 1 && outputIndex < maxOutputSamples) {
+                val srcIndex = srcPosition.toInt()
+                val frac = srcPosition - srcIndex
+                
+                val sample1 = if (srcIndex >= 0 && srcIndex < input.size) input[srcIndex] else lastSample
+                val sample2 = if (srcIndex + 1 < input.size) input[srcIndex + 1] else sample1
+                
+                val interpolated = (sample1 + frac * (sample2 - sample1)).roundToInt()
+                    .coerceIn(-32768, 32767).toShort()
+                outputSamples[outputIndex++] = interpolated
+                
+                srcPosition += ratio
+            }
+            
+            // Adjust position for next chunk
+            srcPosition -= input.size
+            if (input.isNotEmpty()) {
+                lastSample = input.last()
+            }
+            
+            // Convert to bytes - only the samples we actually produced
+            val output = ByteArray(outputIndex * 2)
+            val buffer = ByteBuffer.wrap(output).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until outputIndex) {
+                buffer.putShort(outputSamples[i])
+            }
+            return output
+        }
     }
 }

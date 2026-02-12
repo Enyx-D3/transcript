@@ -138,6 +138,7 @@ Future<void> writePcm16MonoWav(String path,
 }
 
 /// Trim a 16 kHz mono PCM16 WAV to [startSec, endSec).
+/// Uses RandomAccessFile to avoid loading the entire file into memory.
 Future<void> trimWav16kMonoPcm({
   required String inputPath,
   required double startSec,
@@ -148,8 +149,6 @@ Future<void> trimWav16kMonoPcm({
   if (info.channels != 1 || info.bitsPerSample != 16) {
     throw UnsupportedError('Expected PCM16 mono WAV');
   }
-  final inFile = File(inputPath);
-  final bytes = await inFile.readAsBytes();
 
   final bytesPerSample = info.bitsPerSample ~/ 8;
   final frameSize = info.channels * bytesPerSample;
@@ -167,12 +166,18 @@ Future<void> trimWav16kMonoPcm({
   final endFrame = (e * info.sampleRate).ceil().clamp(0, totalFrames);
   final frames = (endFrame - startFrame).clamp(0, totalFrames);
   final startByte = info.dataOffset + startFrame * frameSize;
-  final endByte = startByte + frames * frameSize;
+  final bytesToRead = frames * frameSize;
 
-  final slice = bytes.sublist(startByte, endByte);
-  final samples = Int16List.view(Uint8List.fromList(slice).buffer);
-
-  await writePcm16MonoWav(outputPath, sampleRate: info.sampleRate, samples: samples);
+  // Use RandomAccessFile to read only the slice we need
+  final raf = await File(inputPath).open(mode: FileMode.read);
+  try {
+    await raf.setPosition(startByte);
+    final slice = await raf.read(bytesToRead);
+    final samples = Int16List.view(Uint8List.fromList(slice).buffer);
+    await writePcm16MonoWav(outputPath, sampleRate: info.sampleRate, samples: samples);
+  } finally {
+    await raf.close();
+  }
 }
 
 Wave readWaveSimple(String path) {

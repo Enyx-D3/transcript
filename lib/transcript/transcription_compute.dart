@@ -234,7 +234,7 @@ Future<List<_Turn>> diarizeByEmbeddings({
       }
     }
 
-    assigns.add((a: a, b: b, cid: currentCid!));
+    assigns.add((a: a, b: b, cid: currentCid));
     i += hop;
   }
 
@@ -347,7 +347,6 @@ Future<TranscriptionResult> transcribeToResult({
   bool matchWithEnrolledSpeakers = true,
   String lang = 'auto',
   int? targetSpeakers,
-
   // ✅ Future callback so background can await saveData()
   Future<void> Function({
     required String stage,
@@ -437,6 +436,8 @@ Future<TranscriptionResult> transcribeToResult({
 
   if (useIsolatedDiarization) {
     debugPrint('[BG-PIPELINE] Enhanced diarization start...');
+    debugPrint('[BG-PIPELINE] Starting enhanced diarization with speaker matching...');
+    //onProgress?.call(0, 1, 'Analyzing speakers');
 
     try {
       Map<String, List<List<double>>> speakerMemoryData = {};
@@ -567,6 +568,8 @@ Future<TranscriptionResult> transcribeToResult({
 
   debugPrint('[BG-PIPELINE] Transcribing ${turns.length} segments');
   await emit('Transcribing', 0.0, duration);
+  debugPrint('[BG-PIPELINE] Starting transcription of ${turns.length} segments');
+  //onProgress?.call(0, turns.length, 'Transcribing');
 
   final tmpDir = Directory(
     '${Directory.systemTemp.path}/transcript_tmp_${DateTime.now().millisecondsSinceEpoch}',
@@ -577,6 +580,9 @@ Future<TranscriptionResult> transcribeToResult({
 
   for (int i = 0; i < turns.length; i++) {
     final turn = turns[i];
+
+    // Update progress for each segment
+    //onProgress?.call(i + 1, turns.length, 'Transcribing');
 
     if ((turn.endSec - turn.startSec) < 0.1) continue;
 
@@ -614,6 +620,11 @@ Future<TranscriptionResult> transcribeToResult({
       try {
         File(slice).deleteSync();
       } catch (_) {}
+      
+      // Periodic memory relief - yield every 10 segments to allow GC
+      if ((i + 1) % 10 == 0) {
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
     }
   }
 
