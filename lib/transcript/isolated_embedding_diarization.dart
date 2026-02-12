@@ -242,9 +242,11 @@ class _IsolatedTurn {
 Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   DiarizationParams params,
 ) async {
-  final wave = readWaveSimple(params.wavPath);
-  final samples = wave.samples;
+  var wave = readWaveSimple(params.wavPath);
+  var samples = wave.samples;
   final fs = wave.sampleRate;
+  // Release Wave object's reference early (samples var still holds it)
+  wave = Wave(samples: Float32List(0), sampleRate: fs);
 
   initBindings();
   final cfg = SpeakerEmbeddingExtractorConfig(
@@ -447,7 +449,9 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     }
   } finally {
     ext.free();
-    if (kDebugMode) debugPrint('[DIA] extractor freed');
+    // ── Release the ~115 MB samples array – only assigns is needed now ──
+    samples = Float32List(0);
+    if (kDebugMode) debugPrint('[DIA] extractor freed, samples released');
   }
 
   if (assigns.isEmpty) {

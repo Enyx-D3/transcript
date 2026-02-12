@@ -148,30 +148,35 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
 
     await _cleanupTempInput();
 
-    // Video extensions
-    final res = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const [
-        'mp4',
-        'mkv',
-        'mov',
-        'webm',
-        'm4v',
-        '3gp',
-        'avi',
-      ],
-      withReadStream: true,
-      withData: false,
-    );
+    try {
+      // Video extensions
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'mp4',
+          'mkv',
+          'mov',
+          'webm',
+          'm4v',
+          '3gp',
+          'avi',
+        ],
+        withReadStream: true,
+        withData: false,
+      );
 
-    if (res == null || res.files.isEmpty) return;
+      if (res == null || res.files.isEmpty) return;
 
-    final f = res.files.single;
+      final f = res.files.single;
 
-    if (!mounted) return;
-    setState(() => _picked = f);
+      if (!mounted) return;
+      setState(() => _picked = f);
 
-    await AppFlushbar.success(context, message: 'Selected: ${f.name}');
+      await AppFlushbar.success(context, message: 'Selected: ${f.name}');
+    } on PlatformException catch (e) {
+      if (e.code == 'already_active') return;
+      rethrow;
+    }
   }
 
   Future<String> _ensureReadableLocalPath(PlatformFile f) async {

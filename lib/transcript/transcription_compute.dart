@@ -1,6 +1,7 @@
 // lib/transcript/transcription_compute.dart
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -125,9 +126,10 @@ Future<List<_Turn>> diarizeByEmbeddings({
   double minSegmentSec = 0.8,
   int maxSpeakersCap = 8,
 }) async {
-  final wave = readWaveSimple(wavPath);
-  final samples = wave.samples;
+  var wave = readWaveSimple(wavPath);
+  var samples = wave.samples;
   final fs = wave.sampleRate;
+  wave = Wave(samples: Float32List(0), sampleRate: fs);
 
   final win = (windowSec * fs).round().clamp(1, 1 << 30);
   final hop = (hopSec * fs).round().clamp(1, 1 << 30);
@@ -237,6 +239,9 @@ Future<List<_Turn>> diarizeByEmbeddings({
     assigns.add((a: a, b: b, cid: currentCid));
     i += hop;
   }
+
+  // Release audio samples – only assigns is needed from here
+  samples = Float32List(0);
 
   if (assigns.isEmpty) return const [];
 
@@ -473,6 +478,7 @@ Future<TranscriptionResult> transcribeToResult({
         matchThreshold: 0.67,
         speakerMemoryData: speakerMemoryData,
       );
+      speakerMemoryData = {}; // free enrolled embeddings
 
       diarizationTurns = enhancedResult.turns;
       speakerMatches = enhancedResult.speakerMatches;
@@ -575,14 +581,14 @@ Future<TranscriptionResult> transcribeToResult({
     '${Directory.systemTemp.path}/transcript_tmp_${DateTime.now().millisecondsSinceEpoch}',
   )..createSync(recursive: true);
 
+  // Pre-parse WAV info once — avoids re-reading the header for every segment
+  final wavInfo = await parseWavInfo(cleaned);
+
   final out = <LiteTurn>[];
   double processedSec = 0.0;
 
   for (int i = 0; i < turns.length; i++) {
     final turn = turns[i];
-
-    // Update progress for each segment
-    //onProgress?.call(i + 1, turns.length, 'Transcribing');
 
     if ((turn.endSec - turn.startSec) < 0.1) continue;
 
@@ -594,6 +600,7 @@ Future<TranscriptionResult> transcribeToResult({
         startSec: turn.startSec,
         endSec: turn.endSec,
         outputPath: slice,
+        preParsedInfo: wavInfo,
       );
 
       final text = await _whisper.transcribeWav(
@@ -631,6 +638,13 @@ Future<TranscriptionResult> transcribeToResult({
   try {
     if (tmpDir.existsSync()) tmpDir.deleteSync(recursive: true);
   } catch (_) {}
+
+  // Clean up preprocessed temp WAV if different from input
+  if (cleaned != wavPath) {
+    try {
+      File(cleaned).deleteSync();
+    } catch (_) {}
+  }
 
   final nonEmpty = out.where((t) => t.text.trim().isNotEmpty).toList();
   await emit('Finalizing', duration, duration);

@@ -155,29 +155,37 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     // Clear previous selection temp input (if any)
     await _cleanupTempInput();
 
-    final res = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const [
-        'wav',
-        'mp3',
-        'm4a',
-        'aac',
-        'ogg',
-        'flac',
-        'mp4',
-      ],
-      withReadStream: true, // helps with content:// on Android
-      withData: false, // avoid loading big file into memory
-    );
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'wav',
+          'mp3',
+          'm4a',
+          'aac',
+          'ogg',
+          'flac',
+          'mp4',
+        ],
+        withReadStream: true, // helps with content:// on Android
+        withData: false, // avoid loading big file into memory
+      );
 
-    if (res == null || res.files.isEmpty) return;
+      if (res == null || res.files.isEmpty) return;
 
-    final f = res.files.single;
+      final f = res.files.single;
 
-    if (!mounted) return;
-    setState(() => _picked = f);
+      if (!mounted) return;
+      setState(() => _picked = f);
 
-    await AppFlushbar.success(context, message: 'Selected: ${f.name}');
+      await AppFlushbar.success(context, message: 'Selected: ${f.name}');
+    } on PlatformException catch (e) {
+      if (e.code == 'already_active') {
+        // File picker already open – ignore duplicate tap
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<String> _ensureReadableLocalPath(PlatformFile f) async {

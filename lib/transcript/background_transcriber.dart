@@ -187,13 +187,40 @@ class _TranscribeTaskHandler extends TaskHandler {
         notificationText: 'Preparing Transcript',
       );
 
-      int lastNotifiedProgress = -1;
-      
       final TranscriptionResult result = await transcribeToResult(
         wavPath: wavPath,
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
-        lang: lang, // ✅ NEW
+        lang: lang,
+        onProgress: ({
+          required String stage,
+          required double processedSec,
+          required double totalSec,
+        }) async {
+          // Throttle: update at most every 2 seconds of audio progress
+          final pct = (totalSec > 0)
+              ? (processedSec / totalSec * 100).round()
+              : 0;
+
+          await FlutterForegroundTask.saveData(
+            key: BackgroundTranscriber._kProgressProcessedSec,
+            value: processedSec,
+          );
+          await FlutterForegroundTask.saveData(
+            key: BackgroundTranscriber._kProgressTotalSec,
+            value: totalSec,
+          );
+          await FlutterForegroundTask.saveData(
+            key: BackgroundTranscriber._kProgressStage,
+            value: stage,
+          );
+
+          await FlutterForegroundTask.updateService(
+            notificationTitle: '$stage…',
+            notificationText:
+                '${_fmtMmSs(processedSec)} / ${_fmtMmSs(totalSec)}  ($pct%)',
+          );
+        },
       );
 
       FlutterForegroundTask.sendDataToMain({
