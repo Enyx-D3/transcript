@@ -67,7 +67,6 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
   static const String _kBusyTranscribing = 'busy_transcribing';
 
   static const Map<String, String> _langOptions = {
-    'auto': 'Auto',
     'en': 'English',
     'es': 'Spanish',
     'fr': 'French',
@@ -75,8 +74,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
     'pt': 'Portuguese',
     'it': 'Italian',
     'zh': 'Chinese',
-    'bn': 'Bangla',
-    'hi': 'Hindi',
+    'auto': 'Auto',
   };
 
   final TextEditingController _targetSpeakersCtrl = TextEditingController(
@@ -89,7 +87,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
   bool _working = false;
 
   // loaded from prefs
-  String _selectedLang = 'auto';
+  String _selectedLang = 'en';
   bool _diarizationEnabled = true;
 
   @override
@@ -108,8 +106,8 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
   Future<void> _loadPrefs() async {
     try {
       final sp = await SharedPreferences.getInstance();
-      final lang = (sp.getString(_kPrefDefaultLang) ?? 'auto').trim();
-      final safeLang = _langOptions.containsKey(lang) ? lang : 'auto';
+      final lang = (sp.getString(_kPrefDefaultLang) ?? 'en').trim();
+      final safeLang = _langOptions.containsKey(lang) ? lang : 'en';
       final diar = sp.getBool(_kPrefDiarizationEnabled) ?? true;
 
       if (!mounted) return;
@@ -327,7 +325,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
         );
 
         if (!mounted) return;
-        await AppFlushbar.error(context, message: 'Processing Error: $e');
+        await AppFlushbar.error(context, message: 'Processing failed!');
       }
     } catch (e) {
       await FlutterForegroundTask.saveData(
@@ -335,7 +333,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
         value: false,
       );
       if (mounted) {
-        await AppFlushbar.error(context, message: 'Import failed: $e');
+        await AppFlushbar.error(context, message: 'Processing failed!');
       }
     } finally {
       if (mounted) setState(() => _working = false);
@@ -374,17 +372,17 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                   Expanded(
                     child: Column(
                       children: [
-                        Center(
-                          child: Container(
-                            width: 44,
-                            height: 5,
-                            margin: const EdgeInsets.only(bottom: 10),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(99),
-                              color: subtle.withOpacity(0.35),
-                            ),
-                          ),
-                        ),
+                        // Center(
+                        //   child: Container(
+                        //     width: 44,
+                        //     height: 5,
+                        //     margin: const EdgeInsets.only(bottom: 10),
+                        //     decoration: BoxDecoration(
+                        //       borderRadius: BorderRadius.circular(99),
+                        //       color: subtle.withOpacity(0.35),
+                        //     ),
+                        //   ),
+                        // ),
                         Row(
                           children: [
                             Icon(Icons.video_file, color: Colors.white),
@@ -404,9 +402,8 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                 height: 14,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    cs.primary,
-                                  ),
+                                  backgroundColor: Colors.black,
+                                  color: Colors.white,
                                 ),
                               ),
                             ],
@@ -529,6 +526,18 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                   decoration: const InputDecoration(
                                     isDense: true,
                                     border: OutlineInputBorder(),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Color(0xFFff8143),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Color(0xFFff8143),
+                                        width: 1,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -575,17 +584,46 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                 ),
                                 SizedBox(
                                   width: 120,
-                                  child: TextField(
-                                    controller: _targetSpeakersCtrl,
-                                    enabled: !_working,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    decoration: const InputDecoration(
-                                      hintText: '0',
-                                      isDense: true,
-                                      border: OutlineInputBorder(),
+                                  child: Theme(
+                                    data: Theme.of(context).copyWith(
+                                      textSelectionTheme:
+                                          const TextSelectionThemeData(
+                                            selectionHandleColor:
+                                                Colors.white, // ✅ bubble color
+                                            cursorColor: Colors.white,
+                                            selectionColor: Color.fromARGB(
+                                              128,
+                                              255,
+                                              130,
+                                              67,
+                                            ),
+                                          ),
+                                    ),
+                                    child: TextField(
+                                      cursorColor: Colors.white,
+                                      controller: _targetSpeakersCtrl,
+                                      enabled: !_working,
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      decoration: const InputDecoration(
+                                        hintText: '0',
+                                        isDense: true,
+                                        border: OutlineInputBorder(),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Color(0xFFff8143),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Color(0xFFff8143),
+                                            width: 1,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),

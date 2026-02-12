@@ -68,7 +68,6 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
   static const String _kBusyTranscribing = 'busy_transcribing';
 
   static const Map<String, String> _langOptions = {
-    'auto': 'Auto',
     'en': 'English',
     'es': 'Spanish',
     'fr': 'French',
@@ -76,8 +75,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     'pt': 'Portuguese',
     'it': 'Italian',
     'zh': 'Chinese',
-    'bn': 'Bangla',
-    'hi': 'Hindi',
+    'auto': 'Auto',
   };
 
   final TextEditingController _targetSpeakersCtrl = TextEditingController(
@@ -90,7 +88,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
   bool _working = false;
 
   // loaded from prefs
-  String _selectedLang = 'auto';
+  String _selectedLang = 'en';
   bool _diarizationEnabled = true;
 
   @override
@@ -109,8 +107,8 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
   Future<void> _loadPrefs() async {
     try {
       final sp = await SharedPreferences.getInstance();
-      final lang = (sp.getString(_kPrefDefaultLang) ?? 'auto').trim();
-      final safeLang = _langOptions.containsKey(lang) ? lang : 'auto';
+      final lang = (sp.getString(_kPrefDefaultLang) ?? 'en').trim();
+      final safeLang = _langOptions.containsKey(lang) ? lang : 'en';
       final diar = sp.getBool(_kPrefDiarizationEnabled) ?? true;
 
       if (!mounted) return;
@@ -341,7 +339,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
         );
 
         if (!mounted) return;
-        await AppFlushbar.error(context, message: 'Processing Error: $e');
+        await AppFlushbar.error(context, message: 'Processing failed!');
       }
     } catch (e) {
       await FlutterForegroundTask.saveData(
@@ -349,7 +347,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
         value: false,
       );
       if (mounted) {
-        await AppFlushbar.error(context, message: 'Import failed: $e');
+        await AppFlushbar.error(context, message: 'Processing failed!');
       }
     } finally {
       if (mounted) setState(() => _working = false);
@@ -388,23 +386,23 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                   Expanded(
                     child: Column(
                       children: [
-                        Center(
-                          child: Container(
-                            width: 44,
-                            height: 5,
-                            margin: const EdgeInsets.only(bottom: 10),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(99),
-                              color: subtle.withOpacity(0.35),
-                            ),
-                          ),
-                        ),
+                        // Center(
+                        //   child: Container(
+                        //     width: 44,
+                        //     height: 5,
+                        //     margin: const EdgeInsets.only(bottom: 10),
+                        //     decoration: BoxDecoration(
+                        //       borderRadius: BorderRadius.circular(99),
+                        //       color: subtle.withOpacity(0.35),
+                        //     ),
+                        //   ),
+                        // ),
                         Row(
                           children: [
                             Icon(Icons.audio_file, color: Colors.white),
                             const SizedBox(width: 8),
                             Text(
-                              'Audio File Transcribe',
+                              'Audio Transcribe',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
@@ -418,9 +416,8 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                 height: 14,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    cs.primary,
-                                  ),
+                                  backgroundColor: Colors.black,
+                                  color: Colors.white,
                                 ),
                               ),
                             ],
@@ -543,6 +540,18 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                   decoration: const InputDecoration(
                                     isDense: true,
                                     border: OutlineInputBorder(),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Color(0xFFff8143),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Color(0xFFff8143),
+                                        width: 1,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -589,17 +598,46 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                 ),
                                 SizedBox(
                                   width: 120,
-                                  child: TextField(
-                                    controller: _targetSpeakersCtrl,
-                                    enabled: !_working,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    decoration: const InputDecoration(
-                                      hintText: '0',
-                                      isDense: true,
-                                      border: OutlineInputBorder(),
+                                  child: Theme(
+                                    data: Theme.of(context).copyWith(
+                                      textSelectionTheme:
+                                          const TextSelectionThemeData(
+                                            selectionHandleColor:
+                                                Colors.white, // ✅ bubble color
+                                            cursorColor: Colors.white,
+                                            selectionColor: Color.fromARGB(
+                                              128,
+                                              255,
+                                              130,
+                                              67,
+                                            ),
+                                          ),
+                                    ),
+                                    child: TextField(
+                                      cursorColor: Colors.white,
+                                      controller: _targetSpeakersCtrl,
+                                      enabled: !_working,
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      decoration: const InputDecoration(
+                                        hintText: '0',
+                                        isDense: true,
+                                        border: OutlineInputBorder(),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Color(0xFFff8143),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Color(0xFFff8143),
+                                            width: 1,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),

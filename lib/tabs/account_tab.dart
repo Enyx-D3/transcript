@@ -918,6 +918,7 @@ class _AccountTabState extends State<AccountTab> {
     final isDark = theme.brightness == Brightness.dark;
 
     return RefreshIndicator(
+      color: Colors.white,
       onRefresh: () async {
         await _loadProfile(force: true);
         await _prefetchPricing();

@@ -13,7 +13,17 @@ import '../speaker_embedding.dart';
 import '../whisper_service.dart';
 import 'transcription_models.dart';
 import 'isolated_embedding_diarization.dart'
-    show runEmbeddingDiarizationInIsolate, EnhancedDiarizationResult, IsolatedEmbeddingTurn;
+    show
+        runEmbeddingDiarizationInIsolate,
+        EnhancedDiarizationResult,
+        IsolatedEmbeddingTurn;
+
+typedef ProgressCallback =
+    void Function({
+      required String stage,
+      required double processedSec,
+      required double totalSec,
+    });
 
 // ---------------- Internal merged turn structure ----------------
 
@@ -291,7 +301,8 @@ Future<List<_Turn>> diarizeByEmbeddings({
     ..sort((a, b) => talkDuration[b]!.compareTo(talkDuration[a]!));
 
   final finalLabelMap = {
-    for (int i = 0; i < sortedSpeakers.length; i++) sortedSpeakers[i]: 'S${i + 1}',
+    for (int i = 0; i < sortedSpeakers.length; i++)
+      sortedSpeakers[i]: 'S${i + 1}',
   };
 
   final out = relabeled
@@ -336,8 +347,28 @@ Future<TranscriptionResult> transcribeToResult({
   bool matchWithEnrolledSpeakers = true,
   String lang = 'auto',
   int? targetSpeakers,
+
+  // ✅ Future callback so background can await saveData()
+  Future<void> Function({
+    required String stage,
+    required double processedSec,
+    required double totalSec,
+  })? onProgress,
 }) async {
-  // ✅ read from settings (default false/true on fail/missing)
+  Future<void> emit(String stage, double processedSec, double totalSec) async {
+    try {
+      if (onProgress != null) {
+        await onProgress(
+          stage: stage,
+          processedSec: processedSec,
+          totalSec: totalSec,
+        );
+      }
+    } catch (_) {
+      // never let progress reporting break transcription
+    }
+  }
+
   bool translate = false;
   bool diarEnabled = true;
 
@@ -351,20 +382,23 @@ Future<TranscriptionResult> transcribeToResult({
   }
 
   // 0) Preprocess
+  await emit('Preparing', 0.0, 0.0);
+
   final cleaned = await preprocessWav16kMono(wavPath);
   final duration = await readWavDuration(cleaned);
 
+  await emit('Preparing', 0.0, duration);
+
   final modelName = _whisper.currentModel?.name ?? 'whisper';
 
-  // ✅ simple rule:
-  // - translate ON => lang en
-  // - translate OFF => lang from parameter (or auto)
   final normalizedLang = (lang.trim().isEmpty ? 'auto' : lang.trim());
   final resultLang = translate ? 'en' : normalizedLang;
 
-  // ✅ if diarization is OFF, skip diarization step entirely
+  // If diarization OFF => single pass
   if (!diarEnabled) {
-    debugPrint('[BG-PIPELINE] Diarization disabled in settings. Single-pass transcription.');
+    debugPrint('[BG-PIPELINE] Diarization disabled. Single-pass transcription.');
+
+    await emit('Transcribing', 0.0, duration);
 
     final text = await _whisper.transcribeWav(
       wavPath: cleaned,
@@ -374,6 +408,8 @@ Future<TranscriptionResult> transcribeToResult({
       splitOnWord: true,
       lang: resultLang,
     );
+
+    await emit('Finalizing', duration, duration);
 
     final baseTitle = text.trim();
     final title = (titleHint != null && titleHint.trim().isNotEmpty)
@@ -391,14 +427,16 @@ Future<TranscriptionResult> transcribeToResult({
     );
   }
 
-  // 1) Prepare diarization models
+  // 1) Diarization
+  await emit('Diarizing', 0.0, duration);
+
   final mp = await ensureDiarizationModels();
 
   List<IsolatedEmbeddingTurn> diarizationTurns = [];
   Map<String, String> speakerMatches = {};
 
   if (useIsolatedDiarization) {
-    debugPrint('[BG-PIPELINE] Starting enhanced diarization with speaker matching...');
+    debugPrint('[BG-PIPELINE] Enhanced diarization start...');
 
     try {
       Map<String, List<List<double>>> speakerMemoryData = {};
@@ -406,15 +444,12 @@ Future<TranscriptionResult> transcribeToResult({
         try {
           final memory = await SpeakerMemory.instance();
           final allSpeakers = memory.dumpAll();
-
           allSpeakers.forEach((name, embeddings) {
-            final serializedEmbeddings = embeddings.map((emb) => emb.toList()).toList();
-            speakerMemoryData[name] = serializedEmbeddings;
+            speakerMemoryData[name] =
+                embeddings.map((emb) => emb.toList()).toList();
           });
-
-          debugPrint('[BG-PIPELINE] Loaded speaker memory: ${speakerMemoryData.length} speakers');
         } catch (e) {
-          debugPrint('[BG-PIPELINE] Failed to load speaker memory: $e');
+          debugPrint('[BG-PIPELINE] Speaker memory load failed: $e');
         }
       }
 
@@ -440,13 +475,9 @@ Future<TranscriptionResult> transcribeToResult({
 
       diarizationTurns = enhancedResult.turns;
       speakerMatches = enhancedResult.speakerMatches;
-
-      debugPrint(
-        '[BG-PIPELINE] Enhanced diarization done. segs=${diarizationTurns.length}, matches=${speakerMatches.length}',
-      );
-    } catch (e, stackTrace) {
+    } catch (e, st) {
       debugPrint('[BG-PIPELINE] Enhanced diarization failed: $e');
-      debugPrint('[BG-PIPELINE] Stack trace: $stackTrace');
+      debugPrint('$st');
 
       final emb = await SpeakerEmbedder.instance(mp.embOnnx);
       final merged = await diarizeByEmbeddings(
@@ -465,12 +496,14 @@ Future<TranscriptionResult> transcribeToResult({
       );
 
       diarizationTurns = merged
-          .map((t) => IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b))
+          .map((t) =>
+              IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b))
           .toList();
     }
   } else {
     final emb = await SpeakerEmbedder.instance(mp.embOnnx);
     debugPrint('[BG-PIPELINE] In-thread diarization start...');
+
     final merged = await diarizeByEmbeddings(
       wavPath: cleaned,
       durationSec: duration,
@@ -487,20 +520,23 @@ Future<TranscriptionResult> transcribeToResult({
     );
 
     diarizationTurns = merged
-        .map((t) => IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b))
+        .map((t) =>
+            IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b))
         .toList();
   }
 
   final turns = diarizationTurns.map((t) {
-    final speakerName =
-        matchWithEnrolledSpeakers ? (speakerMatches[t.speaker] ?? t.speaker) : t.speaker;
-
+    final speakerName = matchWithEnrolledSpeakers
+        ? (speakerMatches[t.speaker] ?? t.speaker)
+        : t.speaker;
     return LiteTurn(speakerName, t.startSec, t.endSec, '');
   }).toList();
 
-  // Fallback: diarization returned nothing
+  // If diarization produced nothing => single pass
   if (turns.isEmpty) {
-    debugPrint('[BG-PIPELINE] No diarization segments found, using single speaker');
+    debugPrint('[BG-PIPELINE] No diarization segments. Single speaker fallback.');
+
+    await emit('Transcribing', 0.0, duration);
 
     final text = await _whisper.transcribeWav(
       wavPath: cleaned,
@@ -510,6 +546,8 @@ Future<TranscriptionResult> transcribeToResult({
       splitOnWord: true,
       lang: resultLang,
     );
+
+    await emit('Finalizing', duration, duration);
 
     final baseTitle = text.trim();
     final title = (titleHint != null && titleHint.trim().isNotEmpty)
@@ -527,27 +565,22 @@ Future<TranscriptionResult> transcribeToResult({
     );
   }
 
-  debugPrint('[BG-PIPELINE] Starting transcription of ${turns.length} segments');
+  debugPrint('[BG-PIPELINE] Transcribing ${turns.length} segments');
+  await emit('Transcribing', 0.0, duration);
 
   final tmpDir = Directory(
     '${Directory.systemTemp.path}/transcript_tmp_${DateTime.now().millisecondsSinceEpoch}',
   )..createSync(recursive: true);
 
   final out = <LiteTurn>[];
+  double processedSec = 0.0;
 
   for (int i = 0; i < turns.length; i++) {
     final turn = turns[i];
 
-    if ((turn.endSec - turn.startSec) < 0.1) {
-      debugPrint('[BG-PIPELINE] Skipping very short segment: ${turn.endSec - turn.startSec}s');
-      continue;
-    }
+    if ((turn.endSec - turn.startSec) < 0.1) continue;
 
     final slice = '${tmpDir.path}/slice_$i.wav';
-
-    debugPrint(
-      '[BG-PIPELINE] Processing segment $i: ${turn.speaker} (${turn.startSec}s - ${turn.endSec}s)',
-    );
 
     try {
       await trimWav16kMonoPcm(
@@ -570,13 +603,17 @@ Future<TranscriptionResult> transcribeToResult({
       if (trimmedText.isNotEmpty) {
         out.add(LiteTurn(turn.speaker, turn.startSec, turn.endSec, trimmedText));
       }
+    } catch (e, st) {
+      debugPrint('[BG-PIPELINE] Segment $i error: $e');
+      debugPrint('$st');
+    } finally {
+      // ✅ Always advance based on audio covered
+      processedSec = math.max(processedSec, turn.endSec);
+      await emit('Transcribing', processedSec, duration);
 
       try {
         File(slice).deleteSync();
       } catch (_) {}
-    } catch (e, stackTrace) {
-      debugPrint('[BG-PIPELINE] Error transcribing segment $i: $e');
-      debugPrint('[BG-PIPELINE] Stack trace: $stackTrace');
     }
   }
 
@@ -585,8 +622,11 @@ Future<TranscriptionResult> transcribeToResult({
   } catch (_) {}
 
   final nonEmpty = out.where((t) => t.text.trim().isNotEmpty).toList();
+  await emit('Finalizing', duration, duration);
+
   if (nonEmpty.isEmpty) {
-    final title = (titleHint != null && titleHint.trim().isNotEmpty) ? titleHint.trim() : null;
+    final title =
+        (titleHint != null && titleHint.trim().isNotEmpty) ? titleHint.trim() : null;
 
     return TranscriptionResult(
       model: modelName,
@@ -632,3 +672,4 @@ Future<TranscriptionResult> transcribeToResult({
     turns: mergedTurns,
   );
 }
+

@@ -59,7 +59,6 @@ class _SettingsPageState extends State<SettingsPage> {
   // Options
   // =========================
   static const Map<String, String> _langOptions = {
-    'auto': 'Auto',
     'en': 'English',
     'es': 'Spanish',
     'fr': 'French',
@@ -67,6 +66,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'pt': 'Portuguese',
     'it': 'Italian',
     'zh': 'Chinese',
+    'auto': 'Auto',
   };
 
   static const List<int> _maxMinutesOptions = [30, 60, 90, 120, 6000];
@@ -74,7 +74,7 @@ class _SettingsPageState extends State<SettingsPage> {
   // =========================
   // State defaults
   // =========================
-  String _defaultLang = 'auto';
+  String _defaultLang = 'en';
   bool _translateToEnglish = false;
   bool _diarizationEnabled = true;
   bool _deleteAudioAfterTranscription = false;
@@ -186,7 +186,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _load() async {
     final sp = await SharedPreferences.getInstance();
 
-    final lang = sp.getString(_kPrefDefaultLang) ?? 'auto';
+    final lang = sp.getString(_kPrefDefaultLang) ?? 'en';
     final translate = sp.getBool(_kPrefTranslateToEnglish) ?? false;
     final diar = sp.getBool(_kPrefDiarizationEnabled) ?? true;
     final del = sp.getBool(_kPrefDeleteAudioAfter) ?? false;
@@ -198,7 +198,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (!mounted) return;
     setState(() {
-      _defaultLang = _langOptions.containsKey(lang) ? lang : 'auto';
+      _defaultLang = _langOptions.containsKey(lang) ? lang : 'en';
       _translateToEnglish = translate;
       _diarizationEnabled = diar;
       _deleteAudioAfterTranscription = del;
@@ -272,10 +272,10 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       await TranscriptPorter.exportZipAndShare(includeAudio: true);
       if (!mounted) return;
-      await AppFlushbar.success(
-        context,
-        message: 'Export ready to share (ZIP).',
-      );
+      // await AppFlushbar.success(
+      //   context,
+      //   message: 'Export ready to share (ZIP).',
+      // );
     } catch (e) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Export failed: $e');
@@ -293,16 +293,17 @@ class _SettingsPageState extends State<SettingsPage> {
         title: const Text('Import transcripts + audio?'),
         content: const Text(
           'This will add transcripts (and their audio if included) from a ZIP export into your database.\n\n'
-          'Duplicates are not automatically removed.',
+          '*Duplicates are not automatically removed.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: const Text('Cancel',style: TextStyle(color: Colors.white),),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Import'),
+            child: const Text('Import',style: TextStyle(color: Colors.black),),
+            style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
           ),
         ],
       ),
@@ -334,7 +335,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ? const SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: CircularProgressIndicator(backgroundColor: Colors.black,color: Colors.white,strokeWidth: 2),
           )
         : const Icon(Icons.chevron_right);
   }
@@ -552,7 +553,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(backgroundColor: Colors.black,color: Colors.white,))
           : ListView(
               padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
               children: [

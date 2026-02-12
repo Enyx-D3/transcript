@@ -187,12 +187,15 @@ class _TrashPageState extends State<TrashPage> {
 
     return Scaffold(
       backgroundColor: _bg,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 18),
-          children: [
-            // ================= HEADER =================
-            Row(
+
+      // ✅ APP BAR
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: SafeArea(
+          bottom: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
               children: [
                 _IconPillButton(
                   tooltip: 'Back',
@@ -222,8 +225,16 @@ class _TrashPageState extends State<TrashPage> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
 
-            const SizedBox(height: 12),
+      body: SafeArea(
+        top: false, // ✅ prevent double top padding (AppBar already safe-area’d)
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 18),
+          children: [
+            // ❌ REMOVE the old header Row from here
 
             // ================= CONTENT =================
             if (_loading)
@@ -524,8 +535,15 @@ class _TrashCard extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  icon: const Icon(Icons.restore_rounded, size: 18),
-                  label: const Text('Restore'),
+                  icon: const Icon(
+                    Icons.restore_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    'Restore',
+                    style: TextStyle(color: Colors.white),
+                  ),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 40),
                     padding: const EdgeInsets.symmetric(horizontal: 10),

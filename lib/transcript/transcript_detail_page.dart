@@ -56,6 +56,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   static const _kBusyTranscribing = 'busy_transcribing';
 
+  static const _kProgressProcessedSec = 'progress_processed_sec';
+  static const _kProgressTotalSec = 'progress_total_sec';
+  static const _kProgressStage = 'progress_stage';
+
+  double _progressProcessedSec = 0.0;
+  double _progressTotalSec = 0.0;
+  String _progressStage = 'Processing';
+
   bool _processingFailed = false;
   String? _processingError;
   Timer? _processingWatchdog;
@@ -115,6 +123,36 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       _pos = Duration.zero;
       _loadedPath = null; // force reload when allowed again
     });
+  }
+
+  // ============================================================
+  // ✅ Progress
+  // ============================================================
+
+  Future<void> _pullProgressFromFgStorage() async {
+    try {
+      final processedRaw = await FlutterForegroundTask.getData(
+        key: _kProgressProcessedSec,
+      );
+      final totalRaw = await FlutterForegroundTask.getData(
+        key: _kProgressTotalSec,
+      );
+      final stageRaw = await FlutterForegroundTask.getData(
+        key: _kProgressStage,
+      );
+
+      final processed = (processedRaw is num) ? processedRaw.toDouble() : null;
+      final total = (totalRaw is num) ? totalRaw.toDouble() : null;
+      final stage = (stageRaw is String) ? stageRaw : null;
+
+      if (!mounted) return;
+      setState(() {
+        if (processed != null) _progressProcessedSec = processed;
+        if (total != null) _progressTotalSec = total;
+        if (stage != null && stage.trim().isNotEmpty)
+          _progressStage = stage.trim();
+      });
+    } catch (_) {}
   }
 
   // ============================================================
@@ -468,6 +506,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   void _refreshTick() {
     _loadOnce();
+    _pullProgressFromFgStorage();
     _syncPoller();
     _syncWatchdog();
 
@@ -648,75 +687,86 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   // ============================================================
 
   Future<void> _editTitle() async {
-  final t = _t;
-  if (t == null) return;
+    final t = _t;
+    if (t == null) return;
 
-  final ctrl = TextEditingController(text: t.title ?? '');
+    final ctrl = TextEditingController(text: t.title ?? '');
 
-  final newTitle = await showDialog<String>(
-    context: context,
-    builder: (ctx) {
-      const accent = Colors.white; // 👈 change if you want
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        const accent = Colors.white; // 👈 change if you want
 
-      return Theme(
-        data: Theme.of(ctx).copyWith(
-          textSelectionTheme: const TextSelectionThemeData(
-            selectionHandleColor: Colors.white, // ✅ droplet = white
-            cursorColor: accent,                // cursor color
-            selectionColor: Color(0x337C4DFF),  // selection highlight
-          ),
-        ),
-        child: AlertDialog(
-          title: const Text('Edit title'),
-          content: TextField(
-            controller: ctrl,
-            autofocus: true,
-            style: const TextStyle(color: Colors.white),
-            cursorColor: accent,
-            decoration: const InputDecoration(
-              labelText: 'Title',
-              labelStyle: TextStyle(color: Colors.white),
-              hintText: 'e.g. Team meeting',
-              hintStyle: TextStyle(color: Colors.white54),
-
-              // ✅ underline when not focused
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: accent, width: 1.5),
-              ),
-
-              // ✅ underline when focused
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: accent, width: 2),
-              ),
+        return Theme(
+          data: Theme.of(ctx).copyWith(
+            textSelectionTheme: const TextSelectionThemeData(
+              selectionHandleColor: Colors.white, // ✅ droplet = white
+              cursorColor: accent, // cursor color
+              selectionColor: Color.fromARGB(
+                128,
+                255,
+                130,
+                67,
+              ), // selection highlight
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+          child: AlertDialog(
+            title: const Text('Edit title'),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              cursorColor: accent,
+              decoration: const InputDecoration(
+                labelText: 'Title',
+                labelStyle: TextStyle(color: Colors.white),
+                hintText: 'e.g. Team meeting',
+                hintStyle: TextStyle(color: Colors.white54),
+
+                // ✅ underline when not focused
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: accent, width: 1.5),
+                ),
+
+                // ✅ underline when focused
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: accent, width: 2),
+                ),
+              ),
             ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
-              child: const Text('Save', style: TextStyle(color: Colors.black)),
-            ),
-          ],
-        ),
-      );
-    },
-  );
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
+                child: const Text(
+                  'Save',
+                  style: TextStyle(color: Colors.black),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
 
-  if (newTitle == null) return;
+    if (newTitle == null) return;
 
-  final obx = ObjectBox.I;
-  final latest = obx.transcripts.get(t.id);
-  if (latest == null) return;
+    final obx = ObjectBox.I;
+    final latest = obx.transcripts.get(t.id);
+    if (latest == null) return;
 
-  latest.title = newTitle.isEmpty ? null : newTitle;
-  obx.transcripts.put(latest);
+    latest.title = newTitle.isEmpty ? null : newTitle;
+    obx.transcripts.put(latest);
 
-  _refreshTick();
-}
+    _refreshTick();
+  }
 
   // ============================================================
   // Rename speaker within transcript
@@ -726,27 +776,64 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final ctrl = TextEditingController(text: oldLabel);
     final newLabel = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rename speaker'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            hintText: 'e.g. Alex',
+      builder: (ctx) {
+        const accent = Colors.white; // 👈 same as newTitle
+
+        return Theme(
+          data: Theme.of(ctx).copyWith(
+            textSelectionTheme: const TextSelectionThemeData(
+              selectionHandleColor: Colors.white, // ✅ droplet
+              cursorColor: accent,
+              selectionColor: Color.fromARGB(128, 255, 130, 67),
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+          child: AlertDialog(
+            title: const Text(
+              'Rename speaker',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              cursorColor: accent,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                labelStyle: TextStyle(color: Colors.white),
+                hintText: 'e.g. Alex',
+                hintStyle: TextStyle(color: Colors.white54),
+
+                // ✅ underline when not focused
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: accent, width: 1.5),
+                ),
+
+                // ✅ underline when focused
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: accent, width: 2),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
+                child: const Text(
+                  'Save',
+                  style: TextStyle(color: Colors.black),
+                ),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        );
+      },
     );
     if (newLabel == null || newLabel.isEmpty || newLabel == oldLabel) return;
 
@@ -1172,6 +1259,72 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   // UI
   // ============================================================
 
+  Widget _buildProcessingPanel() {
+    final startedAt = _job?.createdAt.toLocal(); // if you have createdAt
+    final elapsed = startedAt == null
+        ? null
+        : DateTime.now().difference(startedAt);
+
+    final elapsedText = elapsed == null
+        ? 'Elapsed • …'
+        : 'Elapsed • ${elapsed.inMinutes}:${(elapsed.inSeconds % 60).toString().padLeft(2, '0')}';
+
+    final status = _job?.status ?? '…';
+    final segments = _turns.length;
+
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  backgroundColor: Colors.white12,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Processing audio…',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const LinearProgressIndicator(
+            minHeight: 4,
+            backgroundColor: Colors.white12,
+            color: Colors.white,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MetaPill(text: 'Status • $status'),
+              _MetaPill(text: elapsedText),
+              _MetaPill(text: 'Segments • $segments'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Keep the app open to finish faster.',
+            style: TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1271,32 +1424,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                   onTap: _editTitle,
                 ),
                 const SizedBox(width: 8),
-                PopupMenuButton<String>(
-                  tooltip: 'More',
-                  onSelected: (v) {
-                    if (v == 'edit_transcript') _editWholeTranscript();
-                    if (v == 'copy_transcript') _copyWholeTranscript();
-                    if (v == 'report_transcript') _reportTranscript();
-                  },
-                  itemBuilder: (_) => const [
-                    // PopupMenuItem(
-                    //   value: 'edit_transcript',
-                    //   child: Text('Edit & save transcript'),
-                    // ),
-                    // PopupMenuItem(
-                    //   value: 'copy_transcript',
-                    //   child: Text('Copy transcript as text'),
-                    // ),
-                    PopupMenuItem(
-                      value: 'report_transcript',
-                      child: Text('Report transcript'),
-                    ),
-                  ],
-                  child: const _IconPillButton(
-                    tooltip: 'More',
-                    icon: Icons.more_horiz,
-                    onTap: null,
-                  ),
+                _IconPillButton(
+                  tooltip: 'Report transcript',
+                  icon: Icons.flag,
+                  onTap: () async => _reportTranscript(),
                 ),
               ],
             ),
@@ -1468,23 +1599,57 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             // ================= STATUS (PROCESSING / ERROR) =================
             if (isProcessing)
               _Panel(
-                child: Row(
-                  children: const [
-                    SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        backgroundColor: Colors.white12,
-                        color: Colors.white,
-                      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            backgroundColor: Colors.white12,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Processing audio… Do not close the app.',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Processing audio… Do not close the app.',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
+                    const SizedBox(height: 10),
+
+                    // ✅ determinate when total known, else indeterminate
+                    LinearProgressIndicator(
+                      value: (_progressTotalSec > 0)
+                          ? (_progressProcessedSec / _progressTotalSec).clamp(
+                              0.0,
+                              0.98,
+                            )
+                          : null,
+                      minHeight: 4,
+                      backgroundColor: Colors.white12,
+                      color: Colors.white,
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _MetaPill(text: 'Stage • $_progressStage'),
+                        _MetaPill(
+                          text:
+                              'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
+                              ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (_t?.durationSec ?? 0)) * 1000).round()))}',
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -2020,3 +2185,32 @@ class _CompactSeekRow extends StatelessWidget {
     );
   }
 }
+
+
+//  PopupMenuButton<String>(
+//                   tooltip: 'More',
+//                   onSelected: (v) {
+//                     if (v == 'edit_transcript') _editWholeTranscript();
+//                     if (v == 'copy_transcript') _copyWholeTranscript();
+//                     if (v == 'report_transcript') _reportTranscript();
+//                   },
+//                   itemBuilder: (_) => const [
+//                     // PopupMenuItem(
+//                     //   value: 'edit_transcript',
+//                     //   child: Text('Edit & save transcript'),
+//                     // ),
+//                     // PopupMenuItem(
+//                     //   value: 'copy_transcript',
+//                     //   child: Text('Copy transcript as text'),
+//                     // ),
+//                     PopupMenuItem(
+//                       value: 'report_transcript',
+//                       child: Text('Report transcript'),
+//                     ),
+//                   ],
+//                   child: const _IconPillButton(
+//                     tooltip: 'More',
+//                     icon: Icons.more_horiz,
+//                     onTap: null,
+//                   ),
+//                 ),

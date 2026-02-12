@@ -628,7 +628,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
           boxShadow: _recording
               ? [
                   BoxShadow(
-                    color: const Color(0xFF8E7CFF).withOpacity(0.45),
+                    color: const Color(0xFFff8143).withOpacity(0.45),
                     blurRadius: 26,
                     spreadRadius: 1,
                   ),

@@ -32,13 +32,14 @@ Future<bool?> showReportDialog({
       return StatefulBuilder(
         builder: (ctx, setState) {
           return AlertDialog(
-            title: const Text('Report response'),
+            title: const Text('Report response',style: TextStyle(color: Colors.white,fontSize: 16),),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ...reasons.map(
                     (r) => RadioListTile<String>(
+                      activeColor: Color(0xFFff8143),
                       dense: true,
                       title: Text(r),
                       value: r,
@@ -59,7 +60,7 @@ Future<bool?> showReportDialog({
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: const BorderSide(
-                          color: Color.fromARGB(255, 253, 156, 255),
+                          color: Colors.white,
                           width: 2.0,
                         ),
                       ),
@@ -72,7 +73,7 @@ Future<bool?> showReportDialog({
             actions: [
               TextButton(
                 onPressed: sending ? null : () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel'),
+                child: const Text('Cancel',style: TextStyle(color: Colors.white),),
               ),
               FilledButton.icon(
                 onPressed: sending
@@ -106,8 +107,8 @@ Future<bool?> showReportDialog({
                         }
                       },
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(36, 205, 102, 253),
-                  foregroundColor: const Color.fromARGB(255, 253, 156, 255),
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black,
                 ),
                 icon: const Icon(Icons.flag_outlined),
                 label: const Text('Send'),

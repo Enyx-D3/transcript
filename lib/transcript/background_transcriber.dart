@@ -24,12 +24,16 @@ class BackgroundTranscriber {
   static const _kExistingId = 'bg_existing_id';
   static const _kResultId = 'bg_result_id';
   static const _kBusyTranscribing = 'busy_transcribing';
-  static const _kSourceType = 'bg_source_type';
+
   // ✅ target speakers stored int where 0 == null/auto
   static const _kTargetSpeakers = 'bg_target_speakers';
 
   // ✅ NEW: language (always stored as non-null String; default 'auto')
   static const _kLang = 'bg_lang';
+
+  static const _kProgressProcessedSec = 'progress_processed_sec';
+  static const _kProgressTotalSec = 'progress_total_sec';
+  static const _kProgressStage = 'progress_stage';
 
   static Future<void> init() async {
     FlutterForegroundTask.init(
@@ -71,6 +75,16 @@ class BackgroundTranscriber {
       value: translateToEnglish,
     );
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
+
+    await FlutterForegroundTask.saveData(
+      key: _kProgressProcessedSec,
+      value: 0.0,
+    );
+    await FlutterForegroundTask.saveData(key: _kProgressTotalSec, value: 0.0);
+    await FlutterForegroundTask.saveData(
+      key: _kProgressStage,
+      value: 'Preparing',
+    );
 
     // ✅ store int (0 means null/auto)
     await FlutterForegroundTask.saveData(
@@ -118,6 +132,14 @@ class BackgroundTranscriber {
 }
 
 class _TranscribeTaskHandler extends TaskHandler {
+  String _fmtMmSs(double sec) {
+    final s = (sec.isFinite && sec > 0) ? sec : 0.0;
+    final total = s.round();
+    final m = total ~/ 60;
+    final ss = (total % 60).toString().padLeft(2, '0');
+    return '$m:$ss';
+  }
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     final wavPath = await FlutterForegroundTask.getData<String>(
@@ -134,7 +156,6 @@ class _TranscribeTaskHandler extends TaskHandler {
     final existingId = await FlutterForegroundTask.getData<int>(
       key: BackgroundTranscriber._kExistingId,
     );
-
 
     // ✅ read stored int (0 => null)
     final tsRaw = await FlutterForegroundTask.getData(
@@ -168,10 +189,42 @@ class _TranscribeTaskHandler extends TaskHandler {
 
       final TranscriptionResult result = await transcribeToResult(
         wavPath: wavPath,
-        // translateToEnglish: translate,
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
-        lang: lang, // ✅ NEW
+        lang: lang,
+
+        // ✅ NEW
+        onProgress:
+            ({
+              required String stage,
+              required double processedSec,
+              required double totalSec,
+            }) async {
+              // ✅ visible even in release
+              print(
+                '[PROGRESS] $stage ${processedSec.toStringAsFixed(2)} / ${totalSec.toStringAsFixed(2)}',
+              );
+
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressStage,
+                value: stage,
+              );
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressProcessedSec,
+                value: processedSec,
+              );
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressTotalSec,
+                value: totalSec,
+              );
+
+              // ✅ best proof (and good UX)
+              await FlutterForegroundTask.updateService(
+                notificationTitle: 'Transcribing…',
+                notificationText:
+                    '${_fmtMmSs(processedSec)} / ${_fmtMmSs(totalSec)} • $stage',
+              );
+            },
       );
 
       FlutterForegroundTask.sendDataToMain({

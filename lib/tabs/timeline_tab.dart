@@ -74,6 +74,20 @@ class _TimelineTabState extends State<TimelineTab> {
 
   _TranscriptSort _sort = _TranscriptSort.dateDesc;
 
+  static const String _kPrefDefaultLang = 'pref_default_lang';
+  static const String _kLangPromptSeenOnce = 'pref_lang_prompt_seen_once';
+
+  static const Map<String, String> _langOptions = {
+    'en': 'English',
+    'es': 'Spanish',
+    'fr': 'French',
+    'ar': 'Arabic',
+    'pt': 'Portuguese',
+    'it': 'Italian',
+    'zh': 'Chinese',
+    'auto': 'Auto',
+  };
+
   // ✅ prevent setState after dispose
   bool _disposed = false;
   void _ss(VoidCallback fn) {
@@ -276,8 +290,127 @@ class _TimelineTabState extends State<TimelineTab> {
   }
 
   // --------------------
-  // Paywall
+  // Language + Paywall
   // --------------------
+
+  Future<void> _maybePickLanguageOnceWithDropdown() async {
+    if (!mounted || _disposed) return;
+
+    final sp = await SharedPreferences.getInstance();
+
+    // ✅ only once
+    final seen = sp.getBool(_kLangPromptSeenOnce) ?? false;
+    if (seen) return;
+
+    // current value (default to 'en' if missing/invalid)
+    final current = sp.getString(_kPrefDefaultLang);
+    String selected = _langOptions.containsKey(current) ? current! : 'en';
+
+    final picked = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF0B0C10),
+              title: const Text(
+                'Choose Default Language',
+                style: TextStyle(color: Colors.white, fontSize: 12),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: selected,
+                    isExpanded: true,
+                    items: _langOptions.entries
+                        .map(
+                          (e) => DropdownMenuItem<String>(
+                            value: e.key,
+                            child: Text(
+                              e.value,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setLocal(() => selected = v);
+                    },
+                    dropdownColor: const Color(0xFF101018),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          color: Color(0xFFff8143),
+                          width: 1,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          color: Color(0xFFff8143),
+                          width: 1.2,
+                        ),
+                      ),
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFFff8143)),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ✅ Footer
+                  Text(
+                    'You can change the language later when transcribing.',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.55),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(null),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: () => Navigator.of(ctx).pop(selected),
+                  child: const Text('Continue'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    // If user cancels, do NOT mark as seen (so it can show again next time)
+    if (picked == null) {
+      await sp.setBool(_kLangPromptSeenOnce, true);
+      return;
+    }
+
+    await sp.setString(_kPrefDefaultLang, picked);
+    await sp.setBool(_kLangPromptSeenOnce, true);
+  }
+
   Future<void> _maybeShowPaywallOnce() async {
     if (_paywallCheckedThisOpen) return;
     _paywallCheckedThisOpen = true;
@@ -285,6 +418,13 @@ class _TimelineTabState extends State<TimelineTab> {
     final sp = await SharedPreferences.getInstance();
     final seen = sp.getBool(_kPaywallSeenOnce) ?? false;
     if (seen || !mounted || _disposed) return;
+
+    // ✅ show language prompt once BEFORE paywall
+    await _maybePickLanguageOnceWithDropdown();
+    if (!mounted || _disposed) return;
+
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted || _disposed) return;
 
     await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
@@ -309,6 +449,25 @@ class _TimelineTabState extends State<TimelineTab> {
           },
         ),
       ),
+    );
+  }
+
+  Future<void> debugResetOnboardingFlags({bool clearLanguage = true}) async {
+    final sp = await SharedPreferences.getInstance();
+
+    // Seen-once flags
+    await sp.setBool(_kLangPromptSeenOnce, false);
+    await sp.setBool(_kPaywallSeenOnce, false);
+
+    // Optional: also clear chosen language
+    if (clearLanguage) {
+      await sp.remove(_kPrefDefaultLang);
+    }
+
+    debugPrint(
+      '[DEBUG] Onboarding flags reset: '
+      'langPromptSeen=false, paywallSeen=false, '
+      'languageCleared=$clearLanguage',
     );
   }
 
@@ -640,6 +799,9 @@ class _TimelineTabState extends State<TimelineTab> {
                               onUpgradeSuccess: widget.onUpgradeSuccess,
                             ),
                           ),
+                          onLongPress: () async {
+                            await debugResetOnboardingFlags();
+                          },
                           icon: const Icon(Icons.settings),
                         ),
                       ],
@@ -655,7 +817,6 @@ class _TimelineTabState extends State<TimelineTab> {
 
                 _QuickActionGrid(
                   children: [
-                     
                     _QuickTile(
                       icon: Icons.people,
                       label: 'Enroll Voice',
@@ -671,7 +832,7 @@ class _TimelineTabState extends State<TimelineTab> {
                       label: 'YouTube Transcript',
                       onTap: () => _openPage(const TranscriptYoutubePage()),
                     ),
-                    
+
                     _QuickTile(
                       icon: Icons.audio_file,
                       label: 'Audio File',
@@ -828,22 +989,11 @@ class _TimelineTabState extends State<TimelineTab> {
                 ),
                 onPressed: () => _toggleFavourite(t),
               ),
-              PopupMenuButton<String>(
-                onSelected: (v) async {
-                  if (v == 'delete') await _onDeletePressed(t);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete_outline, color: Colors.red),
-                        SizedBox(width: 10),
-                        Text('Delete'),
-                      ],
-                    ),
-                  ),
-                ],
+
+              IconButton(
+                tooltip: 'Delete',
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                onPressed: () async => _onDeletePressed(t),
               ),
             ],
           ),
@@ -961,7 +1111,7 @@ class SourceTag extends StatelessWidget {
   Color _defaultColorForType(String t) {
     switch (t.toLowerCase()) {
       case 'youtube':
-        return Colors.red;
+        return Colors.orange;
       case 'call':
         return Colors.green;
       case 'audio':
@@ -969,7 +1119,7 @@ class SourceTag extends StatelessWidget {
       case 'video':
         return Colors.purple;
       case 'file':
-        return Colors.orange;
+        return Colors.red;
       default:
         return Colors.white; // fallback
     }
@@ -1000,7 +1150,7 @@ class SourceTag extends StatelessWidget {
         style: TextStyle(
           fontWeight: FontWeight.w900,
           letterSpacing: 0.3,
-          color: base,
+          color: Colors.white,
           fontSize: fontSize,
         ),
       ),
