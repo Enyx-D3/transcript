@@ -109,7 +109,9 @@ class _TrashPageState extends State<TrashPage> {
         }
 
         final chatQ = chatsBox
-            .query(TranscriptChatMessageEntity_.transcriptId.equals(transcriptId))
+            .query(
+              TranscriptChatMessageEntity_.transcriptId.equals(transcriptId),
+            )
             .build();
         try {
           final ids = chatQ.findIds();
@@ -140,7 +142,8 @@ class _TrashPageState extends State<TrashPage> {
     final ok = await showConfirmDeleteDialog(
       context,
       title: 'Delete permanently?',
-      message: 'This will permanently delete the transcript and its related data.',
+      message:
+          'This will permanently delete the transcript and its related data.',
     );
     if (!ok) return;
 
@@ -184,12 +187,15 @@ class _TrashPageState extends State<TrashPage> {
 
     return Scaffold(
       backgroundColor: _bg,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 18),
-          children: [
-            // ================= HEADER =================
-            Row(
+
+      // ✅ APP BAR
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: SafeArea(
+          bottom: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
               children: [
                 _IconPillButton(
                   tooltip: 'Back',
@@ -219,8 +225,16 @@ class _TrashPageState extends State<TrashPage> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
 
-            const SizedBox(height: 12),
+      body: SafeArea(
+        top: false, // ✅ prevent double top padding (AppBar already safe-area’d)
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 18),
+          children: [
+            // ❌ REMOVE the old header Row from here
 
             // ================= CONTENT =================
             if (_loading)
@@ -249,7 +263,10 @@ class _TrashPageState extends State<TrashPage> {
                   children: const [
                     Text(
                       'Trash is empty',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
                     ),
                     SizedBox(height: 6),
                     Text(
@@ -280,7 +297,9 @@ class _TrashPageState extends State<TrashPage> {
                     ? t.title!.trim()
                     : 'Untitled transcript';
 
-                final isYoutube = (t.sourceType ?? 0) == 1;
+                final isYoutube = (t.sourceType) == 1;
+                final isAudio = (t.sourceType) == 2;
+                final isVideo = (t.sourceType) == 3;
                 final when = _fmtDeleted(t.deletedAt);
 
                 return Padding(
@@ -288,7 +307,9 @@ class _TrashPageState extends State<TrashPage> {
                   child: _TrashCard(
                     title: title,
                     subtitle: 'Deleted: $when',
-                    badge: isYoutube ? 'YouTube' : 'Voice',
+                    badge: isYoutube
+                        ? 'YouTube'
+                        : (isAudio ? 'Audio' : (isVideo ? 'Video' : 'Voice')),
                     onRestore: () => _restore(t.id),
                     onDeleteNow: () => _deleteNow(t.id),
                     isDark: isDark,
@@ -514,8 +535,15 @@ class _TrashCard extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  icon: const Icon(Icons.restore_rounded, size: 18),
-                  label: const Text('Restore'),
+                  icon: const Icon(
+                    Icons.restore_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    'Restore',
+                    style: TextStyle(color: Colors.white),
+                  ),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 40),
                     padding: const EdgeInsets.symmetric(horizontal: 10),

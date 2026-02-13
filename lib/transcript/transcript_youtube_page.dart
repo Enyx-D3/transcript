@@ -452,27 +452,36 @@ class _TranscriptYoutubePageState extends State<TranscriptYoutubePage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    TextField(
-                      controller: _ctrl,
-                      cursorColor: Colors.white,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _loading ? null : _fetchAll(),
-                      decoration: InputDecoration(
-                        hintText: 'https://www.youtube.com/watch?v=...',
-                        filled: true,
-                        fillColor: chipBg,
-                        hintStyle: TextStyle(color: Colors.white24),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
+                    Theme(
+                      data: Theme.of(context).copyWith(
+                        textSelectionTheme: const TextSelectionThemeData(
+                          selectionHandleColor: Colors.white, // ✅ bubble color
+                          cursorColor: Colors.white,
+                          selectionColor: Color.fromARGB(128, 255, 130, 67),
                         ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide(color: chipBorder),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide(color: chipBorder),
+                      ),
+                      child: TextField(
+                        controller: _ctrl,
+                        cursorColor: Colors.white,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _loading ? null : _fetchAll(),
+                        decoration: InputDecoration(
+                          hintText: 'https://www.youtube.com/watch?v=...',
+                          filled: true,
+                          fillColor: chipBg,
+                          hintStyle: TextStyle(color: Colors.white24),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(color: chipBorder),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(color: chipBorder),
+                          ),
                         ),
                       ),
                     ),
@@ -491,7 +500,10 @@ class _TranscriptYoutubePageState extends State<TranscriptYoutubePage> {
                                       color: Colors.white,
                                     ),
                                   )
-                                : const Icon(Icons.subtitles,color: Colors.white,),
+                                : const Icon(
+                                    Icons.subtitles,
+                                    color: Colors.white,
+                                  ),
                             label: Text(
                               _loading ? 'Getting…' : 'Get transcripts',
                               style: TextStyle(color: Colors.white),

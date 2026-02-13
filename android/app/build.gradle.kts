@@ -12,7 +12,7 @@ plugins {
 android {
     namespace = "com.enyxd.transcript"
     compileSdk = 36
-    ndkVersion = "29.0.13113456"
+    ndkVersion = "27.0.12077973"
 
      signingConfigs {
         create("release") {
@@ -45,10 +45,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
     }
 
     buildTypes {

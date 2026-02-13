@@ -1,4 +1,5 @@
 // lib/audio_preprocess.dart
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
@@ -166,6 +167,7 @@ void _limit(Float32List x, {required double ceilDb}) {
 
 /// Duration-based gentle gate: only attenuate if below threshold for >= minRunMs.
 /// Safer than per-sample gating (won't kill consonants as much).
+/// Uses running-sum RMS to avoid allocating large temporary arrays.
 void _gateByRun(
   Float32List x,
   int fs, {
@@ -178,25 +180,28 @@ void _gateByRun(
 
   final thr = _dbToAmp(gateDb);
   final w = (rmsWindowMs * fs / 1000).clamp(8, 4096).toInt();
+  final halfW = w ~/ 2;
   final minRun = (minRunMs * fs / 1000).clamp(1, x.length).toInt();
 
-  final sq = Float32List(x.length);
-  for (int i = 0; i < x.length; i++) sq[i] = x[i] * x[i];
-
-  final pre = Float32List(x.length + 1);
-  for (int i = 0; i < x.length; i++) pre[i + 1] = pre[i] + sq[i];
-
-  double rmsAt(int idx) {
-    final a = math.max(0, idx - w ~/ 2);
-    final b = math.min(x.length, a + w);
-    final sum = pre[b] - pre[a];
-    final len = (b - a).clamp(1, 1 << 30);
-    return math.sqrt(sum / len);
-  }
+  // Sliding-window running sum – O(N) time, O(1) extra space
+  double runSum = 0;
+  int wA = 0, wB = 0;
 
   int runStart = -1;
   for (int i = 0; i < x.length; i++) {
-    final silent = rmsAt(i) < thr;
+    final desiredA = math.max(0, i - halfW);
+    final desiredB = math.min(x.length, desiredA + w);
+    while (wB < desiredB) {
+      runSum += x[wB] * x[wB];
+      wB++;
+    }
+    while (wA < desiredA) {
+      runSum -= x[wA] * x[wA];
+      wA++;
+    }
+    final len = (wB - wA).clamp(1, 1 << 30);
+    final rms = math.sqrt(runSum / len);
+    final silent = rms < thr;
 
     if (silent) {
       if (runStart < 0) runStart = i;
@@ -258,14 +263,30 @@ Future<String> preprocessWav16kMono(
   }
 
   final fs = info.sampleRate;
-  final s16 = await readPcm16MonoSamples(inputPath);
-  final N = s16.length;
+  final N = info.dataLength ~/ 2; // PCM16 mono: 2 bytes per sample
   if (N == 0) return inputPath;
 
-  // int16 -> float [-1, 1]
+  // ── Read PCM16 directly into Float32 (skip Int16List) ──
+  // Saves ~57 MB for 30-min audio by avoiding an intermediate array.
   final x = Float32List(N);
-  for (int i = 0; i < N; i++) {
-    x[i] = (s16[i] / 32768.0).clamp(-1.0, 1.0).toDouble();
+  final raf = File(inputPath).openSync(mode: FileMode.read);
+  try {
+    raf.setPositionSync(info.dataOffset);
+    const chunkSamples = 512 * 1024; // ~1 MB read buffer
+    int offset = 0;
+    int remaining = N;
+    while (remaining > 0) {
+      final toRead = remaining < chunkSamples ? remaining : chunkSamples;
+      final bytes = raf.readSync(toRead * 2);
+      final bd = ByteData.view(bytes.buffer);
+      for (int i = 0; i < toRead; i++) {
+        x[offset++] =
+            (bd.getInt16(i * 2, Endian.little) / 32768.0).clamp(-1.0, 1.0);
+      }
+      remaining -= toRead;
+    }
+  } finally {
+    raf.closeSync();
   }
 
   // DC removal
@@ -316,66 +337,83 @@ Future<String> preprocessWav16kMono(
     );
   }
 
-  // ---- Trim head/tail silence (RMS window) ----
+  // ---- Trim head/tail silence (running-sum RMS – no extra arrays) ----
+  // Eliminates two Float32List(N) arrays (~230 MB for 30-min audio).
   int start = 0;
   int end = N;
 
   if (opts.trimSilence) {
     final w = (opts.rmsWindowMs * fs / 1000).clamp(8, 4096).toInt();
+    final halfW = w ~/ 2;
     final thr = _dbToAmp(opts.trimBelowDb);
-
-    // prefix sum of squares
-    final sq = Float32List(N);
-    for (int i = 0; i < N; i++) sq[i] = x[i] * x[i];
-    final pre = Float32List(N + 1);
-    for (int i = 0; i < N; i++) pre[i + 1] = pre[i] + sq[i];
-
-    double rmsAt(int idx) {
-      final a = math.max(0, idx - w ~/ 2);
-      final b = math.min(N, a + w);
-      final sum = pre[b] - pre[a];
-      final len = (b - a).clamp(1, 1 << 30);
-      return math.sqrt(sum / len);
-    }
-
     final run = (opts.trimMinRunMs * fs / 1000).clamp(1, N).toInt();
 
-    // head
-    int head = 0;
-    int consec = 0;
-    for (int i = 0; i < N; i++) {
-      if (rmsAt(i) >= thr) {
-        consec++;
-        if (consec >= run) {
-          head = math.max(0, i - run);
-          break;
+    // head – forward scan with sliding window running sum
+    {
+      double runSum = 0;
+      int wA = 0, wB = 0;
+      int consec = 0;
+      for (int i = 0; i < N; i++) {
+        final desiredA = math.max(0, i - halfW);
+        final desiredB = math.min(N, desiredA + w);
+        while (wB < desiredB) {
+          runSum += x[wB] * x[wB];
+          wB++;
         }
-      } else {
-        consec = 0;
+        while (wA < desiredA) {
+          runSum -= x[wA] * x[wA];
+          wA++;
+        }
+        final len = (wB - wA).clamp(1, 1 << 30);
+        final rms = math.sqrt(runSum / len);
+        if (rms >= thr) {
+          consec++;
+          if (consec >= run) {
+            start = math.max(0, i - run);
+            break;
+          }
+        } else {
+          consec = 0;
+        }
       }
     }
 
-    // tail
-    int tail = N;
-    int consec2 = 0;
-    for (int i = N - 1; i >= 0; i--) {
-      if (rmsAt(i) >= thr) {
-        consec2++;
-        if (consec2 >= run) {
-          tail = math.min(N, i + run);
-          break;
+    // tail – reverse scan with sliding window running sum
+    {
+      double runSum = 0;
+      int wA = N, wB = N;
+      int consec = 0;
+      for (int i = N - 1; i >= 0; i--) {
+        final desiredB = math.min(N, i + halfW + 1);
+        final desiredA = math.max(0, desiredB - w);
+        while (wA > desiredA) {
+          wA--;
+          runSum += x[wA] * x[wA];
         }
-      } else {
-        consec2 = 0;
+        while (wB > desiredB) {
+          wB--;
+          runSum -= x[wB] * x[wB];
+        }
+        final len = (wB - wA).clamp(1, 1 << 30);
+        final rms = math.sqrt(runSum / len);
+        if (rms >= thr) {
+          consec++;
+          if (consec >= run) {
+            end = math.min(N, i + run);
+            break;
+          }
+        } else {
+          consec = 0;
+        }
       }
     }
 
-    if (tail > head) {
-      start = head;
-      end = tail;
+    if (end <= start) {
+      start = 0;
+      end = N;
     }
 
-    // ✅ add padding after trim to preserve context
+    // add padding after trim to preserve context
     final pad = (opts.trimPadMs * fs / 1000).toInt();
     start = math.max(0, start - pad);
     end = math.min(N, end + pad);
@@ -384,11 +422,11 @@ Future<String> preprocessWav16kMono(
   final M = (end - start).clamp(0, N);
   if (M <= 0) return inputPath;
 
-  // Slice
-  final y = Float32List(M);
-  for (int i = 0; i < M; i++) y[i] = x[start + i];
+  // ── Use a view into x instead of copying to a new array ──
+  // Saves ~115 MB for 30-min audio.
+  final y = Float32List.view(x.buffer, start * Float32List.bytesPerElement, M);
 
-  // ✅ Speech RMS normalize
+  // Speech RMS normalize
   if (opts.rmsNormalize) {
     _rmsNormalize(
       y,
@@ -398,7 +436,7 @@ Future<String> preprocessWav16kMono(
     );
   }
 
-  // ✅ Compressor
+  // Compressor
   if (opts.compressor) {
     _compress(
       y,
@@ -410,7 +448,7 @@ Future<String> preprocessWav16kMono(
     );
   }
 
-  // ✅ Limiter
+  // Limiter
   if (opts.limiter) {
     _limit(y, ceilDb: opts.limiterCeilDbfs);
   }
@@ -420,16 +458,66 @@ Future<String> preprocessWav16kMono(
     _peakNormalize(y, targetPeakDbfs: opts.targetPeakDbfs);
   }
 
-  // float -> int16
-  final outS16 = Int16List(M);
-  for (int i = 0; i < M; i++) {
-    final v = (y[i] * 32768.0).round();
-    outS16[i] = v.clamp(-32768, 32767);
-  }
-
+  // ── Write output in chunks to avoid a second large allocation ──
   final tmp = outPath ??
       '${(await getTemporaryDirectory()).path}/pre_${DateTime.now().millisecondsSinceEpoch}.wav';
 
-  await writePcm16MonoWav(tmp, sampleRate: fs, samples: outS16);
+  await _writePcm16MonoWavChunked(tmp, sampleRate: fs, floatSamples: y);
   return tmp;
+}
+
+/// Write a PCM16 mono WAV converting Float32 → Int16 in small chunks
+/// to avoid allocating a full-length Int16List (~57 MB for 30-min audio).
+Future<void> _writePcm16MonoWavChunked(
+  String path, {
+  required int sampleRate,
+  required Float32List floatSamples,
+}) async {
+  const channels = 1;
+  const bitsPerSample = 16;
+  final byteRate = sampleRate * channels * (bitsPerSample ~/ 8);
+  final blockAlign = channels * (bitsPerSample ~/ 8);
+  final dataChunkSize = floatSamples.length * 2; // 16-bit samples
+  final riffChunkSize = 4 + (8 + 16) + (8 + dataChunkSize);
+
+  final raf = File(path).openSync(mode: FileMode.write);
+  try {
+    // RIFF header
+    void putStr(String s) => raf.writeStringSync(s);
+    void putU32(int v) {
+      final bd = ByteData(4)..setUint32(0, v, Endian.little);
+      raf.writeFromSync(bd.buffer.asUint8List());
+    }
+    void putU16(int v) {
+      final bd = ByteData(2)..setUint16(0, v, Endian.little);
+      raf.writeFromSync(bd.buffer.asUint8List());
+    }
+
+    putStr('RIFF');
+    putU32(riffChunkSize);
+    putStr('WAVE');
+    putStr('fmt ');
+    putU32(16); // fmtChunkSize
+    putU16(1); // PCM
+    putU16(channels);
+    putU32(sampleRate);
+    putU32(byteRate);
+    putU16(blockAlign);
+    putU16(bitsPerSample);
+    putStr('data');
+    putU32(dataChunkSize);
+
+    // Write samples in ~64 K-sample chunks (~128 KB each)
+    const chunkSize = 65536;
+    for (int i = 0; i < floatSamples.length; i += chunkSize) {
+      final n = math.min(chunkSize, floatSamples.length - i);
+      final buf = Int16List(n);
+      for (int j = 0; j < n; j++) {
+        buf[j] = (floatSamples[i + j] * 32768.0).round().clamp(-32768, 32767);
+      }
+      raf.writeFromSync(Uint8List.view(buf.buffer));
+    }
+  } finally {
+    raf.closeSync();
+  }
 }

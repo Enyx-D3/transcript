@@ -9,18 +9,18 @@ class LiteTurn {
   LiteTurn(this.speaker, this.startSec, this.endSec, this.text);
 
   Map<String, dynamic> toJson() => {
-        'speaker': speaker,
-        'start': startSec,
-        'end': endSec,
-        'text': text,
-      };
+    'speaker': speaker,
+    'start': startSec,
+    'end': endSec,
+    'text': text,
+  };
 
   static LiteTurn fromJson(Map<String, dynamic> j) => LiteTurn(
-        j['speaker'] as String,
-        (j['start'] as num).toDouble(),
-        (j['end'] as num).toDouble(),
-        j['text'] as String,
-      );
+    j['speaker'] as String,
+    (j['start'] as num).toDouble(),
+    (j['end'] as num).toDouble(),
+    j['text'] as String,
+  );
 }
 
 class TranscriptionResult {
@@ -29,6 +29,7 @@ class TranscriptionResult {
   final double durationSec;
   final String? title;
   final List<LiteTurn> turns;
+
 
   TranscriptionResult({
     required this.model,
@@ -39,12 +40,12 @@ class TranscriptionResult {
   });
 
   Map<String, dynamic> toJson() => {
-        'model': model,
-        'lang': lang,
-        'durationSec': durationSec,
-        'title': title,
-        'turns': turns.map((t) => t.toJson()).toList(),
-      };
+    'model': model,
+    'lang': lang,
+    'durationSec': durationSec,
+    'title': title,
+    'turns': turns.map((t) => t.toJson()).toList(),
+  };
 
   static TranscriptionResult fromJson(Map<String, dynamic> j) =>
       TranscriptionResult(
@@ -53,9 +54,7 @@ class TranscriptionResult {
         durationSec: (j['durationSec'] as num).toDouble(),
         title: j['title'] as String?,
         turns: (j['turns'] as List)
-            .map((e) => LiteTurn.fromJson(
-                  Map<String, dynamic>.from(e as Map),
-                ))
+            .map((e) => LiteTurn.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList(),
       );
 }

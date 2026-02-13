@@ -51,14 +51,49 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _ensureProfile(User user) async {
     final now = DateTime.now().toUtc();
+    final trial = now.add(const Duration(days: 1));
 
-    await _sb.from('profiles').upsert({
-      'id': user.id,
-      'email': user.email,
-      'date_joined': now.toIso8601String(),
-      'is_upgraded': false,
-      'trial_expires_at': now.add(const Duration(days: 1)).toIso8601String(),
-    });
+    // Try to load existing profile
+    final existing = await _sb
+        .from('profiles')
+        .select('id,email,date_joined,is_upgraded,trial_expires_at')
+        .eq('id', user.id)
+        .maybeSingle();
+
+    // First time: create profile + start trial
+    if (existing == null) {
+      await _sb.from('profiles').insert({
+        'id': user.id,
+        'email': user.email,
+        'date_joined': now.toIso8601String(),
+        'is_upgraded': false,
+        'trial_expires_at': trial.toIso8601String(),
+      });
+      return;
+    }
+
+    // Existing user: do NOT reset trial / upgrade. Only sync missing or safe fields.
+    final updates = <String, dynamic>{};
+
+    final existingEmail = existing['email'] as String?;
+    if (user.email != null && user.email != existingEmail) {
+      updates['email'] = user.email;
+    }
+
+    // Backfill only if null (optional)
+    if (existing['date_joined'] == null) {
+      updates['date_joined'] = now.toIso8601String();
+    }
+    if (existing['trial_expires_at'] == null) {
+      updates['trial_expires_at'] = trial.toIso8601String();
+    }
+    if (existing['is_upgraded'] == null) {
+      updates['is_upgraded'] = false;
+    }
+
+    if (updates.isNotEmpty) {
+      await _sb.from('profiles').update(updates).eq('id', user.id);
+    }
   }
 
   Future<void> _signInWithGoogle() async {
@@ -211,9 +246,7 @@ class _LoginPageState extends State<LoginPage> {
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF1A1A22),
                                   borderRadius: BorderRadius.circular(22),
-                                  border: Border.all(
-                                    color: Colors.white
-                                  ),
+                                  border: Border.all(color: Colors.white),
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(18),
@@ -262,7 +295,7 @@ class _LoginPageState extends State<LoginPage> {
                                               height: 18,
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 2,
-                                              color: Colors.black,
+                                                color: Colors.black,
                                               ),
                                             )
                                           : const Icon(Icons.g_mobiledata),
@@ -270,10 +303,10 @@ class _LoginPageState extends State<LoginPage> {
                                         _busy
                                             ? 'Signing in…'
                                             : 'Continue with Google',
-                                            style: TextStyle(color: Colors.black),
+                                        style: TextStyle(color: Colors.black),
                                       ),
                                       style: OutlinedButton.styleFrom(
-                                        backgroundColor: Colors.white
+                                        backgroundColor: Colors.white,
                                       ),
                                     ),
 
@@ -335,7 +368,6 @@ class _LoginPageState extends State<LoginPage> {
                                     //         : 'Continue with Email',
                                     //   ),
                                     // ),
-
                                     const SizedBox(height: 10),
                                     RichText(
                                       textAlign: TextAlign.center,

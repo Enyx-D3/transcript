@@ -15,6 +15,8 @@ import '../auth/eligibility_gate.dart';
 import '../billing/subscription_service.dart';
 import '../billing/subscription_products.dart';
 import '../common/confirm_dialog.dart';
+import '../auth/app_gate.dart';
+import '../auth/eligibility_gate.dart';
 
 class AccountTab extends StatefulWidget {
   const AccountTab({super.key, this.onUpgradeSuccess});
@@ -50,6 +52,7 @@ class _AccountTabState extends State<AccountTab> {
 
   // ✅ set your actual Android package name here (used for Manage Subscription link)
   static const String _androidPackageName = 'com.enyxd.transcript';
+  bool _navigatingToGate = false;
 
   @override
   void initState() {
@@ -65,6 +68,11 @@ class _AccountTabState extends State<AccountTab> {
       _authDebounce?.cancel();
       _authDebounce = Timer(const Duration(milliseconds: 250), () async {
         if (!mounted) return;
+
+        if (_sb.auth.currentUser == null) {
+          _resetToAppGate();
+          return;
+        }
 
         // ✅ Refresh profile first
         await _loadProfile(force: true);
@@ -89,6 +97,22 @@ class _AccountTabState extends State<AccountTab> {
     _authDebounce?.cancel();
     _authSub?.cancel();
     super.dispose();
+  }
+
+  void _resetToAppGate() {
+    if (!mounted || _navigatingToGate) return;
+    _navigatingToGate = true;
+
+    final nav = Navigator.of(context, rootNavigator: true);
+
+    nav.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const AppGate(
+          initialEligibility: EligibilityGateResult(eligible: false),
+        ),
+      ),
+      (route) => false,
+    );
   }
 
   // ---------------- Load profile ----------------
@@ -243,14 +267,25 @@ class _AccountTabState extends State<AccountTab> {
 
   // ---------------- Date format ----------------
 
-String _fmtDateLong(DateTime? d) {
-  if (d == null) return '—';
-  final local = d.toLocal();
-  const months = [
-    'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'
-  ];
-  return '${local.day} ${months[local.month - 1]} ${local.year}';
-}
+  String _fmtDateLong(DateTime? d) {
+    if (d == null) return '—';
+    final local = d.toLocal();
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${local.day} ${months[local.month - 1]} ${local.year}';
+  }
 
   Widget _pill(String text, {Color? color}) {
     return Container(
@@ -709,7 +744,7 @@ String _fmtDateLong(DateTime? d) {
                   title: 'Lifetime',
                   subtitle: 'One-time purchase. Keep Pro forever.',
                   priceRight: rightLifetime(),
-                  badge: badgePill('Best offer', Colors.green),
+                  badge: badgePill('Best offer', Color(0xFFff8143)),
                   onTap: () async {
                     Navigator.of(ctx).pop();
                     await _startLifetimeFlow();
@@ -732,9 +767,12 @@ String _fmtDateLong(DateTime? d) {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2,color: Colors.white,),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
-                        : const Icon(Icons.restore,color: Colors.white,),
+                        : const Icon(Icons.restore, color: Colors.white),
                     label: Text(
                       _restoring ? 'Restoring…' : 'Restore Purchases',
                       style: TextStyle(color: Colors.white),
@@ -770,6 +808,7 @@ String _fmtDateLong(DateTime? d) {
     }
 
     await _sb.auth.signOut();
+    if (mounted) _resetToAppGate();
   }
 
   // ---------------- Delete account ----------------
@@ -803,7 +842,7 @@ String _fmtDateLong(DateTime? d) {
       if (!mounted) return;
       await AppFlushbar.success(context, message: 'Account deleted');
       await _sb.auth.signOut();
-
+      if (mounted) _resetToAppGate();
       setState(() => _deleting = false);
     } catch (e) {
       if (!mounted) return;
@@ -879,6 +918,7 @@ String _fmtDateLong(DateTime? d) {
     final isDark = theme.brightness == Brightness.dark;
 
     return RefreshIndicator(
+      color: Colors.white,
       onRefresh: () async {
         await _loadProfile(force: true);
         await _prefetchPricing();
@@ -906,7 +946,7 @@ String _fmtDateLong(DateTime? d) {
                         style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
-                          color: Colors.white
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -922,13 +962,16 @@ String _fmtDateLong(DateTime? d) {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _pill('Joined ${_fmtDateLong(_profile?.dateJoined)}',color: Colors.white),
+                          _pill(
+                            'Joined ${_fmtDateLong(_profile?.dateJoined)}',
+                            color: Colors.white,
+                          ),
                           if (_proActive)
                             _pill(
                               _isLifetime
                                   ? 'Plan Pro (Lifetime)'
                                   : 'Plan Pro (Subscription)',
-                              color: Colors.white
+                              color: Colors.white,
                             )
                           else if (_trialActive)
                             _pill('Plan Trial', color: Colors.white)
@@ -985,7 +1028,7 @@ String _fmtDateLong(DateTime? d) {
                         : _trialActive
                         ? 'Trial'
                         : 'Free',
-                    valueColor: Colors.white
+                    valueColor: Colors.white,
                   ),
 
                   const SizedBox(height: 10),
@@ -997,7 +1040,7 @@ String _fmtDateLong(DateTime? d) {
                       'Trial ends',
                       _fmtDateLong(_profile!.trialExpiresAt),
                       trailing: _trialActive
-                          ? _pill('Active', color: Colors.green)
+                          ? _pill('Active', color: Color(0xFFff8143))
                           : _pill('Expired', color: Colors.redAccent),
                     ),
 
@@ -1034,8 +1077,8 @@ String _fmtDateLong(DateTime? d) {
                         icon: const Icon(Icons.manage_accounts_outlined),
                         label: const Text('Manage subscription'),
                         style: OutlinedButton.styleFrom(
-                               backgroundColor: Colors.white
-                              ),
+                          backgroundColor: Colors.white,
+                        ),
                       ),
                     ),
                   ] else ...[
@@ -1051,14 +1094,17 @@ String _fmtDateLong(DateTime? d) {
                                 height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.black
+                                  color: Colors.black,
                                 ),
                               )
                             : const Icon(Icons.workspace_premium_outlined),
-                        label: Text(_upgrading ? 'Processing…' : 'Get Pro',style: TextStyle(color: Colors.black),),
+                        label: Text(
+                          _upgrading ? 'Processing…' : 'Get Pro',
+                          style: TextStyle(color: Colors.black),
+                        ),
                         style: OutlinedButton.styleFrom(
-                               backgroundColor: Colors.white
-                              ),
+                          backgroundColor: Colors.white,
+                        ),
                       ),
                     ),
                   ],
@@ -1125,8 +1171,11 @@ String _fmtDateLong(DateTime? d) {
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: _signOut,
-                icon: const Icon(Icons.logout,color: Colors.white,),
-                label: const Text('Sign out',style:TextStyle(color: Colors.white),),
+                icon: const Icon(Icons.logout, color: Colors.white),
+                label: const Text(
+                  'Sign out',
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
             ),
 
@@ -1140,7 +1189,10 @@ String _fmtDateLong(DateTime? d) {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2,color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Icon(
                         Icons.delete_forever_outlined,
@@ -1232,9 +1284,7 @@ class _GateSplashLike extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1A22),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.4),
-                    ),
+                    border: Border.all(color: Colors.white.withOpacity(0.4)),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(18),
@@ -1247,7 +1297,11 @@ class _GateSplashLike extends StatelessWidget {
                 const SizedBox(height: 20),
                 const Text(
                   'Starting up…',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600,color: Colors.white),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -1256,7 +1310,11 @@ class _GateSplashLike extends StatelessWidget {
                   style: const TextStyle(color: Colors.white70),
                 ),
                 const SizedBox(height: 20),
-                const LinearProgressIndicator(minHeight: 3,color:Colors.white,backgroundColor: Colors.black,),
+                const LinearProgressIndicator(
+                  minHeight: 3,
+                  color: Colors.white,
+                  backgroundColor: Colors.black,
+                ),
               ],
             ),
           ),
@@ -1290,7 +1348,10 @@ class _Avatar extends StatelessWidget {
         ? email[0].toUpperCase()
         : 'U';
 
-    return CircleAvatar(radius: 26,backgroundColor: Colors.white,child: Text(letter));
+    return CircleAvatar(
+      radius: 26,
+      backgroundColor: Colors.white,
+      child: Text(letter),
+    );
   }
 }
-

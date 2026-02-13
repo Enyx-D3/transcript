@@ -70,22 +70,23 @@ class _RecordSheetState extends State<RecordSheet> {
   static const String _kBusyTranscribing = 'busy_transcribing';
   bool _handledStop = false;
 
-  final TextEditingController _targetSpeakersCtrl =
-      TextEditingController(text: '0');
+  final TextEditingController _targetSpeakersCtrl = TextEditingController(
+    text: '0',
+  );
 
   static const Map<String, String> _langOptions = {
-  'auto': 'Auto',
-  'en': 'English',
-  'es': 'Spanish',
-  'fr': 'French',
-  'ar': 'Arabic',
-  'pt': 'Portuguese',
-  'it': 'Italian',
-  'zh': 'Chinese',
-};
+    'en': 'English',
+    'es': 'Spanish',
+    'fr': 'French',
+    'ar': 'Arabic',
+    'pt': 'Portuguese',
+    'it': 'Italian',
+    'zh': 'Chinese',
+    'auto': 'Auto',
+  };
 
   // loaded from prefs
-  String _selectedLang = 'auto';
+  String _selectedLang = 'en';
   bool _diarizationEnabled = true;
 
   static const String _kLastElapsedSec = 'rec_last_elapsed_sec';
@@ -178,8 +179,8 @@ class _RecordSheetState extends State<RecordSheet> {
     try {
       final sp = await SharedPreferences.getInstance();
 
-      final lang = sp.getString(_kPrefDefaultLang) ?? 'auto';
-      final safeLang = _langOptions.containsKey(lang) ? lang : 'auto';
+      final lang = sp.getString(_kPrefDefaultLang) ?? 'en';
+      final safeLang = _langOptions.containsKey(lang) ? lang : 'en';
 
       final diar = sp.getBool(_kPrefDiarizationEnabled) ?? true;
 
@@ -192,6 +193,11 @@ class _RecordSheetState extends State<RecordSheet> {
 
     await _hydrateFromRecordingService();
   }
+
+void _setDiarizationEnabledLocal(bool v) {
+  if (!mounted) return;
+  setState(() => _diarizationEnabled = v);
+}
 
   Future<void> _hydrateFromRecordingService() async {
     final running = await FlutterForegroundTask.isRunningService;
@@ -247,8 +253,9 @@ class _RecordSheetState extends State<RecordSheet> {
     try {
       _handledStop = false;
 
-      final int? targetSpeakers =
-          _diarizationEnabled ? _parseTargetSpeakers() : null;
+      final int? targetSpeakers = _diarizationEnabled
+          ? _parseTargetSpeakers()
+          : null;
 
       await _ensureMic();
 
@@ -275,7 +282,10 @@ class _RecordSheetState extends State<RecordSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _starting = false);
-      await AppFlushbar.error(context, message: 'Failed to start recording: $e');
+      await AppFlushbar.error(
+        context,
+        message: 'Failed to start recording: $e',
+      );
     }
   }
 
@@ -354,8 +364,9 @@ class _RecordSheetState extends State<RecordSheet> {
     int? targetSpeakers,
     required String lang,
   }) async {
-    final placeholderDuration =
-        (_seconds.isFinite && _seconds >= 0) ? _seconds : 0.0;
+    final placeholderDuration = (_seconds.isFinite && _seconds >= 0)
+        ? _seconds
+        : 0.0;
 
     final obx = ObjectBox.I;
 
@@ -414,7 +425,10 @@ class _RecordSheetState extends State<RecordSheet> {
         job.error = 'Failed to start transcription.';
         obx.jobs.put(job);
       }
-      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: false,
+      );
 
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Processing Error: $e');
@@ -472,17 +486,17 @@ class _RecordSheetState extends State<RecordSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Center(
-                              child: Container(
-                                width: 44,
-                                height: 5,
-                                margin: const EdgeInsets.only(bottom: 10),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(99),
-                                  color: Colors.white.withOpacity(0.14),
-                                ),
-                              ),
-                            ),
+                            // Center(
+                            //   child: Container(
+                            //     width: 44,
+                            //     height: 5,
+                            //     margin: const EdgeInsets.only(bottom: 10),
+                            //     decoration: BoxDecoration(
+                            //       borderRadius: BorderRadius.circular(99),
+                            //       color: Colors.white.withOpacity(0.14),
+                            //     ),
+                            //   ),
+                            // ),
                             Row(
                               children: [
                                 const Icon(Icons.mic, color: Colors.white),
@@ -534,20 +548,33 @@ class _RecordSheetState extends State<RecordSheet> {
                                 paused: _paused,
                               ),
                               const SizedBox(height: 12),
-                              LevelBars(level: _level, height: 16, barCount: 22),
+                              LevelBars(
+                                level: _level,
+                                height: 16,
+                                barCount: 22,
+                              ),
                               const SizedBox(height: 14),
                               Row(
                                 children: [
                                   Expanded(
                                     child: OutlinedButton.icon(
                                       onPressed: _recording ? _cancel : null,
-                                      icon: const Icon(Icons.close_rounded,color: Colors.white,),
-                                      label: const Text('Cancel',style:TextStyle(color: Colors.white)),
+                                      icon: const Icon(
+                                        Icons.close_rounded,
+                                        color: Colors.white,
+                                      ),
+                                      label: const Text(
+                                        'Cancel',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
                                       style: OutlinedButton.styleFrom(
-                                        padding:
-                                            const EdgeInsets.symmetric(vertical: 12),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -562,14 +589,20 @@ class _RecordSheetState extends State<RecordSheet> {
                                         _paused
                                             ? Icons.play_arrow_rounded
                                             : Icons.pause_rounded,
-                                            color: Colors.white,
+                                        color: Colors.white,
                                       ),
-                                      label: Text(_paused ? 'Resume' : 'Pause',style:TextStyle(color: Colors.white),),
+                                      label: Text(
+                                        _paused ? 'Resume' : 'Pause',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
                                       style: OutlinedButton.styleFrom(
-                                        padding:
-                                            const EdgeInsets.symmetric(vertical: 12),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -581,16 +614,21 @@ class _RecordSheetState extends State<RecordSheet> {
                                 width: double.infinity,
                                 child: FilledButton.icon(
                                   onPressed: _recording ? _stop : _start,
-                                  icon: Icon(_recording
-                                      ? Icons.stop_rounded
-                                      : Icons.fiber_manual_record),
-                                  label: Text(_recording
-                                      ? 'Stop & transcribe'
-                                      : 'Start recording'),
+                                  icon: Icon(
+                                    _recording
+                                        ? Icons.stop_rounded
+                                        : Icons.fiber_manual_record,
+                                  ),
+                                  label: Text(
+                                    _recording
+                                        ? 'Stop & transcribe'
+                                        : 'Start recording',
+                                  ),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: Colors.white,
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 14),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14),
                                     ),
@@ -638,8 +676,44 @@ class _RecordSheetState extends State<RecordSheet> {
                                       decoration: const InputDecoration(
                                         isDense: true,
                                         border: OutlineInputBorder(),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Color(0xFFff8143),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Color(0xFFff8143),
+                                            width: 1,
+                                          ),
+                                        ),
                                       ),
                                     ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  const Expanded(
+                                    child: Text(
+                                      'Speaker diarization',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Switch(
+                                    value: _diarizationEnabled,
+                                    onChanged: (_recording || _starting)
+                                        ? null
+                                        : _setDiarizationEnabledLocal,
+                                    activeColor: Colors.black, // thumb
+                                    activeTrackColor: const Color(
+                                      0xFFff8143,
+                                    ), // track
                                   ),
                                 ],
                               ),
@@ -663,12 +737,25 @@ class _RecordSheetState extends State<RecordSheet> {
                                         enabled: !_recording && !_starting,
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
                                         ],
                                         decoration: const InputDecoration(
                                           hintText: '0',
                                           isDense: true,
                                           border: OutlineInputBorder(),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: Color(0xFFff8143),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: Color(0xFFff8143),
+                                              width: 1,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -678,9 +765,11 @@ class _RecordSheetState extends State<RecordSheet> {
                                 const Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
-                                    'Use 0 for auto-detect (recommended).',
+                                    'Use 0 for auto-detect.',
                                     style: TextStyle(
-                                        color: Colors.white54, fontSize: 12),
+                                      color: Colors.white54,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -713,11 +802,7 @@ class _RecordSheetState extends State<RecordSheet> {
 }
 
 class _Panel extends StatelessWidget {
-  const _Panel({
-    required this.child,
-    this.title,
-    this.subtitle,
-  });
+  const _Panel({required this.child, this.title, this.subtitle});
 
   final Widget child;
   final String? title;
@@ -800,10 +885,7 @@ class _TimerRing extends StatelessWidget {
       child: Center(
         child: Text(
           timeText,
-          style: const TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w900,
-          ),
+          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
         ),
       ),
     );
@@ -840,8 +922,10 @@ class LevelBars extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: List.generate(barCount, (i) {
-              final barH =
-                  (height * weights[i] * (0.2 + 0.8 * v)).clamp(2.0, height);
+              final barH = (height * weights[i] * (0.2 + 0.8 * v)).clamp(
+                2.0,
+                height,
+              );
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 1.5),

@@ -90,6 +90,7 @@ static const String _tinyFileName = 'ggml-tiny.bin';
   }
 
   void _initDownloader() {
+    try {
     // Listen to global updates and map them back to the model using our taskId map.
     _bd.updates.listen((update) {
       if (update is TaskProgressUpdate) {
@@ -141,6 +142,10 @@ static const String _tinyFileName = 'ggml-tiny.bin';
         }
       }
     });
+    } catch (e) {
+      // background_downloader can fail in release mode; non-fatal
+      print('[WhisperService] _initDownloader error (non-fatal): $e');
+    }
   }
 
   WhisperModel? _modelForTaskId(String id) {

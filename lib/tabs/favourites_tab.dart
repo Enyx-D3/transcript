@@ -248,7 +248,6 @@ class _FavouritesTabState extends State<FavouritesTab> {
     _unfocus();
 
     final isYoutube = (t.sourceType) == 1;
-
     if (isYoutube) {
       final metaId = t.youtubeMetaId;
       if (metaId == null) {
@@ -370,8 +369,10 @@ class _FavouritesTabState extends State<FavouritesTab> {
                               final title = _displayTitle(t);
 
                               final isYoutube = (t.sourceType) == 1;
-                              final sub = isYoutube
-                                  ? '${_fmtDate(t.createdAt)} • YouTube'
+                              final isAudio = (t.sourceType) == 2;
+                              final isVideo = (t.sourceType) == 3;
+                              final sub = (isYoutube || isAudio || isVideo)
+                                  ? '${_fmtDate(t.createdAt)}'
                                   : '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
 
                               return ListTile(
@@ -393,9 +394,23 @@ class _FavouritesTabState extends State<FavouritesTab> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    if (isYoutube) ...[
+                                    if (isYoutube || isAudio || isVideo) ...[
                                       const SizedBox(width: 8),
-                                      const _SourceTagYoutube(),
+                                      if (isYoutube)
+                                        const SourceTag(
+                                          type: 'youtube',
+                                          label: 'YOUTUBE',
+                                        )
+                                      else if (isAudio)
+                                        const SourceTag(
+                                          type: 'audio',
+                                          label: 'AUDIO',
+                                        )
+                                      else if (isVideo)
+                                        const SourceTag(
+                                          type: 'video',
+                                          label: 'VIDEO',
+                                        ),
                                     ],
                                   ],
                                 ),
@@ -404,7 +419,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                                   tooltip: 'Unfavourite',
                                   icon: const Icon(
                                     Icons.favorite,
-                                    color: Colors.red,
+                                    color: Color(0xFFff8143),
                                   ),
                                   onPressed: () => _toggleFavourite(t),
                                 ),
@@ -450,6 +465,80 @@ class _SourceTagYoutube extends StatelessWidget {
           letterSpacing: 0.3,
           color: Colors.red,
           fontSize: 6,
+        ),
+      ),
+    );
+  }
+}
+
+class SourceTag extends StatelessWidget {
+  const SourceTag({
+    super.key,
+    required this.type,
+    this.label,
+    this.color,
+    this.fontSize = 6,
+    this.horizontalPadding = 10,
+    this.verticalPadding = 6,
+  });
+
+  /// e.g. "youtube", "call", "audio", "video"
+  final String type;
+
+  /// Optional custom label (otherwise uses type.toUpperCase()).
+  final String? label;
+
+  /// Optional base color (otherwise auto-picked from type).
+  final Color? color;
+
+  final double fontSize;
+  final double horizontalPadding;
+  final double verticalPadding;
+
+  Color _defaultColorForType(String t) {
+    switch (t.toLowerCase()) {
+      case 'youtube':
+        return Colors.red;
+      case 'call':
+        return Colors.green;
+      case 'audio':
+        return Colors.blue;
+      case 'video':
+        return Colors.purple;
+      case 'file':
+        return Colors.orange;
+      default:
+        return Colors.white; // fallback
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final base = color ?? _defaultColorForType(type);
+    final border = base.withOpacity(isDark ? 0.45 : 0.35);
+    final bg = base.withOpacity(isDark ? 0.16 : 0.10);
+
+    final text = (label ?? type).toUpperCase();
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: verticalPadding,
+      ),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.3,
+          color: base,
+          fontSize: fontSize,
         ),
       ),
     );

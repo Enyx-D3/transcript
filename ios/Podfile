@@ -1,5 +1,5 @@
 # Uncomment this line to define a global platform for your project
-platform :ios, '14.0'
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -42,7 +42,7 @@ post_install do |installer|
     
     target.build_configurations.each do |config|
       # 1. Set minimum deployment target and C++ standards
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++17'
       config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
       

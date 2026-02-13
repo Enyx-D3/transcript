@@ -5,7 +5,7 @@ class WhatsNewPage extends StatelessWidget {
   const WhatsNewPage({super.key});
 
   static const _appName = 'Meeting Transcript Unlimited';
-  static const _version = '1.1.0';
+  static const _version = '1.1.1';
 
   @override
   Widget build(BuildContext context) {

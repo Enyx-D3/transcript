@@ -50,7 +50,7 @@ class _CalendarPageState extends State<CalendarPage> {
     final end = _endOfMonthExclusive(_monthAnchor);
 
     // Query all ordered by createdAt, filter to this month in Dart
-    final qb = obx.transcripts.query()..order(TranscriptEntity_.createdAt);
+    final qb = obx.transcripts.query(TranscriptEntity_.isDeleted.equals(false))..order(TranscriptEntity_.createdAt);
     final q = qb.build();
     final all = q.find();
     q.close();
@@ -310,7 +310,7 @@ class _CalendarPageState extends State<CalendarPage> {
       children: [
         box(_DayCell.neutralColor, 'No transcript'),
         const SizedBox(width: 16),
-        box(_DayCell.highlightColor, 'Has transcripts'),
+        box(_DayCell.highlightColor.withValues(alpha: 0.3), 'Has transcripts'),
       ],
     );
   }
@@ -568,15 +568,15 @@ class _DayCell extends StatelessWidget {
   });
 
   static const neutralColor = Color.fromARGB(255, 28, 30, 43);
-  static const highlightColor = Colors.white30;
-  static const todayBorder = Colors.white;
+  static const highlightColor = Color(0xFFff8143);
+  static const todayBorder = Color(0xFFff8143);
 
   @override
   Widget build(BuildContext context) {
     final dayNum = date.day.toString();
 
     return Material(
-      color: hasTranscripts ? highlightColor : neutralColor,
+      color: hasTranscripts ? highlightColor.withValues(alpha: 0.3) : neutralColor,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -586,7 +586,7 @@ class _DayCell extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
             border: isToday
-                ? Border.all(color: todayBorder.withOpacity(0.90), width: 1.4)
+                ? Border.all(color: todayBorder, width: 1.4)
                 : null,
           ),
           child: Stack(

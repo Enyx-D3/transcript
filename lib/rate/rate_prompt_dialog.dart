@@ -94,9 +94,7 @@ class _RateDialog extends StatelessWidget {
                             child: Icon(
                               Icons.star_rounded,
                               size: 22,
-                              color: Colors.green.withOpacity(
-                                isDark ? 0.95 : 0.9,
-                              ),
+                              color: Color(0xFFff8143),
                             ),
                           );
                         }),

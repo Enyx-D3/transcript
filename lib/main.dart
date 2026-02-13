@@ -1,6 +1,8 @@
-// lib/main.dart
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kDebugMode;
+
+import 'dart:io';
+import 'dart:ui' show DartPluginRegistrant;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -30,88 +32,116 @@ final TranscriptMailService _mailer = TranscriptMailService(
   // authToken: 'optional', // if you use it
 );
 
+Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async {
+  final obx = ObjectBox.I;
+
+  final t = obx.transcripts.get(transcriptId);
+  if (t == null) return;
+
+  final st = t.sourceType; // expects 2=audio import, 3=video import
+  if (st != 2 && st != 3) return;
+
+  final a = (t.audioPath ?? '').trim();
+  final p = (t.processedAudioPath ?? '').trim();
+
+  // Already correct => do nothing
+  if (p.isEmpty && a == wavPath.trim()) return;
+  if (p.isEmpty && a.isNotEmpty && wavPath.trim().isEmpty) return;
+
+  // Force import rule
+  t.audioPath = wavPath.trim().isEmpty ? (a.isEmpty ? null : a) : wavPath.trim();
+  t.processedAudioPath = null;
+
+  // optional timestamp
+  t.updatedAt = DateTime.now();
+
+  obx.transcripts.put(t);
+
+  debugPrint('[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)');
+}
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await FileDownloader().trackTasks();
-  // 1) Supabase init ONCE here
+  DartPluginRegistrant.ensureInitialized();
+
   await Supabase.initialize(
     url: 'https://ncpxlqykawquordwnxmw.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcHhscXlrYXdxdW9yZHdueG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNzQwMjAsImV4cCI6MjA3OTc1MDAyMH0.eDYqntQBhp_AxfhFw1PdR6gIFp50zDKzhqYKUzSs0EU',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcHhscXlrYXdxdW9yZHdueG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNzQwMjAsImV4cCI6MjA3OTc1MDAyMH0.eDYqntQBhp_AxfhFw1PdR6gIFp50zDKzhqYKUzSs0EU',
   );
 
-  // 2) ObjectBox store: main isolate only
   await ObjectBox.init();
-
-  // 3) Recorder
   await RecordingService.ensureInitialized();
 
-  // 4) Foreground task (background isolate)
-  await BackgroundTranscriber.init();
-  FlutterForegroundTask.initCommunicationPort();
-  // // 5) BG -> main persistence hook (register once)
-  BackgroundTranscriber.onData((data) async {
-    if (data is! Map) return;
+  runApp(const MyApp());
 
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
     try {
-      final type = data['type'];
+      // ✅ 1) init comm port FIRST
+      FlutterForegroundTask.initCommunicationPort();
 
-      if (type == 'transcribe_result') {
-        final wavPath = (data['wavPath'] as String?) ?? '';
-        final existingId = data['existingId'] as int?;
-        final payloadRaw = data['payload'];
+      // ✅ 2) register onData AFTER port init
+      BackgroundTranscriber.onData((data) async {
+        if (data is! Map) return;
 
-        if (wavPath.trim().isEmpty || payloadRaw is! Map) return;
+        try {
+          final type = data['type'];
 
-        final payload = Map<String, dynamic>.from(payloadRaw);
-        final result = TranscriptionResult.fromJson(payload);
+          if (type == 'transcribe_result') {
+            final wavPath = (data['wavPath'] as String?) ?? '';
+            final existingId = data['existingId'] as int?;
+            final payloadRaw = data['payload'];
 
-        int transcriptId;
+            if (wavPath.trim().isEmpty || payloadRaw is! Map) return;
 
-        if (existingId != null) {
-          await persistExistingTranscriptionFromResult(
-            transcriptId: existingId,
-            wavPath: wavPath,
-            result: result,
-          );
-          transcriptId = existingId;
+            final payload = Map<String, dynamic>.from(payloadRaw);
+            final result = TranscriptionResult.fromJson(payload);
 
-          // your existing setting behavior
-          await deleteTranscriptAudioIfUserEnabled(existingId);
-        } else {
-          final newId = await persistNewTranscriptionFromResult(
-            wavPath: wavPath,
-            result: result,
-          );
-          transcriptId = newId;
+            int transcriptId;
 
-          await deleteTranscriptAudioIfUserEnabled(newId);
+            if (existingId != null) {
+              await persistExistingTranscriptionFromResult(
+                transcriptId: existingId,
+                wavPath: wavPath,
+                result: result,
+              );
+              transcriptId = existingId;
+              await _normalizeImportAudioPaths(transcriptId, wavPath);
+              await deleteTranscriptAudioIfUserEnabled(existingId);
+            } else {
+              transcriptId = await persistNewTranscriptionFromResult(
+                wavPath: wavPath,
+                result: result,
+              );
+              await _normalizeImportAudioPaths(transcriptId, wavPath);
+              await deleteTranscriptAudioIfUserEnabled(transcriptId);
+            }
+
+            await AutoEmailService.sendIfEnabled(
+              transcriptId: transcriptId,
+              mailer: _mailer,
+            );
+          }
+
+          if (type == 'transcribe_error') {
+            debugPrint('BG transcription error: ${data['error']}');
+          }
+        } catch (e, st) {
+          debugPrint('BG -> main persistence failed: $e');
+          debugPrint('$st');
         }
+      });
 
-        // ✅ AUTO EMAIL after persistence (works even if user is not on TranscriptDetailPage)
-        // Your AutoEmailService guards:
-        // - setting enabled
-        // - already sent once per transcript
-        await AutoEmailService.sendIfEnabled(
-          transcriptId: transcriptId,
-          mailer: _mailer,
-        );
+      // ✅ 3) init the background transcriber LAST
+      await BackgroundTranscriber.init();
 
-        return;
-      }
-
-      if (type == 'transcribe_error') {
-        debugPrint('BG transcription error: ${data['error']}');
-        return;
-      }
+      // ✅ 4) downloader tracking last (optional)
+      FileDownloader().trackTasks().catchError((_) => null);
     } catch (e, st) {
-      debugPrint('BG -> main persistence failed: $e');
+      debugPrint('Post-frame init failed: $e');
       debugPrint('$st');
     }
   });
-
-  runApp(const MyApp());
 }
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -185,7 +215,7 @@ class _SplashGateState extends State<SplashGate> {
       }
 
       setState(() => _status = 'Initializing…');
-      await _recoverStaleTranscriptionLock();
+      // await _recoverStaleTranscriptionLock();
 
       setState(() => _status = 'Checking access…');
       final eligibility = await checkEligibilityOnce(Supabase.instance.client);
@@ -394,3 +424,4 @@ class _StatusPill extends StatelessWidget {
     );
   }
 }
+

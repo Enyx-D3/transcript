@@ -31,6 +31,10 @@ class BackgroundTranscriber {
   // ✅ NEW: language (always stored as non-null String; default 'auto')
   static const _kLang = 'bg_lang';
 
+  static const _kProgressProcessedSec = 'progress_processed_sec';
+  static const _kProgressTotalSec = 'progress_total_sec';
+  static const _kProgressStage = 'progress_stage';
+
   static Future<void> init() async {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -59,7 +63,6 @@ class BackgroundTranscriber {
     bool translateToEnglish = false,
     String? titleHint,
     int? existingTranscriptId,
-
     // ✅ diarization
     int? targetSpeakers,
 
@@ -72,6 +75,16 @@ class BackgroundTranscriber {
       value: translateToEnglish,
     );
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
+
+    await FlutterForegroundTask.saveData(
+      key: _kProgressProcessedSec,
+      value: 0.0,
+    );
+    await FlutterForegroundTask.saveData(key: _kProgressTotalSec, value: 0.0);
+    await FlutterForegroundTask.saveData(
+      key: _kProgressStage,
+      value: 'Preparing',
+    );
 
     // ✅ store int (0 means null/auto)
     await FlutterForegroundTask.saveData(
@@ -119,6 +132,14 @@ class BackgroundTranscriber {
 }
 
 class _TranscribeTaskHandler extends TaskHandler {
+  String _fmtMmSs(double sec) {
+    final s = (sec.isFinite && sec > 0) ? sec : 0.0;
+    final total = s.round();
+    final m = total ~/ 60;
+    final ss = (total % 60).toString().padLeft(2, '0');
+    return '$m:$ss';
+  }
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     final wavPath = await FlutterForegroundTask.getData<String>(
@@ -147,8 +168,9 @@ class _TranscribeTaskHandler extends TaskHandler {
     final langRaw = await FlutterForegroundTask.getData(
       key: BackgroundTranscriber._kLang,
     );
-    final String lang =
-        (langRaw is String && langRaw.trim().isNotEmpty) ? langRaw.trim() : 'auto';
+    final String lang = (langRaw is String && langRaw.trim().isNotEmpty)
+        ? langRaw.trim()
+        : 'auto';
 
     if (wavPath == null || wavPath.isEmpty) {
       await FlutterForegroundTask.updateService(
@@ -167,10 +189,38 @@ class _TranscribeTaskHandler extends TaskHandler {
 
       final TranscriptionResult result = await transcribeToResult(
         wavPath: wavPath,
-        // translateToEnglish: translate,
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
-        lang: lang, // ✅ NEW
+        lang: lang,
+        onProgress: ({
+          required String stage,
+          required double processedSec,
+          required double totalSec,
+        }) async {
+          // Throttle: update at most every 2 seconds of audio progress
+          final pct = (totalSec > 0)
+              ? (processedSec / totalSec * 100).round()
+              : 0;
+
+          await FlutterForegroundTask.saveData(
+            key: BackgroundTranscriber._kProgressProcessedSec,
+            value: processedSec,
+          );
+          await FlutterForegroundTask.saveData(
+            key: BackgroundTranscriber._kProgressTotalSec,
+            value: totalSec,
+          );
+          await FlutterForegroundTask.saveData(
+            key: BackgroundTranscriber._kProgressStage,
+            value: stage,
+          );
+
+          await FlutterForegroundTask.updateService(
+            notificationTitle: '$stage…',
+            notificationText:
+                '${_fmtMmSs(processedSec)} / ${_fmtMmSs(totalSec)}  ($pct%)',
+          );
+        },
       );
 
       FlutterForegroundTask.sendDataToMain({
