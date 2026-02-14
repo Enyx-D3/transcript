@@ -31,8 +31,9 @@ class SubscriptionService {
   String? lastVerifyCode;   // e.g. TOKEN_ALREADY_CLAIMED
   String? lastVerifyError;  // human readable
 
-  // ✅ IMPORTANT: must match your deployed edge function name
-  static const String _fnVerify = 'verify-play-subscription';
+  // ✅ IMPORTANT: must match your deployed edge function names
+  static const String _fnVerifyAndroid = 'verify-play-subscription';
+  static const String _fnVerifyApple = 'verify-apple-subscription';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -166,8 +167,8 @@ class SubscriptionService {
     });
 
     try {
-      // Android: query past purchases + verify them
       if (Platform.isAndroid) {
+        // Android: query past purchases + verify them
         final addition =
             _iap.getPlatformAddition<InAppPurchaseAndroidPlatformAddition>();
         final resp = await addition.queryPastPurchases();
@@ -185,6 +186,9 @@ class SubscriptionService {
             _entitlementAppliedCtrl.add(null);
           }
         }
+      } else if (Platform.isIOS) {
+        // iOS: restore purchases triggers purchaseStream updates
+        await _iap.restorePurchases();
       } else {
         // fallback for other platforms
         await _iap.restorePurchases();
@@ -238,8 +242,18 @@ class SubscriptionService {
 
   // ---------------- Entitlement logic ----------------
 
-  /// Prefer BillingClient token for Android.
+  /// Prefer BillingClient token for Android, App Store receipt for iOS.
   String? extractPurchaseToken(PurchaseDetails p) {
+    // ---- iOS: use serverVerificationData (App Store receipt or JWS transaction) ----
+    if (Platform.isIOS) {
+      final sv = p.verificationData.serverVerificationData;
+      if (sv.isNotEmpty) return sv;
+      final lv = p.verificationData.localVerificationData;
+      if (lv.isNotEmpty) return lv;
+      return null;
+    }
+
+    // ---- Android: prefer billingClient purchaseToken ----
     if (Platform.isAndroid && p is GooglePlayPurchaseDetails) {
       final token = p.billingClientPurchase.purchaseToken;
       if (token.isNotEmpty) return token;
@@ -272,9 +286,12 @@ class SubscriptionService {
     if (token == null || token.isEmpty) return false;
 
     try {
+      // Pick the right edge function based on platform
+      final fnName = Platform.isIOS ? _fnVerifyApple : _fnVerifyAndroid;
+
       // ✅ Supabase client automatically includes Authorization for the signed-in user.
       final res = await _sb.functions.invoke(
-        _fnVerify,
+        fnName,
         body: {
           'product_id': p.productID,
           'purchase_token': token,
@@ -295,12 +312,12 @@ class SubscriptionService {
       final ok = data is Map && (data['ok'] == true || data['success'] == true);
       if (!ok) {
         // ignore: avoid_print
-        print('$_fnVerify failed: $data');
+        print('$fnName failed: $data');
       }
       return ok;
     } catch (e) {
       // ignore: avoid_print
-      print('$_fnVerify exception: $e');
+      print('verify exception: $e');
       lastVerifyCode = null;
       lastVerifyError = e.toString();
       return false;

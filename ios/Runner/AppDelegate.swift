@@ -14,7 +14,7 @@ import UIKit
     // Setup audio converter method channel
     let controller = window?.rootViewController as! FlutterViewController
     let channel = FlutterMethodChannel(
-      name: "com.enyxd.transcript/audio_converter",
+      name: "com.enyxdigital.transcript/audio_converter",
       binaryMessenger: controller.binaryMessenger
     )
     

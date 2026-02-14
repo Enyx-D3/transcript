@@ -54,9 +54,11 @@ dependencies:
         url: https://github.com/Telosnex/fllama.git
         ref: 03f7b56
   google_sign_in: ^7.2.0
+  sign_in_with_apple: ^6.1.4
   supabase_flutter: ^2.10.3
   in_app_purchase: ^3.2.3
   in_app_purchase_android: ^0.4.0+5
+  in_app_purchase_storekit: ^0.4.7
   another_flushbar: ^1.12.32
   file_picker: ^10.3.8
   share_plus: ^12.0.1

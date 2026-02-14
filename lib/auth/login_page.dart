@@ -6,6 +6,7 @@ import 'dart:io' show Platform;
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -93,6 +94,76 @@ class _LoginPageState extends State<LoginPage> {
 
     if (updates.isNotEmpty) {
       await _sb.from('profiles').update(updates).eq('id', user.id);
+    }
+  }
+
+  // ────────── Apple Sign In ──────────
+
+  Future<void> _signInWithApple() async {
+    if (_busy) return;
+
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      // 1. Generate a crypto-random nonce
+      final rawNonce = _generateRandomString();
+      final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+
+      // 2. Show native Apple Sign In sheet
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: hashedNonce,
+      );
+
+      final idToken = credential.identityToken;
+      if (idToken == null) {
+        throw Exception('No identity token returned from Apple.');
+      }
+
+      // 3. Sign in to Supabase with the Apple ID token
+      final res = await _sb.auth.signInWithIdToken(
+        provider: OAuthProvider.apple,
+        idToken: idToken,
+        nonce: rawNonce,
+      );
+
+      final user = res.user;
+      if (user == null) {
+        throw Exception('Supabase sign-in failed (no user returned).');
+      }
+
+      await _ensureProfile(user);
+
+      if (!mounted) return;
+      setState(() => _busy = false);
+      widget.onLoggedIn?.call();
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (!mounted) return;
+      // User cancelled — don't show error
+      if (e.code == AuthorizationErrorCode.canceled) {
+        setState(() => _busy = false);
+        return;
+      }
+      setState(() {
+        _busy = false;
+        _error = 'Apple Sign In failed';
+        debugPrint('Apple sign-in error: $e');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'Apple Sign In failed';
+        debugPrint('Apple sign-in error: $e');
+      });
     }
   }
 
@@ -285,6 +356,7 @@ class _LoginPageState extends State<LoginPage> {
                                       CrossAxisAlignment.stretch,
                                   children: [
                                     // GOOGLE
+                                    if (Platform.isAndroid) ...[
                                     FilledButton.icon(
                                       onPressed: _busy
                                           ? null
@@ -310,64 +382,112 @@ class _LoginPageState extends State<LoginPage> {
                                       ),
                                     ),
 
-                                    // const SizedBox(height: 16),
-                                    // const Divider(),
-                                    // const SizedBox(height: 12),
+                                    const SizedBox(height: 16),
+                                    const Divider(),
+                                    const SizedBox(height: 12),
+                                    ],
 
-                                    // // EMAIL/PASSWORD
-                                    // TextField(
-                                    //   controller: _emailCtrl,
-                                    //   keyboardType: TextInputType.emailAddress,
-                                    //   textInputAction: TextInputAction.next,
-                                    //   autofillHints: const [
-                                    //     AutofillHints.username,
-                                    //     AutofillHints.email,
-                                    //   ],
-                                    //   decoration: const InputDecoration(
-                                    //     labelText: 'Email',
-                                    //     border: OutlineInputBorder(),
-                                    //   ),
-                                    // ),
-                                    // const SizedBox(height: 10),
-                                    // TextField(
-                                    //   controller: _passwordCtrl,
-                                    //   obscureText: _pwObscured,
-                                    //   textInputAction: TextInputAction.done,
-                                    //   onSubmitted: (_) => _busy
-                                    //       ? null
-                                    //       : _signInWithEmailPassword(),
-                                    //   autofillHints: const [
-                                    //     AutofillHints.password,
-                                    //   ],
-                                    //   decoration: InputDecoration(
-                                    //     labelText: 'Password',
-                                    //     border: const OutlineInputBorder(),
-                                    //     suffixIcon: IconButton(
-                                    //       onPressed: _busy
-                                    //           ? null
-                                    //           : () => setState(
-                                    //               () => _pwObscured =
-                                    //                   !_pwObscured,
-                                    //             ),
-                                    //       icon: Icon(
-                                    //         _pwObscured
-                                    //             ? Icons.visibility
-                                    //             : Icons.visibility_off,
-                                    //       ),
-                                    //     ),
-                                    //   ),
-                                    // ),
-                                    // const SizedBox(height: 10),
-                                    // FilledButton(
-                                    //   onPressed: _busy
-                                    //       ? null
-                                    //       : _signInWithEmailPassword,
-                                    //   child: Text(
-                                    //     _busy
-                                    //         ? 'Signing in…'
-                                    //         : 'Continue with Email',
-                                    //   ),
-                                    // ),
+                                    // APPLE SIGN IN (iOS only)
+                                    if (Platform.isIOS) ...[
+                                      FilledButton.icon(
+                                      onPressed: _busy
+                                          ? null
+                                          : _signInWithApple,
+                                      icon: _busy
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.black,
+                                              ),
+                                            )
+                                          : const Icon(Icons.apple),
+
+                                      label: Text(
+                                        _busy
+                                            ? 'Signing in…'
+                                            : 'Continue with Apple',
+                                        style: TextStyle(color: Colors.black),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                      ),
+                                    ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          const Expanded(child: Divider()),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                                            child: Text(
+                                              'or',
+                                              style: TextStyle(
+                                                color: Colors.white54,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                          const Expanded(child: Divider()),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+
+                                    // EMAIL/PASSWORD
+                                    TextField(
+                                      controller: _emailCtrl,
+                                      keyboardType: TextInputType.emailAddress,
+                                      textInputAction: TextInputAction.next,
+                                      autofillHints: const [
+                                        AutofillHints.username,
+                                        AutofillHints.email,
+                                      ],
+                                      decoration: const InputDecoration(
+                                        labelText: 'Email',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    TextField(
+                                      controller: _passwordCtrl,
+                                      obscureText: _pwObscured,
+                                      textInputAction: TextInputAction.done,
+                                      onSubmitted: (_) => _busy
+                                          ? null
+                                          : _signInWithEmailPassword(),
+                                      autofillHints: const [
+                                        AutofillHints.password,
+                                      ],
+                                      decoration: InputDecoration(
+                                        labelText: 'Password',
+                                        border: const OutlineInputBorder(),
+                                        suffixIcon: IconButton(
+                                          onPressed: _busy
+                                              ? null
+                                              : () => setState(
+                                                  () => _pwObscured =
+                                                      !_pwObscured,
+                                                ),
+                                          icon: Icon(
+                                            _pwObscured
+                                                ? Icons.visibility
+                                                : Icons.visibility_off,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    FilledButton(
+                                      onPressed: _busy
+                                          ? null
+                                          : _signInWithEmailPassword,
+                                      child: Text(
+                                        _busy
+                                            ? 'Signing in…'
+                                            : 'Continue with Email',
+                                      ),
+                                    ),
                                     const SizedBox(height: 10),
                                     RichText(
                                       textAlign: TextAlign.center,
