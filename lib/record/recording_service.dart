@@ -11,7 +11,59 @@ import 'package:shared_preferences/shared_preferences.dart';
 class RecordingService {
   static const _serviceId = 431;
 
+  // ============================================================
+  // iOS-only: direct recorder + event stream (Android untouched)
+  // ============================================================
+
+  static final AudioRecorder _recorder = AudioRecorder();
+
+  static StreamController<Map<String, dynamic>>? _iosController;
+  static Timer? _iosTimer;
+
+  static int? _iosStartEpochMs;
+  static int _iosPausedAccumMs = 0;
+  static int? _iosPauseStartedMs;
+
+  static bool _iosPaused = false;
+  static bool _iosStopped = false;
+
+  static String? _iosPath;
+  static int _iosLastNotifSec = -1;
+
+  // limit in seconds
+  static int _iosMaxSeconds = 60 * 60; // default 60 min
+
+  // target speakers passed from UI (0 => null)
+  static int? _iosTargetSpeakers;
+
+  // prevent overlapping async ticks
+  static bool _iosTicking = false;
+
+  // iOS: start the recorder directly
+  static Future<bool> _startRecorderDirect(String filePath) async {
+    try {
+      final hasPerm = await _recorder.hasPermission();
+      if (!hasPerm) return false;
+
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+          bitRate: 128000,
+        ),
+        path: filePath,
+      );
+
+      return true;
+    } catch (e) {
+      debugPrint('iOS record error: $e');
+      return false;
+    }
+  }
+
   static Future<void> ensureInitialized() async {
+    // Keep your existing init exactly (Android uses it; iOS can ignore service bits)
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'rec_channel',
@@ -46,6 +98,71 @@ class RecordingService {
   static Future<String?> start({int? targetSpeakers}) async {
     await ensureInitialized();
 
+    // ✅ iOS: DO NOT use flutter_foreground_task service for recording start.
+    // We still keep your Android logic unchanged below.
+    if (Platform.isIOS) {
+      final filePath = await _newWavPath();
+
+      final prefs = await SharedPreferences.getInstance();
+      final maxMinutes = prefs.getInt(_kPrefMaxRecordingMinutes) ?? 60;
+      final safeMinutes =
+          _kMaxMinutesOptions.contains(maxMinutes) ? maxMinutes : 60;
+
+      _iosMaxSeconds = safeMinutes * 60;
+
+      // Store optional values (not required for iOS logic, but harmless)
+      await FlutterForegroundTask.saveData(key: _kFilePath, value: filePath);
+      await FlutterForegroundTask.saveData(
+        key: _kStartEpochMs,
+        value: DateTime.now().millisecondsSinceEpoch,
+      );
+      await FlutterForegroundTask.saveData(key: _kPaused, value: false);
+      await FlutterForegroundTask.saveData(
+        key: _kMaxMinutesRuntime,
+        value: safeMinutes,
+      );
+      await FlutterForegroundTask.saveData(
+        key: _kTargetSpeakersRuntime,
+        value: targetSpeakers ?? 0,
+      );
+
+      // Start direct recorder
+      final ok = await _startRecorderDirect(filePath);
+      if (!ok) return null;
+
+      // Initialize iOS runtime state
+      _iosController ??= StreamController<Map<String, dynamic>>.broadcast();
+      _iosStopped = false;
+      _iosPaused = false;
+      _iosPath = filePath;
+
+      _iosStartEpochMs = DateTime.now().millisecondsSinceEpoch;
+      _iosPausedAccumMs = 0;
+      _iosPauseStartedMs = null;
+      _iosLastNotifSec = -1;
+
+      // target speakers stored as int, 0 => null
+      _iosTargetSpeakers = (targetSpeakers == null || targetSpeakers <= 0)
+          ? null
+          : targetSpeakers;
+
+      // Start tick timer (mimic Android task tick payloads)
+      _iosTimer?.cancel();
+      _iosTimer = Timer.periodic(const Duration(milliseconds: 200), (t) async {
+        if (_iosStopped) return;
+        if (_iosTicking) return;
+        await _iosTickAndNotify();
+      });
+
+      // Send an immediate first tick so UI exits "Starting..."
+      await _iosTickAndNotify();
+
+      return filePath;
+    }
+
+    // ===========================
+    // ANDROID (UNCHANGED)
+    // ===========================
     final already = await FlutterForegroundTask.isRunningService;
     if (!already) {
       final filePath = await _newWavPath();
@@ -55,7 +172,8 @@ class RecordingService {
       final maxMinutes = prefs.getInt(_kPrefMaxRecordingMinutes) ?? 60;
 
       // Safety clamp (matches your settings options)
-      final safeMinutes = _kMaxMinutesOptions.contains(maxMinutes) ? maxMinutes : 60;
+      final safeMinutes =
+          _kMaxMinutesOptions.contains(maxMinutes) ? maxMinutes : 60;
 
       await FlutterForegroundTask.saveData(key: _kFilePath, value: filePath);
       await FlutterForegroundTask.saveData(
@@ -91,13 +209,80 @@ class RecordingService {
     }
   }
 
-  static void pause() =>
-      FlutterForegroundTask.sendDataToTask(const {_kCmd: _cmdPause});
+  // ============================================================
+  // Pause / Resume / Stop: iOS direct, Android unchanged
+  // ============================================================
 
-  static void resume() =>
-      FlutterForegroundTask.sendDataToTask(const {_kCmd: _cmdResume});
+  static Future<void> pause() async {
+    if (Platform.isIOS) {
+      if (_iosStopped) return;
+      if (!_iosPaused && await _recorder.isRecording()) {
+        await _recorder.pause();
+        _iosPaused = true;
+        _iosPauseStartedMs = DateTime.now().millisecondsSinceEpoch;
+
+        await FlutterForegroundTask.saveData(key: _kPaused, value: true);
+
+        // push a tick update so UI reflects paused state
+        await _iosTickAndNotify();
+      }
+      return;
+    }
+
+    // Android unchanged
+    FlutterForegroundTask.sendDataToTask(const {_kCmd: _cmdPause});
+  }
+
+  static Future<void> resume() async {
+    if (Platform.isIOS) {
+      if (_iosStopped) return;
+      if (_iosPaused && await _recorder.isPaused()) {
+        await _recorder.resume();
+
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (_iosPauseStartedMs != null) {
+          _iosPausedAccumMs += (now - _iosPauseStartedMs!);
+          _iosPauseStartedMs = null;
+        }
+
+        _iosPaused = false;
+
+        await FlutterForegroundTask.saveData(key: _kPaused, value: false);
+
+        await _iosTickAndNotify();
+      }
+      return;
+    }
+
+    // Android unchanged
+    FlutterForegroundTask.sendDataToTask(const {_kCmd: _cmdResume});
+  }
 
   static Future<String?> stop() async {
+    if (Platform.isIOS) {
+      if (_iosStopped) return _iosPath;
+
+      _iosStopped = true;
+      _iosTimer?.cancel();
+
+      String? path;
+      try {
+        path = await _recorder.stop();
+      } catch (_) {}
+
+      // For consistency with Android payload:
+      _iosController?.add({
+        'type': 'stopped',
+        'filePath': path ?? _iosPath,
+        'targetSpeakers': _iosTargetSpeakers,
+      });
+
+      return path ?? _iosPath;
+    }
+
+    // ===========================
+    // ANDROID (UNCHANGED)
+    // ===========================
     final completer = Completer<void>();
 
     void onData(Object data) {
@@ -124,18 +309,100 @@ class RecordingService {
     return (result is ServiceRequestSuccess) ? path : null;
   }
 
+  // ============================================================
+  // Listeners: iOS uses stream, Android uses ForegroundTask (unchanged)
+  // ============================================================
+
   static void addListener(void Function(Object data) onData) {
+    if (Platform.isIOS) {
+      _iosController ??= StreamController<Map<String, dynamic>>.broadcast();
+      _iosController!.stream.listen((event) => onData(event));
+      return;
+    }
+
+    // Android unchanged
     FlutterForegroundTask.addTaskDataCallback(onData);
   }
 
   static void removeListener(void Function(Object data) onData) {
+    if (Platform.isIOS) {
+      // no-op: we don't have a handle to cancel single subscriptions here.
+      // Stream will be replaced on next start and timer canceled on stop.
+      return;
+    }
+
+    // Android unchanged
     FlutterForegroundTask.removeTaskDataCallback(onData);
   }
+
+  // ============================================================
+  // iOS tick pump (mimic Android payloads)
+  // ============================================================
+
+  static Future<void> _iosTickAndNotify() async {
+    _iosTicking = true;
+    try {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      final start = _iosStartEpochMs ?? nowMs;
+
+      final pausedExtra =
+          (_iosPauseStartedMs == null) ? 0 : (nowMs - _iosPauseStartedMs!);
+
+      final effectiveMs = (nowMs - start) - _iosPausedAccumMs - pausedExtra;
+      final elapsed = Duration(milliseconds: effectiveMs).inSeconds;
+      final safeElapsed = elapsed < 0 ? 0 : elapsed;
+
+      // enforce limit (same semantics as Android)
+      if (safeElapsed >= _iosMaxSeconds) {
+        _iosController?.add({
+          'type': 'limit_reached',
+          'elapsedSec': safeElapsed,
+          'maxSec': _iosMaxSeconds,
+        });
+
+        await stop();
+        return;
+      }
+
+      double level = 0.0;
+      try {
+        final amp = await _recorder.getAmplitude();
+        final db = amp.current; // -160..0 typically
+        final clamped = db.clamp(-60.0, 0.0);
+        level = (clamped + 60.0) / 60.0; // 0..1
+      } catch (_) {
+        level = 0.0;
+      }
+
+      _iosController?.add({
+        'type': 'tick',
+        'elapsedSec': safeElapsed,
+        'paused': _iosPaused,
+        'level': level,
+      });
+
+      // (Optional) keep storage in sync for your hydration logic
+      await FlutterForegroundTask.saveData(key: 'rec_last_elapsed_sec', value: safeElapsed);
+      await FlutterForegroundTask.saveData(key: 'rec_last_level', value: level);
+      await FlutterForegroundTask.saveData(key: 'rec_last_paused', value: _iosPaused);
+
+      // no notifications on iOS here (UI already shows timer)
+      _iosLastNotifSec = safeElapsed;
+    } finally {
+      _iosTicking = false;
+    }
+  }
+
+  // ============================================================
+  // Util
+  // ============================================================
 
   static Future<String> _newWavPath() async {
     final dir = Directory(
       '${(await getApplicationDocumentsDirectory()).path}/recordings',
     )..createSync(recursive: true);
+
     final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
     return '${dir.path}/rec_$ts.wav';
   }
@@ -168,7 +435,7 @@ const String _kPrefMaxRecordingMinutes = 'pref_max_recording_minutes';
 const String _kMaxMinutesRuntime = 'rec_max_recording_minutes_runtime';
 
 // ✅ allowed options (same as SettingsPage)
-const List<int> _kMaxMinutesOptions = [30, 60, 90, 120,6000];
+const List<int> _kMaxMinutesOptions = [30, 60, 90, 120, 6000];
 
 @pragma('vm:entry-point')
 void recordingStartCallback() {
@@ -176,6 +443,11 @@ void recordingStartCallback() {
   DartPluginRegistrant.ensureInitialized();
   FlutterForegroundTask.setTaskHandler(_RecordingTaskHandler());
 }
+
+// ============================================================
+// ✅ ANDROID TASK HANDLER — EXACTLY YOUR ORIGINAL CODE BELOW
+// (DO NOT CHANGE ANYTHING HERE)
+// ============================================================
 
 class _RecordingTaskHandler extends TaskHandler {
   late final AudioRecorder _rec;

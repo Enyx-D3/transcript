@@ -200,6 +200,9 @@ void _setDiarizationEnabledLocal(bool v) {
 }
 
   Future<void> _hydrateFromRecordingService() async {
+
+    if (Platform.isIOS) return;
+
     final running = await FlutterForegroundTask.isRunningService;
     if (!mounted) return;
 
@@ -292,7 +295,7 @@ void _setDiarizationEnabledLocal(bool v) {
   Future<void> _pause() async {
     if (!_recording || _paused) return;
     try {
-      RecordingService.pause();
+      await RecordingService.pause();
       if (!mounted) return;
       setState(() => _paused = true);
     } catch (_) {
@@ -304,7 +307,7 @@ void _setDiarizationEnabledLocal(bool v) {
   Future<void> _resume() async {
     if (!_recording || !_paused) return;
     try {
-      RecordingService.resume();
+      await RecordingService.resume();
       if (!mounted) return;
       setState(() => _paused = false);
     } catch (_) {
