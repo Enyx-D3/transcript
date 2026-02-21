@@ -1,7 +1,7 @@
 // lib/transcript/background_transcriber.dart
 import 'dart:async';
 import 'dart:ui';
-
+import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
@@ -63,11 +63,36 @@ class BackgroundTranscriber {
     bool translateToEnglish = false,
     String? titleHint,
     int? existingTranscriptId,
-    // ✅ diarization
     int? targetSpeakers,
-
-    // ✅ NEW: language code ('auto','en','bn','hi','es')
     String lang = 'auto',
+  }) async {
+    if (Platform.isIOS) {
+      return _startIOS(
+        wavPath: wavPath,
+        titleHint: titleHint,
+        existingTranscriptId: existingTranscriptId,
+        targetSpeakers: targetSpeakers,
+        lang: lang,
+      );
+    }
+
+    return _startAndroid(
+      wavPath: wavPath,
+      translateToEnglish: translateToEnglish,
+      titleHint: titleHint,
+      existingTranscriptId: existingTranscriptId,
+      targetSpeakers: targetSpeakers,
+      lang: lang,
+    );
+  }
+
+  static Future<void> _startAndroid({
+    required String wavPath,
+    required bool translateToEnglish,
+    String? titleHint,
+    int? existingTranscriptId,
+    int? targetSpeakers,
+    required String lang,
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
     await FlutterForegroundTask.saveData(
@@ -114,6 +139,79 @@ class BackgroundTranscriber {
       notificationText: 'Preparing Transcript',
       callback: transcribeStartCallback,
     );
+  }
+
+  static Future<void> _startIOS({
+    required String wavPath,
+    String? titleHint,
+    int? existingTranscriptId,
+    int? targetSpeakers,
+    required String lang,
+  }) async {
+    try {
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: true,
+      );
+
+      await FlutterForegroundTask.saveData(
+        key: _kProgressProcessedSec,
+        value: 0.0,
+      );
+
+      await FlutterForegroundTask.saveData(key: _kProgressTotalSec, value: 0.0);
+
+      await FlutterForegroundTask.saveData(
+        key: _kProgressStage,
+        value: 'Preparing',
+      );
+
+      final result = await transcribeToResult(
+        wavPath: wavPath,
+        titleHint: titleHint,
+        targetSpeakers: targetSpeakers,
+        lang: lang,
+        onProgress:
+            ({
+              required String stage,
+              required double processedSec,
+              required double totalSec,
+            }) async {
+              await FlutterForegroundTask.saveData(
+                key: _kProgressProcessedSec,
+                value: processedSec,
+              );
+
+              await FlutterForegroundTask.saveData(
+                key: _kProgressTotalSec,
+                value: totalSec,
+              );
+
+              await FlutterForegroundTask.saveData(
+                key: _kProgressStage,
+                value: stage,
+              );
+            },
+      );
+
+      FlutterForegroundTask.sendDataToMain({
+        'type': 'transcribe_result',
+        'existingId': existingTranscriptId,
+        'wavPath': wavPath,
+        'payload': result.toJson(),
+      });
+    } catch (e) {
+      FlutterForegroundTask.sendDataToMain({
+        'type': 'transcribe_error',
+        'existingId': existingTranscriptId,
+        'error': e.toString(),
+      });
+    } finally {
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: false,
+      );
+    }
   }
 
   static Future<int?> getLastResultId() async {
@@ -192,35 +290,36 @@ class _TranscribeTaskHandler extends TaskHandler {
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
         lang: lang,
-        onProgress: ({
-          required String stage,
-          required double processedSec,
-          required double totalSec,
-        }) async {
-          // Throttle: update at most every 2 seconds of audio progress
-          final pct = (totalSec > 0)
-              ? (processedSec / totalSec * 100).round()
-              : 0;
+        onProgress:
+            ({
+              required String stage,
+              required double processedSec,
+              required double totalSec,
+            }) async {
+              // Throttle: update at most every 2 seconds of audio progress
+              final pct = (totalSec > 0)
+                  ? (processedSec / totalSec * 100).round()
+                  : 0;
 
-          await FlutterForegroundTask.saveData(
-            key: BackgroundTranscriber._kProgressProcessedSec,
-            value: processedSec,
-          );
-          await FlutterForegroundTask.saveData(
-            key: BackgroundTranscriber._kProgressTotalSec,
-            value: totalSec,
-          );
-          await FlutterForegroundTask.saveData(
-            key: BackgroundTranscriber._kProgressStage,
-            value: stage,
-          );
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressProcessedSec,
+                value: processedSec,
+              );
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressTotalSec,
+                value: totalSec,
+              );
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressStage,
+                value: stage,
+              );
 
-          await FlutterForegroundTask.updateService(
-            notificationTitle: '$stage…',
-            notificationText:
-                '${_fmtMmSs(processedSec)} / ${_fmtMmSs(totalSec)}  ($pct%)',
-          );
-        },
+              await FlutterForegroundTask.updateService(
+                notificationTitle: '$stage…',
+                notificationText:
+                    '${_fmtMmSs(processedSec)} / ${_fmtMmSs(totalSec)}  ($pct%)',
+              );
+            },
       );
 
       FlutterForegroundTask.sendDataToMain({

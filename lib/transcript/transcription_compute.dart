@@ -357,7 +357,8 @@ Future<TranscriptionResult> transcribeToResult({
     required String stage,
     required double processedSec,
     required double totalSec,
-  })? onProgress,
+  })?
+  onProgress,
 }) async {
   Future<void> emit(String stage, double processedSec, double totalSec) async {
     try {
@@ -400,7 +401,9 @@ Future<TranscriptionResult> transcribeToResult({
 
   // If diarization OFF => single pass
   if (!diarEnabled) {
-    debugPrint('[BG-PIPELINE] Diarization disabled. Single-pass transcription.');
+    debugPrint(
+      '[BG-PIPELINE] Diarization disabled. Single-pass transcription.',
+    );
 
     await emit('Transcribing', 0.0, duration);
 
@@ -419,8 +422,10 @@ Future<TranscriptionResult> transcribeToResult({
     final title = (titleHint != null && titleHint.trim().isNotEmpty)
         ? titleHint.trim()
         : (baseTitle.isEmpty
-            ? null
-            : (baseTitle.length > 48 ? '${baseTitle.substring(0, 48)}…' : baseTitle));
+              ? null
+              : (baseTitle.length > 48
+                    ? '${baseTitle.substring(0, 48)}…'
+                    : baseTitle));
 
     return TranscriptionResult(
       model: modelName,
@@ -441,43 +446,52 @@ Future<TranscriptionResult> transcribeToResult({
 
   if (useIsolatedDiarization) {
     debugPrint('[BG-PIPELINE] Enhanced diarization start...');
-    debugPrint('[BG-PIPELINE] Starting enhanced diarization with speaker matching...');
+    debugPrint(
+      '[BG-PIPELINE] Starting enhanced diarization with speaker matching...',
+    );
     //onProgress?.call(0, 1, 'Analyzing speakers');
 
     try {
+      debugPrint('[BG-PIPELINE] Loading speaker memory...');
       Map<String, List<List<double>>> speakerMemoryData = {};
       if (matchWithEnrolledSpeakers) {
         try {
           final memory = await SpeakerMemory.instance();
           final allSpeakers = memory.dumpAll();
           allSpeakers.forEach((name, embeddings) {
-            speakerMemoryData[name] =
-                embeddings.map((emb) => emb.toList()).toList();
+            speakerMemoryData[name] = embeddings
+                .map((emb) => emb.toList())
+                .toList();
           });
+          debugPrint(
+            '[BG-PIPELINE] Speaker memory loaded for ${speakerMemoryData.keys.length} speakers',
+          );
         } catch (e) {
           debugPrint('[BG-PIPELINE] Speaker memory load failed: $e');
         }
       }
 
+      debugPrint('[BG-PIPELINE] Calling runEmbeddingDiarizationInIsolate...');
       final EnhancedDiarizationResult enhancedResult =
           await runEmbeddingDiarizationInIsolate(
-        wavPath: cleaned,
-        durationSec: duration,
-        embOnnxPath: mp.embOnnx,
-        windowSec: 2.5,
-        hopSec: 1.25,
-        stayThreshold: 0.68,
-        switchThreshold: 0.80,
-        switchConfirmWindows: 3,
-        mergeClustersThreshold: 0.86,
-        minClusterTalkSec: 2.5,
-        minSegmentSec: 0.8,
-        maxSpeakersCap: 8,
-        targetSpeakers: targetSpeakers,
-        matchSpeakers: matchWithEnrolledSpeakers,
-        matchThreshold: 0.67,
-        speakerMemoryData: speakerMemoryData,
-      );
+            wavPath: cleaned,
+            durationSec: duration,
+            embOnnxPath: mp.embOnnx,
+            windowSec: 2.5,
+            hopSec: 1.25,
+            stayThreshold: 0.68,
+            switchThreshold: 0.80,
+            switchConfirmWindows: 3,
+            mergeClustersThreshold: 0.86,
+            minClusterTalkSec: 2.5,
+            minSegmentSec: 0.8,
+            maxSpeakersCap: 8,
+            targetSpeakers: targetSpeakers,
+            matchSpeakers: matchWithEnrolledSpeakers,
+            matchThreshold: 0.67,
+            speakerMemoryData: speakerMemoryData,
+          );
+      debugPrint('[BG-PIPELINE] Enhanced diarization isolate returned.');
       speakerMemoryData = {}; // free enrolled embeddings
 
       diarizationTurns = enhancedResult.turns;
@@ -503,8 +517,13 @@ Future<TranscriptionResult> transcribeToResult({
       );
 
       diarizationTurns = merged
-          .map((t) =>
-              IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b))
+          .map(
+            (t) => IsolatedEmbeddingTurn(
+              speaker: t.spk,
+              startSec: t.a,
+              endSec: t.b,
+            ),
+          )
           .toList();
     }
   } else {
@@ -527,8 +546,10 @@ Future<TranscriptionResult> transcribeToResult({
     );
 
     diarizationTurns = merged
-        .map((t) =>
-            IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b))
+        .map(
+          (t) =>
+              IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b),
+        )
         .toList();
   }
 
@@ -541,7 +562,9 @@ Future<TranscriptionResult> transcribeToResult({
 
   // If diarization produced nothing => single pass
   if (turns.isEmpty) {
-    debugPrint('[BG-PIPELINE] No diarization segments. Single speaker fallback.');
+    debugPrint(
+      '[BG-PIPELINE] No diarization segments. Single speaker fallback.',
+    );
 
     await emit('Transcribing', 0.0, duration);
 
@@ -560,8 +583,10 @@ Future<TranscriptionResult> transcribeToResult({
     final title = (titleHint != null && titleHint.trim().isNotEmpty)
         ? titleHint.trim()
         : (baseTitle.isEmpty
-            ? null
-            : (baseTitle.length > 48 ? '${baseTitle.substring(0, 48)}…' : baseTitle));
+              ? null
+              : (baseTitle.length > 48
+                    ? '${baseTitle.substring(0, 48)}…'
+                    : baseTitle));
 
     return TranscriptionResult(
       model: modelName,
@@ -574,7 +599,9 @@ Future<TranscriptionResult> transcribeToResult({
 
   debugPrint('[BG-PIPELINE] Transcribing ${turns.length} segments');
   await emit('Transcribing', 0.0, duration);
-  debugPrint('[BG-PIPELINE] Starting transcription of ${turns.length} segments');
+  debugPrint(
+    '[BG-PIPELINE] Starting transcription of ${turns.length} segments',
+  );
   //onProgress?.call(0, turns.length, 'Transcribing');
 
   final tmpDir = Directory(
@@ -614,7 +641,9 @@ Future<TranscriptionResult> transcribeToResult({
 
       final trimmedText = text.trim();
       if (trimmedText.isNotEmpty) {
-        out.add(LiteTurn(turn.speaker, turn.startSec, turn.endSec, trimmedText));
+        out.add(
+          LiteTurn(turn.speaker, turn.startSec, turn.endSec, trimmedText),
+        );
       }
     } catch (e, st) {
       debugPrint('[BG-PIPELINE] Segment $i error: $e');
@@ -627,7 +656,7 @@ Future<TranscriptionResult> transcribeToResult({
       try {
         File(slice).deleteSync();
       } catch (_) {}
-      
+
       // Periodic memory relief - yield every 10 segments to allow GC
       if ((i + 1) % 10 == 0) {
         await Future.delayed(const Duration(milliseconds: 20));
@@ -650,8 +679,9 @@ Future<TranscriptionResult> transcribeToResult({
   await emit('Finalizing', duration, duration);
 
   if (nonEmpty.isEmpty) {
-    final title =
-        (titleHint != null && titleHint.trim().isNotEmpty) ? titleHint.trim() : null;
+    final title = (titleHint != null && titleHint.trim().isNotEmpty)
+        ? titleHint.trim()
+        : null;
 
     return TranscriptionResult(
       model: modelName,
@@ -674,7 +704,12 @@ Future<TranscriptionResult> transcribeToResult({
     final same = t.speaker == cur.speaker;
 
     if (same && gap >= -0.05 && gap <= 0.5) {
-      cur = LiteTurn(cur.speaker, cur.startSec, t.endSec, '${cur.text} ${t.text}'.trim());
+      cur = LiteTurn(
+        cur.speaker,
+        cur.startSec,
+        t.endSec,
+        '${cur.text} ${t.text}'.trim(),
+      );
     } else {
       mergedTurns.add(cur);
       cur = t;
@@ -686,8 +721,10 @@ Future<TranscriptionResult> transcribeToResult({
   final title = (titleHint != null && titleHint.trim().isNotEmpty)
       ? titleHint.trim()
       : (firstText.isEmpty
-          ? null
-          : (firstText.length > 48 ? '${firstText.substring(0, 48)}…' : firstText));
+            ? null
+            : (firstText.length > 48
+                  ? '${firstText.substring(0, 48)}…'
+                  : firstText));
 
   return TranscriptionResult(
     model: modelName,
@@ -697,4 +734,3 @@ Future<TranscriptionResult> transcribeToResult({
     turns: mergedTurns,
   );
 }
-

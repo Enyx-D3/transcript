@@ -21,10 +21,10 @@ class IsolatedEmbeddingTurn {
   });
 
   Map<String, dynamic> toJson() => {
-        'speaker': speaker,
-        'startSec': startSec,
-        'endSec': endSec,
-      };
+    'speaker': speaker,
+    'startSec': startSec,
+    'endSec': endSec,
+  };
 
   factory IsolatedEmbeddingTurn.fromJson(Map<String, dynamic> json) {
     return IsolatedEmbeddingTurn(
@@ -48,17 +48,17 @@ class EnhancedDiarizationResult {
   });
 
   Map<String, dynamic> toJson() => {
-        'turns': turns.map((t) => t.toJson()).toList(),
-        'speakerMatches': speakerMatches,
-      };
+    'turns': turns.map((t) => t.toJson()).toList(),
+    'speakerMatches': speakerMatches,
+  };
 
   factory EnhancedDiarizationResult.fromJson(Map<String, dynamic> json) {
     return EnhancedDiarizationResult(
       turns: (json['turns'] as List)
           .map((t) => IsolatedEmbeddingTurn.fromJson(t))
           .toList(),
-      speakerMatches:
-          (json['speakerMatches'] as Map<String, dynamic>).cast<String, String>(),
+      speakerMatches: (json['speakerMatches'] as Map<String, dynamic>)
+          .cast<String, String>(),
     );
   }
 }
@@ -142,30 +142,30 @@ class DiarizationParams {
   });
 
   Map<String, dynamic> toJson() => {
-        'wavPath': wavPath,
-        'durationSec': durationSec,
-        'embOnnxPath': embOnnxPath,
-        'windowSec': windowSec,
-        'hopSec': hopSec,
-        'stayThreshold': stayThreshold,
-        'switchThreshold': switchThreshold,
-        'switchConfirmWindows': switchConfirmWindows,
-        'mergeClustersThreshold': mergeClustersThreshold,
+    'wavPath': wavPath,
+    'durationSec': durationSec,
+    'embOnnxPath': embOnnxPath,
+    'windowSec': windowSec,
+    'hopSec': hopSec,
+    'stayThreshold': stayThreshold,
+    'switchThreshold': switchThreshold,
+    'switchConfirmWindows': switchConfirmWindows,
+    'mergeClustersThreshold': mergeClustersThreshold,
 
-        'stableMergeThreshold': stableMergeThreshold,
-        'stableBridgeMaxSec': stableBridgeMaxSec,
+    'stableMergeThreshold': stableMergeThreshold,
+    'stableBridgeMaxSec': stableBridgeMaxSec,
 
-        'minClusterTalkSec': minClusterTalkSec,
-        'minSegmentSec': minSegmentSec,
-        'maxSpeakersCap': maxSpeakersCap,
-        'newSpeakerFloor': newSpeakerFloor,
-        'newSpeakerConfirmWindows': newSpeakerConfirmWindows,
-        'stayHysteresis': stayHysteresis,
-        'targetSpeakers': targetSpeakers,
-        'matchSpeakers': matchSpeakers,
-        'matchThreshold': matchThreshold,
-        'speakerMemoryData': speakerMemoryData,
-      };
+    'minClusterTalkSec': minClusterTalkSec,
+    'minSegmentSec': minSegmentSec,
+    'maxSpeakersCap': maxSpeakersCap,
+    'newSpeakerFloor': newSpeakerFloor,
+    'newSpeakerConfirmWindows': newSpeakerConfirmWindows,
+    'stayHysteresis': stayHysteresis,
+    'targetSpeakers': targetSpeakers,
+    'matchSpeakers': matchSpeakers,
+    'matchThreshold': matchThreshold,
+    'speakerMemoryData': speakerMemoryData,
+  };
 
   factory DiarizationParams.fromJson(Map<String, dynamic> json) {
     return DiarizationParams(
@@ -177,11 +177,13 @@ class DiarizationParams {
       stayThreshold: (json['stayThreshold'] as num).toDouble(),
       switchThreshold: (json['switchThreshold'] as num).toDouble(),
       switchConfirmWindows: json['switchConfirmWindows'] as int,
-      mergeClustersThreshold: (json['mergeClustersThreshold'] as num).toDouble(),
+      mergeClustersThreshold: (json['mergeClustersThreshold'] as num)
+          .toDouble(),
 
       stableMergeThreshold:
           (json['stableMergeThreshold'] as num?)?.toDouble() ?? 0.78,
-      stableBridgeMaxSec: (json['stableBridgeMaxSec'] as num?)?.toDouble() ?? 1.6,
+      stableBridgeMaxSec:
+          (json['stableBridgeMaxSec'] as num?)?.toDouble() ?? 1.6,
 
       minClusterTalkSec: (json['minClusterTalkSec'] as num).toDouble(),
       minSegmentSec: (json['minSegmentSec'] as num).toDouble(),
@@ -197,9 +199,11 @@ class DiarizationParams {
               (k, v) => MapEntry(
                 k,
                 (v as List)
-                    .map((e) => (e as List)
-                        .map((x) => (x as num).toDouble())
-                        .toList())
+                    .map(
+                      (e) => (e as List)
+                          .map((x) => (x as num).toDouble())
+                          .toList(),
+                    )
                     .toList(),
               ),
             )
@@ -232,30 +236,38 @@ class _IsolatedTurn {
   final double b;
   _IsolatedTurn(this.spk, this.a, this.b);
 
-  IsolatedEmbeddingTurn toSerializable() => IsolatedEmbeddingTurn(
-        speaker: spk,
-        startSec: a,
-        endSec: b,
-      );
+  IsolatedEmbeddingTurn toSerializable() =>
+      IsolatedEmbeddingTurn(speaker: spk, startSec: a, endSec: b);
 }
 
 Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   DiarizationParams params,
 ) async {
+  debugPrint('[DIA-ISOLATE] _runEmbeddingDiarizationInIsolate started');
   var wave = readWaveSimple(params.wavPath);
+  debugPrint(
+    '[DIA-ISOLATE] readWaveSimple done (samples: ${wave.samples.length})',
+  );
   var samples = wave.samples;
   final fs = wave.sampleRate;
   // Release Wave object's reference early (samples var still holds it)
   wave = Wave(samples: Float32List(0), sampleRate: fs);
 
+  debugPrint('[DIA-ISOLATE] initBindings() starting...');
   initBindings();
+  debugPrint('[DIA-ISOLATE] initBindings() done');
+
   final cfg = SpeakerEmbeddingExtractorConfig(
     model: params.embOnnxPath,
     numThreads: 2,
     provider: 'cpu',
     debug: false,
   );
+  debugPrint(
+    '[DIA-ISOLATE] SpeakerEmbeddingExtractor initialization starting...',
+  );
   final ext = SpeakerEmbeddingExtractor(config: cfg);
+  debugPrint('[DIA-ISOLATE] SpeakerEmbeddingExtractor initialized');
 
   final win = (params.windowSec * fs).round().clamp(1, 1 << 30);
   final hop = (params.hopSec * fs).round().clamp(1, 1 << 30);
@@ -334,7 +346,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         pendingNewEmb = null;
         if (kDebugMode) {
           debugPrint(
-              '[DIA]   FIRST SPEAKER created cid=$candidateCid clustersNow=${clusters.length}');
+            '[DIA]   FIRST SPEAKER created cid=$candidateCid clustersNow=${clusters.length}',
+          );
         }
       } else {
         final isStay = (currentCid != null && bestC.id == currentCid);
@@ -347,7 +360,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
           pendingNewEmb = null;
           if (kDebugMode) {
             debugPrint(
-                '[DIA]   STAY-HYSTERESIS -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})');
+              '[DIA]   STAY-HYSTERESIS -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})',
+            );
           }
         } else if (best >= th) {
           // normal match
@@ -382,13 +396,15 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
               if (kDebugMode) {
                 debugPrint(
-                    '[DIA]   NEW SPEAKER CONFIRMED -> created cid=$candidateCid clustersNow=${clusters.length}');
+                  '[DIA]   NEW SPEAKER CONFIRMED -> created cid=$candidateCid clustersNow=${clusters.length}',
+                );
               }
             } else {
               candidateCid = bestC.id; // until confirmed, stick to closest
               if (kDebugMode) {
                 debugPrint(
-                    '[DIA]   NEW NOT CONFIRMED -> keep closest cid=$candidateCid');
+                  '[DIA]   NEW NOT CONFIRMED -> keep closest cid=$candidateCid',
+                );
               }
             }
           } else {
@@ -397,7 +413,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
             pendingNewEmb = null;
             if (kDebugMode) {
               debugPrint(
-                  '[DIA]   NO-MATCH but CLOSE/CAP -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})');
+                '[DIA]   NO-MATCH but CLOSE/CAP -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})',
+              );
             }
           }
         }
@@ -408,11 +425,13 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         currentCid = candidateCid;
         pendingCid = null;
         pendingCount = 0;
-        if (kDebugMode) debugPrint('[DIA]   set currentCid=$currentCid (initial)');
+        if (kDebugMode)
+          debugPrint('[DIA]   set currentCid=$currentCid (initial)');
       } else if (candidateCid == currentCid) {
         pendingCid = null;
         pendingCount = 0;
-        if (kDebugMode) debugPrint('[DIA]   stay on cid=$currentCid (reset pending)');
+        if (kDebugMode)
+          debugPrint('[DIA]   stay on cid=$currentCid (reset pending)');
       } else {
         if (pendingCid == candidateCid) {
           pendingCount++;
@@ -423,17 +442,20 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
         if (kDebugMode) {
           debugPrint(
-              '[DIA]   switch pending to cid=$candidateCid count=$pendingCount/${params.switchConfirmWindows}');
+            '[DIA]   switch pending to cid=$candidateCid count=$pendingCount/${params.switchConfirmWindows}',
+          );
         }
 
         if (pendingCount >= params.switchConfirmWindows) {
           currentCid = candidateCid;
           pendingCid = null;
           pendingCount = 0;
-          if (kDebugMode) debugPrint('[DIA]   SWITCH CONFIRMED -> currentCid=$currentCid');
+          if (kDebugMode)
+            debugPrint('[DIA]   SWITCH CONFIRMED -> currentCid=$currentCid');
         } else {
           candidateCid = currentCid; // keep current until confirmed
-          if (kDebugMode) debugPrint('[DIA]   SWITCH NOT CONFIRMED -> stick cid=$currentCid');
+          if (kDebugMode)
+            debugPrint('[DIA]   SWITCH NOT CONFIRMED -> stick cid=$currentCid');
         }
       }
 
@@ -493,7 +515,9 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     final parts = talk.entries
         .map((e) => '${e.key}:${(e.value / fs).toStringAsFixed(2)}s')
         .join(', ');
-    debugPrint('[DIA] assigns=${assigns.length}, mergedWin=${mergedWin.length}');
+    debugPrint(
+      '[DIA] assigns=${assigns.length}, mergedWin=${mergedWin.length}',
+    );
     debugPrint('[DIA] talkByCid: $parts');
   }
 
@@ -504,11 +528,13 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
   if (kDebugMode) {
     debugPrint(
-        '[DIA] allowedCids(minTalk=${params.minClusterTalkSec}s): ${allowedCids.toList()}');
+      '[DIA] allowedCids(minTalk=${params.minClusterTalkSec}s): ${allowedCids.toList()}',
+    );
   }
 
-  final filteredMergedWin =
-      mergedWin.where((w) => allowedCids.contains(w.cid)).toList();
+  final filteredMergedWin = mergedWin
+      .where((w) => allowedCids.contains(w.cid))
+      .toList();
   if (filteredMergedWin.isEmpty) {
     return EnhancedDiarizationResult(turns: const [], speakerMatches: const {});
   }
@@ -559,8 +585,9 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   }
 
   // 5) min segment filter
-  final out =
-      relabeled.where((t) => (t.b - t.a) >= params.minSegmentSec).toList();
+  final out = relabeled
+      .where((t) => (t.b - t.a) >= params.minSegmentSec)
+      .toList();
   if (out.isEmpty) {
     return EnhancedDiarizationResult(turns: const [], speakerMatches: const {});
   }
@@ -575,7 +602,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
       if (turn.a < prev.b) {
         if (kDebugMode) {
           debugPrint(
-              '[DIA] overlapFix prevEnd=${prev.b.toStringAsFixed(2)} turnStart=${turn.a.toStringAsFixed(2)}');
+            '[DIA] overlapFix prevEnd=${prev.b.toStringAsFixed(2)} turnStart=${turn.a.toStringAsFixed(2)}',
+          );
         }
         turn = _IsolatedTurn(turn.spk, prev.b, math.max(prev.b + 0.5, turn.b));
       }
@@ -597,8 +625,11 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     params.speakerMemoryData.forEach((name, list) {
       final embs = <Float32List>[];
       for (final e in list) {
-        embs.add(_l2normIsolate(
-            Float32List.fromList(e.map((x) => x.toDouble()).toList())));
+        embs.add(
+          _l2normIsolate(
+            Float32List.fromList(e.map((x) => x.toDouble()).toList()),
+          ),
+        );
       }
       final cen = _meanAndNorm(embs);
       if (cen.isNotEmpty) enrolled[name] = cen;
@@ -632,7 +663,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         }
       } else if (kDebugMode) {
         debugPrint(
-            '[DIA] NO MATCH for $diarLab best=${best.toStringAsFixed(3)} th=${params.matchThreshold.toStringAsFixed(3)}');
+          '[DIA] NO MATCH for $diarLab best=${best.toStringAsFixed(3)} th=${params.matchThreshold.toStringAsFixed(3)}',
+        );
       }
     }
   }
@@ -673,8 +705,9 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   final diarEmbsCollapsed = <String, List<Float32List>>{};
   diarEmbs.forEach((lab, list) {
     final enrolledName = diarToEnrolled[lab];
-    final canon =
-        (enrolledName == null) ? lab : (canonicalByEnrolled[enrolledName] ?? lab);
+    final canon = (enrolledName == null)
+        ? lab
+        : (canonicalByEnrolled[enrolledName] ?? lab);
     diarEmbsCollapsed.putIfAbsent(canon, () => <Float32List>[]).addAll(list);
   });
 
@@ -736,7 +769,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   if (kDebugMode) {
     final speakersCount = finalTurns.map((t) => t.spk).toSet().length;
     debugPrint(
-        '[DIA] DONE mergedTurns=${finalTurns.length} speakers=$speakersCount matches=$finalMatches');
+      '[DIA] DONE mergedTurns=${finalTurns.length} speakers=$speakersCount matches=$finalMatches',
+    );
   }
 
   return EnhancedDiarizationResult(
@@ -816,7 +850,8 @@ _ForceCountResult _forceSpeakerCount({
     if (bestA == null || bestB == null) {
       if (debug) {
         debugPrint(
-            '[DIA] targetSpeakers=$target: no mergeable pair found; stopping');
+          '[DIA] targetSpeakers=$target: no mergeable pair found; stopping',
+        );
       }
       break;
     }
@@ -829,7 +864,8 @@ _ForceCountResult _forceSpeakerCount({
 
     if (debug) {
       debugPrint(
-          '[DIA] targetSpeakers=$target: merging $drop -> $keep sim=${bestSim.toStringAsFixed(3)}');
+        '[DIA] targetSpeakers=$target: merging $drop -> $keep sim=${bestSim.toStringAsFixed(3)}',
+      );
     }
 
     // Relabel turns

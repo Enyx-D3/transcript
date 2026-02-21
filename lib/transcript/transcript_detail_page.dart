@@ -570,6 +570,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   // ============================================================
 
   Future<bool> _isFgServiceRunningSafe() async {
+    if (Platform.isIOS) {
+      // iOS does not use foreground service for transcription
+      // So rely purely on job status instead
+      return _isJobActive(_job);
+    }
+
     try {
       return await FlutterForegroundTask.isRunningService;
     } catch (_) {
