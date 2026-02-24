@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -144,7 +145,7 @@ static const String _tinyFileName = 'ggml-tiny.bin';
     });
     } catch (e) {
       // background_downloader can fail in release mode; non-fatal
-      print('[WhisperService] _initDownloader error (non-fatal): $e');
+      debugPrint('[WhisperService] _initDownloader error (non-fatal): $e');
     }
   }
 

@@ -4,22 +4,38 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:transcript/common/app_flushbar.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter/services.dart';
-import 'package:transcript/send_transcript/send_transcript_healper.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
-import '../objectbox/objectbox_store.dart';
+// ✅ NEW: auto-summary preference + model access
+import 'package:shared_preferences/shared_preferences.dart';
+import '../llm_service.dart' show LLMService, qwenMaxContext;
+import '../qwen_model_service.dart';
+
+import '../common/app_flushbar.dart';
 import '../objectbox/entities.dart';
+import '../objectbox/objectbox_store.dart';
 import '../objectbox.g.dart';
+import '../report/report_dialog.dart';
+import '../report/report_service.dart';
+import '../send_transcript/send_transcript_healper.dart';
 
 import 'background_transcriber.dart';
-import 'transcript_summary_page.dart';
 import 'transcript_chat_page.dart';
-import '../report/report_service.dart';
-import '../report/report_dialog.dart';
-import 'package:share_plus/share_plus.dart';
+import 'transcript_summary_page.dart';
+
+// ✅ Glass primitives
+import '../ui/glass/glass_background.dart';
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+import '../ui/glass/liquid_glass.dart';
+
+// ✅ Use this for pill icon buttons (same as Enrollment reference)
+import '../widgets/icon_pill_button.dart';
 
 class _DisplayTurn {
   final String speaker;
@@ -29,8 +45,6 @@ class _DisplayTurn {
 
   _DisplayTurn(this.speaker, this.text, {this.startSec, this.endSec});
 }
-
-enum _AudioVariant { original, enhanced }
 
 class TranscriptDetailPage extends StatefulWidget {
   const TranscriptDetailPage({super.key, required this.transcriptId});
@@ -54,8 +68,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   Duration _dur = Duration.zero;
   String? _loadedPath;
 
-  static const _kBusyTranscribing = 'busy_transcribing';
+  // ✅ Coordinator-driven global busy flag
+  bool _busyFlag = false;
 
+  static const _kBusyTranscribing = 'busy_transcribing';
   static const _kProgressProcessedSec = 'progress_processed_sec';
   static const _kProgressTotalSec = 'progress_total_sec';
   static const _kProgressStage = 'progress_stage';
@@ -73,7 +89,138 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   );
   final mailer = TranscriptMailService(baseUrl: 'https://enyx.app');
 
-  _AudioVariant _audioVariant = _AudioVariant.original;
+  // ============================================================
+  // ✅ Auto-summary (Balanced)
+  // ============================================================
+
+  static const String _kPrefAutoSummaryEnabled = 'pref_auto_summary_enabled';
+  static const int _balancedSummaryMaxTokens = 650; // ✅ Balanced fixed
+  String _summaryBusyKey(int id) => 'summary_busy_$id';
+  bool _autoSummaryKickoffTried = false;
+
+  Future<bool> _isAutoSummaryEnabled() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return sp.getBool(_kPrefAutoSummaryEnabled) ?? true; // ✅ default ON
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<bool> _isSummaryBusy() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return sp.getBool(_summaryBusyKey(widget.transcriptId)) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _setSummaryBusy(bool v) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setBool(_summaryBusyKey(widget.transcriptId), v);
+    } catch (_) {}
+  }
+
+  /// ✅ Silent auto summary (Balanced). Does NOTHING if:
+  /// - setting OFF
+  /// - still busy
+  /// - error
+  /// - no turns
+  /// - summary already exists
+  /// - model not downloaded
+  Future<void> _maybeAutoGenerateSummaryBalanced() async {
+    if (_autoSummaryKickoffTried) return;
+    _autoSummaryKickoffTried = true;
+
+    // Only after transcription ended successfully
+    if (_busyFlag) return;
+    if (_processingFailed) return;
+
+    // Setting gate
+    final enabled = await _isAutoSummaryEnabled();
+    if (!enabled) return;
+
+    // Avoid duplicates across pages
+    if (await _isSummaryBusy()) return;
+
+    final obx = ObjectBox.I;
+
+    // If already have summary -> skip
+    final qb = obx.summaries.query(
+      TranscriptSummaryEntity_.transcriptId.equals(widget.transcriptId),
+    );
+    final q = qb.build();
+    final existing = q.findFirst();
+    q.close();
+    if (existing != null && existing.summary.trim().isNotEmpty) return;
+
+    // Model must exist; if not, skip silently
+    final qwen = QwenModelService();
+    final ok = await qwen.isModelDownloaded();
+    if (!ok) return;
+    final modelPath = await qwen.modelFilePath();
+
+    // Build transcript text from turns
+    if (_turns.isEmpty) return;
+    final buf = StringBuffer();
+    for (final u in _turns) {
+      final txt = u.text.trim();
+      if (txt.isEmpty) continue;
+      buf.writeln('${u.speakerLabel}: $txt');
+    }
+    final transcriptText = buf.toString().trim();
+    if (transcriptText.isEmpty) return;
+
+    // ✅ mark busy when auto summary starts
+    await _setSummaryBusy(true);
+
+    String latestFullText = '';
+    StreamSubscription<Map<String, dynamic>>? sub;
+    final done = Completer<void>();
+
+    try {
+      final stream = LLMService.summarizeTranscript(
+        transcript: transcriptText,
+        modelPath: modelPath,
+        maxTokens: _balancedSummaryMaxTokens,
+        temperature: 0.3,
+        contextSize: qwenMaxContext,
+      );
+
+      sub = stream.listen(
+        (evt) {
+          final full = (evt['full_text'] ?? '') as String;
+          if (full.isNotEmpty) latestFullText = full;
+        },
+        onError: (_, _) {
+          if (!done.isCompleted) done.complete();
+        },
+        onDone: () {
+          if (!done.isCompleted) done.complete();
+        },
+      );
+
+      await done.future;
+
+      final finalText = latestFullText.trim();
+      if (finalText.isNotEmpty) {
+        final entity = TranscriptSummaryEntity(
+          id: existing?.id ?? 0,
+          transcriptId: widget.transcriptId,
+          summary: finalText,
+          updatedAt: DateTime.now(),
+        );
+        obx.summaries.put(entity);
+      }
+    } catch (_) {
+      // silent
+    } finally {
+      await sub?.cancel();
+      await _setSummaryBusy(false);
+    }
+  }
 
   // ============================================================
   // Lifecycle
@@ -83,12 +230,13 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   void initState() {
     super.initState();
     _wirePlayer();
-    _loadOnce();
-
     _bgSub = BackgroundTranscriber.onData(_onBgData);
 
-    _syncPoller();
-    _syncWatchdog();
+    // ✅ do one async refresh immediately so loading shows correctly
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _refreshTick();
+    });
   }
 
   @override
@@ -102,13 +250,27 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   // ============================================================
-  // Playback gating (✅ disable until transcription ends)
+  // ✅ Busy flag (coordinator is the truth)
   // ============================================================
 
-  bool get _isTranscribingNow {
-    final s = _job?.status;
-    return s == 'PENDING' || s == 'RUNNING';
+  Future<bool> _readBusyFlag() async {
+    try {
+      final v = await FlutterForegroundTask.getData(key: _kBusyTranscribing);
+      return v == true;
+    } catch (_) {
+      return false;
+    }
   }
+
+  // Coordinator-based “processing right now”
+  bool get _isProcessingNow => _busyFlag && !_processingFailed;
+
+  // ✅ Playback gating should follow busy flag (not job status)
+  bool get _isTranscribingNow => _isProcessingNow;
+
+  // ============================================================
+  // Playback gating
+  // ============================================================
 
   Future<void> _stopPlaybackIfNeeded() async {
     if (!_isTranscribingNow) return;
@@ -149,32 +311,19 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       setState(() {
         if (processed != null) _progressProcessedSec = processed;
         if (total != null) _progressTotalSec = total;
-        if (stage != null && stage.trim().isNotEmpty)
+        if (stage != null && stage.trim().isNotEmpty) {
           _progressStage = stage.trim();
+        }
       });
     } catch (_) {}
   }
 
   // ============================================================
-  // ✅ Audio source selection (Original / Enhanced)
+  // ✅ Audio source (only original)
   // ============================================================
 
   String? _getOriginalPath() =>
       _t?.audioPath?.trim().isEmpty ?? true ? null : _t!.audioPath!.trim();
-
-  String? _getEnhancedPath() => _t?.processedAudioPath?.trim().isEmpty ?? true
-      ? null
-      : _t!.processedAudioPath!.trim();
-
-  String? _getSelectedPath() {
-    final orig = _getOriginalPath();
-    final enh = _getEnhancedPath();
-
-    if (_audioVariant == _AudioVariant.enhanced) {
-      return enh ?? orig;
-    }
-    return orig ?? enh;
-  }
 
   bool _fileExists(String? path) {
     if (path == null || path.trim().isEmpty) return false;
@@ -183,13 +332,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   void _debugPrintAudioPaths() {
     final orig = _getOriginalPath();
-    final enh = _getEnhancedPath();
     debugPrint('[AUDIO][DB] original: $orig');
-    debugPrint('[AUDIO][DB] enhanced: $enh');
     debugPrint('[AUDIO][DB] original exists: ${_fileExists(orig)}');
-    debugPrint('[AUDIO][DB] enhanced exists: ${_fileExists(enh)}');
-    debugPrint('[AUDIO][DB] selected variant: $_audioVariant');
-    debugPrint('[AUDIO][DB] selected path: ${_getSelectedPath()}');
   }
 
   // ============================================================
@@ -241,10 +385,26 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final t = force ?? _t;
     if (t == null) return;
 
-    final full = _buildFullTextCacheFromTurns();
+    final full = _buildFullTextCacheFromTurns().trim();
     final edited = (t.editedText ?? '').trim();
     final search = edited.isNotEmpty ? edited : full;
 
+    // ---------- Auto-title only if empty ----------
+    final existingTitle = (t.title ?? '').trim();
+
+    if (existingTitle.isEmpty && full.isNotEmpty) {
+      final words = full
+          .split(RegExp(r'\s+'))
+          .where((w) => w.isNotEmpty)
+          .toList();
+
+      final firstFive = words.take(5).join(' ');
+      final autoTitle = words.length > 5 ? '$firstFive…' : firstFive;
+
+      t.title = autoTitle;
+    }
+
+    // ---------- Caches ----------
     t.fullTextCache = full.isEmpty ? null : full;
     t.searchText = search.isEmpty ? null : search;
 
@@ -274,34 +434,33 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     await showReportDialog(
       outerContext: context,
       responseText: responseText,
-      sendReport:
-          ({
-            Map<String, dynamic>? meta,
-            required String reason,
-            required String note,
-            required String response,
-          }) async {
-            final localMeta = <String, dynamic>{
-              'page': 'transcript_detail',
-              'transcriptId': widget.transcriptId,
-              'title': (_t?.title ?? '').trim(),
-              'hasEditedText': (_t?.editedText ?? '').trim().isNotEmpty,
-              'turnCount': _turns.length,
-            };
+      sendReport: ({
+        Map<String, dynamic>? meta,
+        required String reason,
+        required String note,
+        required String response,
+      }) async {
+        final localMeta = <String, dynamic>{
+          'page': 'transcript_detail',
+          'transcriptId': widget.transcriptId,
+          'title': (_t?.title ?? '').trim(),
+          'hasEditedText': (_t?.editedText ?? '').trim().isNotEmpty,
+          'turnCount': _turns.length,
+        };
 
-            final mergedMeta = <String, dynamic>{
-              if (meta != null) ...meta,
-              ...localMeta,
-            };
+        final mergedMeta = <String, dynamic>{
+          if (meta != null) ...meta,
+          ...localMeta,
+        };
 
-            final combinedNote = ('[meta] $mergedMeta\n${note.trim()}').trim();
+        final combinedNote = ('[meta] $mergedMeta\n${note.trim()}').trim();
 
-            await _reportService.sendReport(
-              reason: reason,
-              note: combinedNote,
-              response: response,
-            );
-          },
+        await _reportService.sendReport(
+          reason: reason,
+          note: combinedNote,
+          response: response,
+        );
+      },
     );
   }
 
@@ -334,7 +493,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   Future<bool> _ensureSourceLoaded() async {
     if (_isTranscribingNow) return false;
 
-    final path = _getSelectedPath();
+    final path = _getOriginalPath();
     if (path == null || path.isEmpty) return false;
 
     final f = File(path);
@@ -347,7 +506,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       await _player.setSource(DeviceFileSource(path));
       _loadedPath = path;
 
-      // ✅ Try to fetch duration immediately
       try {
         final d = await _player.getDuration();
         if (d != null && mounted) setState(() => _dur = d);
@@ -375,6 +533,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       );
       return;
     }
+
     if (_isPlaying) {
       await _player.pause();
     } else {
@@ -391,35 +550,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     await _player.seek(Duration(milliseconds: v.round()));
   }
 
-  Future<void> _switchVariant(_AudioVariant v) async {
-    if (_isTranscribingNow) return;
-
-    if (v == _audioVariant) return;
-
-    // stop playback before switching sources
-    try {
-      await _player.stop();
-    } catch (_) {}
-
-    setState(() {
-      _audioVariant = v;
-      _isPlaying = false;
-      _pos = Duration.zero;
-      _dur = Duration.zero;
-      _loadedPath = null; // force reload
-    });
-    await _ensureSourceLoaded();
-    _debugPrintAudioPaths();
-  }
-
   // ============================================================
-  // Job helpers
+  // Job helpers (kept for history + error persistence)
   // ============================================================
-
-  bool _isJobActive(TranscriptionJobEntity? j) {
-    final s = j?.status;
-    return s == 'PENDING' || s == 'RUNNING';
-  }
 
   TranscriptionJobEntity? _getLatestJob() {
     final obx = ObjectBox.I;
@@ -464,6 +597,22 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     _job = job;
   }
 
+  void _persistJobRunningIfNeeded() {
+    final obx = ObjectBox.I;
+    final job = _getLatestJob();
+    if (job == null) return;
+
+    if (job.status == 'RUNNING' || job.status == 'PENDING') {
+      _job = job;
+      return;
+    }
+
+    job.status = 'RUNNING';
+    job.error = null;
+    obx.jobs.put(job);
+    _job = job;
+  }
+
   // ============================================================
   // Data loading
   // ============================================================
@@ -493,43 +642,44 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         _processingError =
             job?.error ?? 'Transcription failed. Please try again.';
       } else {
-        if (!_processingFailed) {
-          _processingError = null;
-        }
+        if (!_processingFailed) _processingError = null;
       }
     });
 
-    // ✅ log + enforce "no playback while transcribing"
     _debugPrintAudioPaths();
     _stopPlaybackIfNeeded();
   }
 
-  void _refreshTick() {
+  // ============================================================
+  // ✅ Core refresh loop (busy flag drives UI)
+  // ============================================================
+
+  Future<void> _refreshTick() async {
     _loadOnce();
-    _pullProgressFromFgStorage();
-    _syncPoller();
-    _syncWatchdog();
+    await _pullProgressFromFgStorage();
 
-    if (_turns.isNotEmpty && _job?.status != 'DONE') {
-      _processingWatchdog?.cancel();
-      _processingWatchdog = null;
+    final newBusy = await _readBusyFlag();
 
-      _persistJobDone();
-      _updateTranscriptSearchCacheInDb();
+    final busyChanged = newBusy != _busyFlag;
+    _busyFlag = newBusy;
 
-      FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
-
-      if (!mounted) return;
-      setState(() {
-        _processingFailed = false;
-        _processingError = null;
-      });
-
-      _syncPoller();
-      _syncWatchdog();
-      return;
+    // Keep job status consistent for anything still reading it
+    if (_busyFlag && !_processingFailed) {
+      _persistJobRunningIfNeeded();
     }
 
+    // If busy ended, mark done (but only if no error)
+    if (!_busyFlag && !_processingFailed) {
+      if (_job != null && _job!.status != 'DONE') {
+        _persistJobDone();
+      }
+      _updateTranscriptSearchCacheInDb();
+
+      // ✅ auto-generate summary (Balanced) after finish
+      unawaited(_maybeAutoGenerateSummaryBalanced());
+    }
+
+    // If job is error, stop everything
     if (_job?.status == 'ERROR') {
       _poll?.cancel();
       _poll = null;
@@ -544,20 +694,27 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       });
       return;
     }
+
+    // Resync timers
+    _syncPoller();
+    _syncWatchdog();
+
+    // Force rebuild when busy flips even if DB state didn’t change yet
+    if (busyChanged && mounted) setState(() {});
   }
 
   // ============================================================
-  // Poller: only while PENDING/RUNNING
+  // Poller: driven by busy flag
   // ============================================================
 
   void _syncPoller() {
-    final active = _isJobActive(_job);
+    final active = _busyFlag && !_processingFailed;
 
     if (active) {
       if (_poll != null) return;
-      _poll = Timer.periodic(const Duration(seconds: 1), (_) {
+      _poll = Timer.periodic(const Duration(seconds: 1), (_) async {
         if (!mounted) return;
-        _refreshTick();
+        await _refreshTick();
       });
     } else {
       _poll?.cancel();
@@ -566,7 +723,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   // ============================================================
-  // Watchdog
+  // Watchdog (still valid: detects service died before first chunk)
   // ============================================================
 
   Future<bool> _isFgServiceRunningSafe() async {
@@ -578,8 +735,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   void _syncWatchdog() {
-    final shouldArm =
-        _isJobActive(_job) && _turns.isEmpty && !_processingFailed;
+    // ✅ Arm only when busy, no turns yet, and no error
+    final shouldArm = _busyFlag && _turns.isEmpty && !_processingFailed;
 
     if (!shouldArm) {
       _processingWatchdog?.cancel();
@@ -589,15 +746,16 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     if (_processingWatchdog != null) return;
 
-    _processingWatchdog = Timer(const Duration(seconds: 3), () async {
+    _processingWatchdog = Timer(const Duration(seconds: 5), () async {
       _processingWatchdog?.cancel();
       _processingWatchdog = null;
 
       if (!mounted) return;
 
+      // If turns arrived, no problem.
       if (_turns.isNotEmpty) return;
-      if (_job?.status == 'ERROR') return;
 
+      // If service still running, re-arm.
       final running = await _isFgServiceRunningSafe();
       if (running) {
         _syncWatchdog();
@@ -609,13 +767,16 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
       _persistJobError(msg);
 
-      await FlutterForegroundTask.saveData(
-        key: _kBusyTranscribing,
-        value: false,
-      );
+      try {
+        await FlutterForegroundTask.saveData(
+          key: _kBusyTranscribing,
+          value: false,
+        );
+      } catch (_) {}
 
       if (!mounted) return;
       setState(() {
+        _busyFlag = false;
         _processingFailed = true;
         _processingError = msg;
       });
@@ -626,7 +787,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   // ============================================================
-  // BG events
+  // BG events (optional – chunk pipeline may not emit these)
   // ============================================================
 
   Future<void> _onBgData(dynamic data) async {
@@ -634,10 +795,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final type = data['type'];
 
     if (type == 'transcribe_error') {
-      await FlutterForegroundTask.saveData(
-        key: _kBusyTranscribing,
-        value: false,
-      );
+      try {
+        await FlutterForegroundTask.saveData(
+          key: _kBusyTranscribing,
+          value: false,
+        );
+      } catch (_) {}
 
       _processingWatchdog?.cancel();
       _processingWatchdog = null;
@@ -646,6 +809,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
       if (!mounted) return;
       setState(() {
+        _busyFlag = false;
         _processingFailed = true;
         _processingError = _job?.error ?? 'Transcription failed.';
       });
@@ -662,22 +826,29 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final existingId = data['existingId'] as int?;
     if (existingId != widget.transcriptId) return;
 
-    await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+    try {
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: false,
+      );
+    } catch (_) {}
 
     _processingWatchdog?.cancel();
     _processingWatchdog = null;
 
     _persistJobDone();
+    _updateTranscriptSearchCacheInDb();
 
+    // NOTE: _refreshTick() will also trigger auto-summary after busy flips false.
     if (mounted) {
       setState(() {
+        _busyFlag = false;
         _processingFailed = false;
         _processingError = null;
       });
     }
 
-    _refreshTick();
-
+    await _refreshTick();
     _poll?.cancel();
     _poll = null;
   }
@@ -695,23 +866,23 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final newTitle = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        const accent = Colors.white; // 👈 change if you want
+        const accent = Colors.white;
 
         return Theme(
           data: Theme.of(ctx).copyWith(
             textSelectionTheme: const TextSelectionThemeData(
-              selectionHandleColor: Colors.white, // ✅ droplet = white
-              cursorColor: accent, // cursor color
-              selectionColor: Color.fromARGB(
-                128,
-                255,
-                130,
-                67,
-              ), // selection highlight
+              selectionHandleColor: Colors.white,
+              cursorColor: accent,
+              selectionColor: Color.fromARGB(128, 255, 130, 67),
             ),
           ),
           child: AlertDialog(
-            title: const Text('Edit title'),
+            backgroundColor: Colors.black87,
+            surfaceTintColor: Colors.transparent,
+            title: const Text(
+              'Edit title',
+              style: TextStyle(color: Colors.white),
+            ),
             content: TextField(
               controller: ctrl,
               autofocus: true,
@@ -722,13 +893,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                 labelStyle: TextStyle(color: Colors.white),
                 hintText: 'e.g. Team meeting',
                 hintStyle: TextStyle(color: Colors.white54),
-
-                // ✅ underline when not focused
                 enabledBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: accent, width: 1.5),
                 ),
-
-                // ✅ underline when focused
                 focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: accent, width: 2),
                 ),
@@ -765,11 +932,11 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     latest.title = newTitle.isEmpty ? null : newTitle;
     obx.transcripts.put(latest);
 
-    _refreshTick();
+    await _refreshTick();
   }
 
   // ============================================================
-  // Rename speaker within transcript
+  // Rename speaker
   // ============================================================
 
   Future<void> _renameSpeaker(String oldLabel) async {
@@ -777,17 +944,19 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final newLabel = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        const accent = Colors.white; // 👈 same as newTitle
+        const accent = Colors.white;
 
         return Theme(
           data: Theme.of(ctx).copyWith(
             textSelectionTheme: const TextSelectionThemeData(
-              selectionHandleColor: Colors.white, // ✅ droplet
+              selectionHandleColor: Colors.white,
               cursorColor: accent,
               selectionColor: Color.fromARGB(128, 255, 130, 67),
             ),
           ),
           child: AlertDialog(
+            backgroundColor: Colors.black87,
+            surfaceTintColor: Colors.transparent,
             title: const Text(
               'Rename speaker',
               style: TextStyle(color: Colors.white),
@@ -802,13 +971,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                 labelStyle: TextStyle(color: Colors.white),
                 hintText: 'e.g. Alex',
                 hintStyle: TextStyle(color: Colors.white54),
-
-                // ✅ underline when not focused
                 enabledBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: accent, width: 1.5),
                 ),
-
-                // ✅ underline when focused
                 focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: accent, width: 2),
                 ),
@@ -835,6 +1000,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         );
       },
     );
+
     if (newLabel == null || newLabel.isEmpty || newLabel == oldLabel) return;
 
     final obx = ObjectBox.I;
@@ -858,7 +1024,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         )..transcript.targetId = widget.transcriptId,
       );
     }
-    _refreshTick();
+
+    await _refreshTick();
   }
 
   // ============================================================
@@ -891,9 +1058,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         if (trimmed.isEmpty) continue;
 
         final idx = trimmed.indexOf(':');
-        final speaker = (idx > 0)
-            ? trimmed.substring(0, idx).trim()
-            : 'Speaker';
+        final speaker =
+            (idx > 0) ? trimmed.substring(0, idx).trim() : 'Speaker';
         final text = (idx > 0) ? trimmed.substring(idx + 1).trim() : trimmed;
 
         final ts = (i < _turns.length) ? _turns[i] : null;
@@ -947,9 +1113,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       final dir = await getTemporaryDirectory();
 
       final safeTitle =
-          ((_t?.title ?? 'transcript').trim().isEmpty
-                  ? 'transcript'
-                  : _t!.title!)
+          ((_t?.title ?? 'transcript').trim().isEmpty ? 'transcript' : _t!.title!)
               .trim()
               .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '_')
               .replaceAll(RegExp(r'\s+'), ' ')
@@ -973,7 +1137,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
           text: 'Transcript attached.',
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Could not share file.');
     }
@@ -988,30 +1152,44 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     final newText = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit transcript'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: ctrl,
-            autofocus: true,
-            minLines: 10,
-            maxLines: 20,
-            decoration: const InputDecoration(
-              hintText: 'Format: Speaker: text (one per line)',
+      builder: (ctx) => Theme(
+        data: Theme.of(ctx),
+        child: AlertDialog(
+          backgroundColor: Colors.black87,
+          surfaceTintColor: Colors.transparent,
+          title: const Text(
+            'Edit transcript',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: TextField(
+              controller: ctrl,
+              autofocus: true,
+              minLines: 10,
+              maxLines: 20,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Format: Speaker: text (one per line)',
+                hintStyle: TextStyle(color: Colors.white54),
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
+              child: const Text('Save', style: TextStyle(color: Colors.black)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
@@ -1035,13 +1213,13 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     obx.transcripts.put(latest);
 
-    _refreshTick();
+    await _refreshTick();
     if (!mounted) return;
     await AppFlushbar.success(context, message: 'Transcript saved.');
   }
 
   // ============================================================
-  // ✅ Turn long-press actions (discoverable editing)
+  // ✅ Turn long-press actions (unchanged)
   // ============================================================
 
   Future<void> _showTurnActions(int turnId) async {
@@ -1054,7 +1232,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       await AppFlushbar.info(
         context,
         message:
-            'You are viewing the edited transcript. Use “Edit & save transcript” to edit.',
+            'You are viewing the edited transcript. Use “Edit transcript” to edit.',
       );
       return;
     }
@@ -1068,88 +1246,88 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final isDark = GlassTokens.isDark(ctx);
+        final fg = Colors.white.withValues(alpha: 0.92);
+
         return SafeArea(
           child: Container(
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101018),
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
-                    borderRadius: BorderRadius.circular(999),
+              child: Stack(
+                children: [
+                  LiquidGlass(
+                    borderRadius: BorderRadius.circular(18),
+                    padding: EdgeInsets.zero,
+                    shadow: false,
+                    blurX: isDark ? 22 : 18,
+                    blurY: isDark ? 22 : 18,
+                    tintOpacityDark: 0.040,
+                    tintOpacityLight: 0.032,
+                    borderOpacityDark: 0.14,
+                    borderOpacityLight: 0.18,
+                    child: const SizedBox.expand(),
                   ),
-                ),
-                const SizedBox(height: 10),
-                ListTile(
-                  leading: const Icon(Icons.edit_outlined, color: Colors.white),
-                  title: const Text(
-                    'Edit segment',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ListTile(
+                          leading: Icon(Icons.edit_outlined, color: fg),
+                          title: Text(
+                            'Edit segment',
+                            style: TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          subtitle: const Text(
+                            'Fix wording for this segment only',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            await _editSingleTurn(turn);
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(Icons.copy_rounded, color: fg),
+                          title: Text(
+                            'Copy segment',
+                            style: TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            await Clipboard.setData(
+                              ClipboardData(
+                                text: '${turn.speakerLabel}: ${turn.text}',
+                              ),
+                            );
+                            if (!mounted) return;
+                            await AppFlushbar.success(
+                              context,
+                              message: 'Segment copied.',
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  subtitle: const Text(
-                    'Fix wording for this segment only',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _editSingleTurn(turn);
-                  },
-                ),
-                // ListTile(
-                //   leading: const Icon(
-                //     Icons.person_outline,
-                //     color: Colors.white,
-                //   ),
-                //   title: const Text(
-                //     'Rename speaker',
-                //     style: TextStyle(
-                //       color: Colors.white,
-                //       fontWeight: FontWeight.w800,
-                //     ),
-                //   ),
-                //   subtitle: Text(
-                //     turn.speakerLabel,
-                //     style: const TextStyle(color: Colors.white70),
-                //   ),
-                //   onTap: () {
-                //     Navigator.pop(ctx);
-                //     _renameSpeaker(turn.speakerLabel);
-                //   },
-                // ),
-                ListTile(
-                  leading: const Icon(Icons.copy_rounded, color: Colors.white),
-                  title: const Text(
-                    'Copy segment',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await Clipboard.setData(
-                      ClipboardData(text: '${turn.speakerLabel}: ${turn.text}'),
-                    );
-                    if (!mounted) return;
-                    await AppFlushbar.success(
-                      context,
-                      message: 'Segment copied.',
-                    );
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1162,25 +1340,41 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     final newText = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit segment'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          minLines: 3,
-          maxLines: 8,
-          decoration: const InputDecoration(hintText: 'Edit what was said…'),
+      builder: (ctx) => Theme(
+        data: Theme.of(ctx),
+        child: AlertDialog(
+          backgroundColor: Colors.black87,
+          surfaceTintColor: Colors.transparent,
+          title: const Text(
+            'Edit segment',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 8,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'Edit what was said…',
+              hintStyle: TextStyle(color: Colors.white54),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
+              child: const Text('Save', style: TextStyle(color: Colors.black)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
@@ -1193,7 +1387,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     latest.text = newText;
     obx.turns.put(latest);
 
-    _refreshTick();
+    await _refreshTick();
     _updateTranscriptSearchCacheInDb();
 
     if (!mounted) return;
@@ -1203,17 +1397,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   // ============================================================
   // Formatting helpers
   // ============================================================
-
-  String _fmtMeta(TranscriptEntity t) {
-    final when = t.createdAt.toLocal();
-    final y = when.year.toString().padLeft(4, '0');
-    final m = when.month.toString().padLeft(2, '0');
-    final d = when.day.toString().padLeft(2, '0');
-    final hh = when.hour.toString().padLeft(2, '0');
-    final mm = when.minute.toString().padLeft(2, '0');
-    final dur = _fmtDuration(t.durationSec);
-    return '$y-$m-$d $hh:$mm • $dur';
-  }
 
   String _fmtMetaShort(TranscriptEntity t) {
     final d = t.createdAt.toLocal();
@@ -1231,16 +1414,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       'Nov',
       'Dec',
     ];
-
     return '${d.day} ${months[d.month - 1]} ${d.year}';
-  }
-
-  String _fmtDuration(double seconds) {
-    final safe = seconds.isFinite && seconds >= 0 ? seconds : 0.0;
-    final total = safe.round();
-    final m = (total ~/ 60).toString();
-    final ss = (total % 60).toString().padLeft(2, '0');
-    return '${m}m${ss}s';
   }
 
   String _fmtClock(Duration d) {
@@ -1259,76 +1433,11 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   // UI
   // ============================================================
 
-  Widget _buildProcessingPanel() {
-    final startedAt = _job?.createdAt.toLocal(); // if you have createdAt
-    final elapsed = startedAt == null
-        ? null
-        : DateTime.now().difference(startedAt);
-
-    final elapsedText = elapsed == null
-        ? 'Elapsed • …'
-        : 'Elapsed • ${elapsed.inMinutes}:${(elapsed.inSeconds % 60).toString().padLeft(2, '0')}';
-
-    final status = _job?.status ?? '…';
-    final segments = _turns.length;
-
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  backgroundColor: Colors.white12,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Processing audio…',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const LinearProgressIndicator(
-            minHeight: 4,
-            backgroundColor: Colors.white12,
-            color: Colors.white,
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MetaPill(text: 'Status • $status'),
-              _MetaPill(text: elapsedText),
-              _MetaPill(text: 'Segments • $segments'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Keep the app open to finish faster.',
-            style: TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context, alpha: 0.92);
 
     final t = _t;
     if (t == null) {
@@ -1346,22 +1455,13 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     }
     final labels = counts.keys.toList()..sort();
 
-    final isProcessing =
-        (_turns.isEmpty &&
-        !_processingFailed &&
-        (_job?.status == 'PENDING' || _job?.status == 'RUNNING'));
+    // ✅ Processing is coordinator busy flag
+    final isProcessing = _isProcessingNow;
 
     final origPath = _getOriginalPath();
-    final enhPath = _getEnhancedPath();
     final origExists = _fileExists(origPath);
-    final enhExists = _fileExists(enhPath);
 
-    // gently fall back (same behavior)
-    if (_audioVariant == _AudioVariant.enhanced && !enhExists && origExists) {
-      _audioVariant = _AudioVariant.original;
-    }
-
-    final hasAnyAudio = origExists || enhExists;
+    final hasAnyAudio = origExists;
     final canPlayAudio = hasAnyAudio && !_isTranscribingNow;
 
     final displayTurns = _buildDisplayTurns();
@@ -1369,457 +1469,382 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         (t.editedText != null && t.editedText!.trim().isNotEmpty);
 
     return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
-          children: [
-            // ================= HEADER =================
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _IconPillButton(
-                  tooltip: 'Back',
-                  icon: Icons.arrow_back,
-                  onTap: () => Navigator.of(context).maybePop(),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.2,
+      body: GlassBackground(
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+            children: [
+              // ================= HEADER =================
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IconPillButton(
+                    tooltip: 'Back',
+                    icon: Icons.arrow_back,
+                    onTap: () => Navigator.of(context).maybePop(),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.2,
+                            color: fg,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(child: _MetaPill(text: 'Lang • ${t.lang}')),
-                          const SizedBox(width: 8),
-                          Expanded(child: _MetaPill(text: _fmtMetaShort(t))),
-                        ],
-                      ),
-                      if (showingEdited) ...[
                         const SizedBox(height: 6),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: _MetaPill(
-                            text: 'Edited',
-                            accent: Colors.orangeAccent,
+                        Row(
+                          children: [
+                            Expanded(child: _MetaPill(text: 'Lang • ${t.lang}')),
+                            const SizedBox(width: 8),
+                            Expanded(child: _MetaPill(text: _fmtMetaShort(t))),
+                          ],
+                        ),
+                        if (showingEdited) ...[
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: _MetaPill(
+                              text: 'Edited',
+                              accent: Colors.orangeAccent,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconPillButton(
+                    tooltip: 'Edit title',
+                    icon: Icons.edit_note,
+                    onTap: _isTranscribingNow ? null : _editTitle,
+                  ),
+                  const SizedBox(width: 8),
+                  IconPillButton(
+                    tooltip: 'Report transcript',
+                    icon: Icons.flag,
+                    onTap: () async => _reportTranscript(),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              // ================= AUDIO + ACTIONS =================
+              _GlassPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _CompactAudioBar(
+                      isDark: isDark,
+                      isTranscribingNow: _isTranscribingNow,
+                      hasAnyAudio: hasAnyAudio,
+                      canPlayAudio: canPlayAudio,
+                      isPlaying: _isPlaying,
+                      onToggle: _togglePlayPause,
+                    ),
+                    if (canPlayAudio) ...[
+                      const SizedBox(height: 8),
+                      _CompactSeekRow(
+                        pos: _pos,
+                        dur: _dur,
+                        fmt: _fmtClock,
+                        onSeek: _seekTo,
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    const GlassDivider(),
+                    const SizedBox(height: 12),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GlassButton(
+                            kind: GlassButtonKind.primary,
+                            label: 'Summary',
+                            icon: Icons.summarize_outlined,
+                            onPressed: _isTranscribingNow
+                                ? null
+                                : () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => TranscriptSummaryPage(
+                                          transcriptId: widget.transcriptId,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                            innerChrome: false,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GlassButton(
+                            kind: GlassButtonKind.primary,
+                            label: 'Ask AI',
+                            icon: Icons.chat_bubble_outline,
+                            onPressed: _isTranscribingNow
+                                ? null
+                                : () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => TranscriptChatPage(
+                                          transcriptId: widget.transcriptId,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                            innerChrome: false,
                           ),
                         ),
                       ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _IconPillButton(
-                  tooltip: 'Edit title',
-                  icon: Icons.edit_note,
-                  onTap: _editTitle,
-                ),
-                const SizedBox(width: 8),
-                _IconPillButton(
-                  tooltip: 'Report transcript',
-                  icon: Icons.flag,
-                  onTap: () async => _reportTranscript(),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            // ================= AUDIO + ACTIONS (COMPACT) =================
-            _Panel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _CompactAudioBar(
-                    isDark: isDark,
-                    isTranscribingNow: _isTranscribingNow,
-                    hasAnyAudio: hasAnyAudio,
-                    canPlayAudio: canPlayAudio,
-                    isPlaying: _isPlaying,
-                    audioVariant: _audioVariant,
-                    origExists: origExists,
-                    enhExists: enhExists,
-                    onToggle: _togglePlayPause,
-                    onSwitch: _switchVariant,
-                  ),
-                  if (canPlayAudio) ...[
-                    const SizedBox(height: 8),
-                    _CompactSeekRow(
-                      pos: _pos,
-                      dur: _dur,
-                      fmt: _fmtClock,
-                      onSeek: _seekTo,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GlassButton(
+                            kind: GlassButtonKind.secondary,
+                            label: 'Copy',
+                            icon: Icons.copy_rounded,
+                            onPressed:
+                                _isTranscribingNow ? null : _copyWholeTranscript,
+                            innerChrome: false,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GlassButton(
+                            kind: GlassButtonKind.secondary,
+                            label: 'Share',
+                            icon: Icons.ios_share_rounded,
+                            onPressed:
+                                _isTranscribingNow ? null : _shareWholeTranscript,
+                            innerChrome: false,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                  const SizedBox(height: 10),
-                  Column(
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ================= STATUS (PROCESSING / ERROR) =================
+              if (isProcessing)
+                _GlassPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              icon: const Icon(
-                                Icons.summarize_outlined,
-                                color: Colors.black,
+                          SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                GlassTokens.fg(context, alpha: 0.92),
                               ),
-                              label: const Text(
-                                'Summary',
-                                style: TextStyle(color: Colors.black),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                backgroundColor: Colors.white,
-                              ),
-                              onPressed: _isTranscribingNow
-                                  ? null
-                                  : () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => TranscriptSummaryPage(
-                                            transcriptId: widget.transcriptId,
-                                          ),
-                                        ),
-                                      );
-                                    },
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.12),
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 12),
                           Expanded(
-                            child: FilledButton.icon(
-                              icon: const Icon(
-                                Icons.chat_bubble_outline,
-                                color: Colors.black,
+                            child: Text(
+                              'Processing audio… Do not close the app.',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: fg,
                               ),
-                              label: const Text(
-                                'Ask AI',
-                                style: TextStyle(color: Colors.black),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                backgroundColor: Colors.white,
-                              ),
-                              onPressed: _isTranscribingNow
-                                  ? null
-                                  : () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => TranscriptChatPage(
-                                            transcriptId: widget.transcriptId,
-                                          ),
-                                        ),
-                                      );
-                                    },
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      Row(
+                      LinearProgressIndicator(
+                        value: (_progressTotalSec > 0)
+                            ? (_progressProcessedSec / _progressTotalSec).clamp(
+                                0.0,
+                                0.98,
+                              )
+                            : null,
+                        minHeight: 4,
+                        backgroundColor: Colors.white.withValues(alpha: 0.12),
+                        color: GlassTokens.fg(context, alpha: 0.92),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(
-                                Icons.copy_rounded,
-                                color: Colors.white,
-                              ),
-                              label: const Text(
-                                'Copy',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              onPressed: _isTranscribingNow
-                                  ? null
-                                  : _copyWholeTranscript,
-                            ),
+                          _MetaPill(text: 'Stage • $_progressStage'),
+                          _MetaPill(
+                            text:
+                                'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
+                                ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (t.durationSec)) * 1000).round()))}',
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(
-                                Icons.ios_share_rounded,
-                                color: Colors.white,
-                              ),
-                              label: const Text(
-                                'Share',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              onPressed: _isTranscribingNow
-                                  ? null
-                                  : _shareWholeTranscript,
-                            ),
-                          ),
+                          _MetaPill(text: 'Segments • ${_turns.length}'),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Keep the app open to finish faster.',
+                        style: TextStyle(
+                          color: GlassTokens.muted(context),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ================= STATUS (PROCESSING / ERROR) =================
-            if (isProcessing)
-              _Panel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: const [
-                        SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            backgroundColor: Colors.white12,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Processing audio… Do not close the app.',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    // ✅ determinate when total known, else indeterminate
-                    LinearProgressIndicator(
-                      value: (_progressTotalSec > 0)
-                          ? (_progressProcessedSec / _progressTotalSec).clamp(
-                              0.0,
-                              0.98,
-                            )
-                          : null,
-                      minHeight: 4,
-                      backgroundColor: Colors.white12,
-                      color: Colors.white,
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _MetaPill(text: 'Stage • $_progressStage'),
-                        _MetaPill(
-                          text:
-                              'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
-                              ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (_t?.durationSec ?? 0)) * 1000).round()))}',
-                        ),
-                      ],
-                    ),
-                  ],
                 ),
-              ),
 
-            if (_processingFailed)
-              _Panel(
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.redAccent),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _processingError ??
-                            'Transcription failed. Please try again.',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w700,
+              if (_processingFailed)
+                _GlassPanel(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.redAccent),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _processingError ??
+                              'Transcription failed. Please try again.',
+                          style: TextStyle(
+                            color: GlassTokens.muted(context, alpha: 0.85),
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+
+              if (isProcessing || _processingFailed) const SizedBox(height: 12),
+
+              // ================= PEOPLE =================
+              if (!isProcessing && !_processingFailed && labels.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Text(
+                      'People',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: fg,
+                      ),
                     ),
+                    const Spacer(),
+                    _MetaPill(text: '${labels.length}'),
                   ],
                 ),
-              ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: labels.map((name) {
+                    final count = counts[name]!;
+                    return _GlassPersonChip(
+                      label: name,
+                      count: count,
+                      enabled: !_isTranscribingNow,
+                      onEdit: () => _renameSpeaker(name),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 14),
+              ],
 
-            if (isProcessing || _processingFailed) const SizedBox(height: 12),
-
-            // ================= PEOPLE =================
-            if (!isProcessing && !_processingFailed && labels.isNotEmpty) ...[
+              // ================= TURNS =================
               Row(
                 children: [
                   Text(
-                    'People',
+                    'Turns',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w900,
+                      color: fg,
                     ),
                   ),
+                  if (!isProcessing) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      'Long-press for options',
+                      style: TextStyle(
+                        color: GlassTokens.muted(context, alpha: 0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                   const Spacer(),
-                  _MetaPill(text: '${labels.length}'),
+                  _MetaPill(text: '${displayTurns.length}'),
                 ],
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: labels.map((name) {
-                  final count = counts[name]!;
-                  return InputChip(
-                    label: Text('$name  •  $count'),
-                    avatar: const Icon(Icons.person, size: 18),
-                    onDeleted: () => _renameSpeaker(name),
-                    deleteIcon: const Icon(Icons.edit, size: 18),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 14),
-            ],
 
-            // ================= TURNS =================
-            Row(
-              children: [
-                Text(
-                  'Turns',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              if (isProcessing && displayTurns.isEmpty)
+                const _InlineHint(
+                  text: 'No segments yet. We’ll list them here when ready.',
                 ),
-                if (!isProcessing) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    'Long-press for options',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+              if (_processingFailed && displayTurns.isEmpty)
+                const _InlineHint(text: 'No segments were generated.'),
+
+              if (!isProcessing && !_processingFailed)
+                ...List.generate(displayTurns.length, (i) {
+                  final u = displayTurns[i];
+
+                  final subtitle = (u.startSec != null && u.endSec != null)
+                      ? '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s'
+                      : null;
+
+                  final turnId = (!showingEdited && i < _turns.length)
+                      ? _turns[i].id
+                      : null;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: GestureDetector(
+                      onLongPress:
+                          turnId == null ? null : () => _showTurnActions(turnId),
+                      child: _TurnCard(
+                        speaker: u.speaker,
+                        text: u.text,
+                        subtitle: subtitle,
+                      ),
                     ),
-                  ),
-                ],
-                const Spacer(),
-                _MetaPill(text: '${displayTurns.length}'),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // if (!isProcessing && !_processingFailed && showingEdited)
-            //   const Padding(
-            //     padding: EdgeInsets.only(bottom: 8),
-            //     child: Text(
-            //       'Showing edited transcript',
-            //       style: TextStyle(
-            //         color: Colors.orangeAccent,
-            //         fontSize: 12,
-            //         fontWeight: FontWeight.w800,
-            //       ),
-            //     ),
-            //   ),
-            if (isProcessing)
-              const _InlineHint(
-                text: 'No segments yet. We’ll list them here when ready.',
-              ),
-            if (_processingFailed)
-              const _InlineHint(text: 'No segments were generated.'),
-
-            if (!isProcessing && !_processingFailed)
-              ...List.generate(displayTurns.length, (i) {
-                final u = displayTurns[i];
-
-                final subtitle = (u.startSec != null && u.endSec != null)
-                    ? '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s'
-                    : null;
-
-                // real turn id when NOT showing edited
-                final turnId = (!showingEdited && i < _turns.length)
-                    ? _turns[i].id
-                    : null;
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: GestureDetector(
-                    onLongPress: turnId == null
-                        ? null
-                        : () => _showTurnActions(turnId),
-                    child: _TurnCard(
-                      speaker: u.speaker,
-                      text: u.text,
-                      subtitle: subtitle,
-                    ),
-                  ),
-                );
-              }),
-          ],
+                  );
+                }),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _Panel extends StatelessWidget {
-  const _Panel({required this.child});
+// ===================== GLASS PANELS =====================
+
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({required this.child});
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 18,
-            color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+    return GlassCard(
+      variant: GlassCardVariant.panel,
       padding: const EdgeInsets.all(14),
       child: child,
     );
   }
 }
 
+/// ✅ Updated to use Glass primitives (crisp pill, no extra blur).
 class _MetaPill extends StatelessWidget {
   const _MetaPill({required this.text, this.accent});
   final String text;
@@ -1827,64 +1852,45 @@ class _MetaPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final muted = GlassTokens.muted(context, alpha: 0.70);
+
     final c = accent;
+    final tl = c != null ? 0.055 : 0.050;
+    final td = c != null ? 0.075 : 0.070;
+    final bl = c != null ? 0.24 : 0.20;
+    final bd = c != null ? 0.20 : 0.16;
 
-    return Container(
-      height: 32,
-      alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: (c ?? Colors.white).withOpacity(0.06),
-        border: Border.all(color: (c ?? Colors.white).withOpacity(0.12)),
-      ),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        maxLines: 1,
-        softWrap: false,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: c != null ? c.withOpacity(0.95) : Colors.white70,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
+    final radius = BorderRadius.circular(999);
 
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-            border: Border.all(
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
+    return ClipRRect(
+      borderRadius: radius,
+      child: LiquidGlass(
+        borderRadius: radius,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        shadow: false,
+        blurX: 0,
+        blurY: 0,
+        grain: false,
+        tintOpacityLight: tl,
+        tintOpacityDark: td,
+        borderOpacityLight: bl,
+        borderOpacityDark: bd,
+        child: SizedBox(
+          height: 32, // ✅ force perfect capsule
+          child: Center(
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: c != null ? c.withValues(alpha: 0.95) : muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          child: Icon(icon, size: 20),
         ),
       ),
     );
@@ -1901,8 +1907,8 @@ class _InlineHint extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.white70,
+        style: TextStyle(
+          color: GlassTokens.muted(context),
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -1910,9 +1916,6 @@ class _InlineHint extends StatelessWidget {
   }
 }
 
-// ✅ Professional turn card:
-// top row: timestamp • speaker
-// bottom: text
 class _TurnCard extends StatelessWidget {
   const _TurnCard({required this.speaker, required this.text, this.subtitle});
 
@@ -1922,7 +1925,9 @@ class _TurnCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
+    return GlassCard(
+      variant: GlassCardVariant.panel,
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1931,8 +1936,8 @@ class _TurnCard extends StatelessWidget {
               if (subtitle != null)
                 Text(
                   subtitle!,
-                  style: const TextStyle(
-                    color: Colors.white60,
+                  style: TextStyle(
+                    color: GlassTokens.muted(context, alpha: 0.72),
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1942,7 +1947,7 @@ class _TurnCard extends StatelessWidget {
                 Text(
                   '•',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.25),
+                    color: GlassTokens.muted(context, alpha: 0.30),
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1953,36 +1958,43 @@ class _TurnCard extends StatelessWidget {
                   speaker,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.1,
+                    color: GlassTokens.fg(context),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: Colors.white.withOpacity(0.06),
-                  border: Border.all(color: Colors.white.withOpacity(0.10)),
+              LiquidGlass(
+                borderRadius: BorderRadius.circular(10),
+                padding: const EdgeInsets.all(6),
+                shadow: false,
+                blurX: 0,
+                blurY: 0,
+                grain: false,
+                tintOpacityLight: 0.050,
+                tintOpacityDark: 0.070,
+                borderOpacityLight: 0.20,
+                borderOpacityDark: 0.16,
+                child: Icon(
+                  Icons.record_voice_over_outlined,
+                  size: 16,
+                  color: GlassTokens.muted(context, alpha: 0.85),
                 ),
-                child: const Icon(Icons.record_voice_over_outlined, size: 16),
               ),
             ],
           ),
           const SizedBox(height: 10),
           Text(
             text,
-            style: const TextStyle(
+            style: TextStyle(
               height: 1.35,
               fontSize: 14.5,
-              color: Colors.white,
+              color: GlassTokens.fg(context),
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 6),
         ],
       ),
     );
@@ -1998,11 +2010,7 @@ class _CompactAudioBar extends StatelessWidget {
     required this.hasAnyAudio,
     required this.canPlayAudio,
     required this.isPlaying,
-    required this.audioVariant,
-    required this.origExists,
-    required this.enhExists,
     required this.onToggle,
-    required this.onSwitch,
   });
 
   final bool isDark;
@@ -2010,43 +2018,42 @@ class _CompactAudioBar extends StatelessWidget {
   final bool hasAnyAudio;
   final bool canPlayAudio;
   final bool isPlaying;
-  final _AudioVariant audioVariant;
-  final bool origExists;
-  final bool enhExists;
   final Future<void> Function() onToggle;
-  final Future<void> Function(_AudioVariant) onSwitch;
 
   @override
   Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+
     final title = isTranscribingNow
         ? 'Processing…'
         : (hasAnyAudio ? 'Audio' : 'No audio');
-
     final subtitle = isTranscribingNow
         ? 'Playback disabled'
-        : (hasAnyAudio
-              ? (audioVariant == _AudioVariant.enhanced
-                    ? 'Enhanced'
-                    : 'Original')
-              : 'Missing file');
+        : (hasAnyAudio ? 'Original' : 'Missing file');
 
     return Row(
       children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: canPlayAudio ? onToggle : null,
-          child: Ink(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
+        // ✅ Swap manual Ink styling -> LiquidGlass button surface (same look)
+        GestureDetector(
+          onTap: canPlayAudio ? () => onToggle() : null,
+          child: Opacity(
+            opacity: canPlayAudio ? 1.0 : 0.55,
+            child: LiquidGlass(
               borderRadius: BorderRadius.circular(14),
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-              border: Border.all(
-                color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
+              padding: const EdgeInsets.all(10),
+              shadow: false,
+              blurX: 0,
+              blurY: 0,
+              grain: false,
+              tintOpacityLight: 0.050,
+              tintOpacityDark: 0.070,
+              borderOpacityLight: 0.20,
+              borderOpacityDark: 0.16,
+              child: Icon(
+                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                size: 22,
+                color: fg,
               ),
-            ),
-            child: Icon(
-              isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              size: 22,
             ),
           ),
         ),
@@ -2055,76 +2062,22 @@ class _CompactAudioBar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+              Text(
+                title,
+                style: TextStyle(fontWeight: FontWeight.w900, color: fg),
+              ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(
+                  color: GlassTokens.muted(context, alpha: 0.70),
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
         ),
-        if (!isTranscribingNow && (origExists || enhExists))
-          _VariantDropdown(
-            value: audioVariant,
-            origEnabled: origExists,
-            enhEnabled: enhExists,
-            onChanged: (v) => onSwitch(v),
-          ),
       ],
-    );
-  }
-}
-
-class _VariantDropdown extends StatelessWidget {
-  const _VariantDropdown({
-    required this.value,
-    required this.origEnabled,
-    required this.enhEnabled,
-    required this.onChanged,
-  });
-
-  final _AudioVariant value;
-  final bool origEnabled;
-  final bool enhEnabled;
-  final ValueChanged<_AudioVariant> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 34,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withOpacity(0.06),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<_AudioVariant>(
-          value: value,
-          dropdownColor: const Color(0xFF101018),
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
-          items: [
-            DropdownMenuItem(
-              value: _AudioVariant.original,
-              enabled: origEnabled,
-              child: Text(origEnabled ? 'Original' : 'Original (missing)'),
-            ),
-            DropdownMenuItem(
-              value: _AudioVariant.enhanced,
-              enabled: enhEnabled,
-              child: Text(enhEnabled ? 'Enhanced' : 'Enhanced (missing)'),
-            ),
-          ],
-          onChanged: (v) {
-            if (v == null) return;
-            onChanged(v);
-          },
-        ),
-      ),
     );
   }
 }
@@ -2153,17 +2106,20 @@ class _CompactSeekRow extends StatelessWidget {
           width: 44,
           child: Text(
             fmt(pos),
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            style: TextStyle(
+              color: GlassTokens.muted(context, alpha: 0.70),
+              fontSize: 12,
+            ),
           ),
         ),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              activeTrackColor: Colors.white, // left / played
-              inactiveTrackColor: Colors.white12, // right / remaining
-              thumbColor: Colors.white, // knob
-              overlayColor: Colors.white12, // press glow (optional)
-              trackHeight: 3, // thickness (optional)
+              activeTrackColor: GlassTokens.fg(context, alpha: 0.92),
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.12),
+              thumbColor: GlassTokens.fg(context, alpha: 0.92),
+              overlayColor: Colors.white.withValues(alpha: 0.12),
+              trackHeight: 3,
             ),
             child: Slider(
               value: v,
@@ -2178,7 +2134,10 @@ class _CompactSeekRow extends StatelessWidget {
           child: Text(
             fmt(dur),
             textAlign: TextAlign.right,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            style: TextStyle(
+              color: GlassTokens.muted(context, alpha: 0.70),
+              fontSize: 12,
+            ),
           ),
         ),
       ],
@@ -2186,31 +2145,81 @@ class _CompactSeekRow extends StatelessWidget {
   }
 }
 
+class _GlassPersonChip extends StatelessWidget {
+  const _GlassPersonChip({
+    required this.label,
+    required this.count,
+    required this.onEdit,
+    required this.enabled,
+  });
 
-//  PopupMenuButton<String>(
-//                   tooltip: 'More',
-//                   onSelected: (v) {
-//                     if (v == 'edit_transcript') _editWholeTranscript();
-//                     if (v == 'copy_transcript') _copyWholeTranscript();
-//                     if (v == 'report_transcript') _reportTranscript();
-//                   },
-//                   itemBuilder: (_) => const [
-//                     // PopupMenuItem(
-//                     //   value: 'edit_transcript',
-//                     //   child: Text('Edit & save transcript'),
-//                     // ),
-//                     // PopupMenuItem(
-//                     //   value: 'copy_transcript',
-//                     //   child: Text('Copy transcript as text'),
-//                     // ),
-//                     PopupMenuItem(
-//                       value: 'report_transcript',
-//                       child: Text('Report transcript'),
-//                     ),
-//                   ],
-//                   child: const _IconPillButton(
-//                     tooltip: 'More',
-//                     icon: Icons.more_horiz,
-//                     onTap: null,
-//                   ),
-//                 ),
+  final String label;
+  final int count;
+  final VoidCallback onEdit;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+
+    Widget chip = LiquidGlass(
+      borderRadius: BorderRadius.circular(999),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      shadow: false,
+      blurX: isDark ? 14 : 12,
+      blurY: isDark ? 14 : 12,
+      tintOpacityDark: 0.045,
+      tintOpacityLight: 0.036,
+      borderOpacityDark: 0.14,
+      borderOpacityLight: 0.18,
+      onTap: enabled ? onEdit : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.person, size: 16, color: fg.withValues(alpha: 0.85)),
+          const SizedBox(width: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: fg, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(width: 8),
+          LiquidGlass(
+            borderRadius: BorderRadius.circular(999),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            shadow: false,
+            blurX: 0,
+            blurY: 0,
+            grain: false,
+            tintOpacityLight: 0.050,
+            tintOpacityDark: 0.070,
+            borderOpacityLight: 0.20,
+            borderOpacityDark: 0.16,
+            child: Text(
+              '$count',
+              style: TextStyle(
+                color: GlassTokens.muted(context, alpha: 0.80),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            Icons.edit,
+            size: 16,
+            color: GlassTokens.muted(context, alpha: 0.70),
+          ),
+        ],
+      ),
+    );
+
+    if (!enabled) chip = Opacity(opacity: 0.55, child: chip);
+    return chip;
+  }
+}

@@ -7,16 +7,20 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:transcript/common/app_flushbar.dart';
-import 'package:transcript/objectbox/objectbox_store.dart';
+import '../common/app_flushbar.dart';
+import '../objectbox/objectbox_store.dart';
 
 import '../auth/profile_model.dart';
+import '../auth/app_gate.dart';
 import '../auth/eligibility_gate.dart';
 import '../billing/subscription_service.dart';
 import '../billing/subscription_products.dart';
 import '../common/confirm_dialog.dart';
-import '../auth/app_gate.dart';
-import '../auth/eligibility_gate.dart';
+
+// ✅ Glass primitives (same set you used elsewhere)
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/liquid_glass.dart';
 
 class AccountTab extends StatefulWidget {
   const AccountTab({super.key, this.onUpgradeSuccess});
@@ -34,8 +38,6 @@ class _AccountTabState extends State<AccountTab> {
 
   Future<void>? _activeLoad;
   StreamSubscription<AuthState>? _authSub;
-
-  // ✅ debounce auth bursts (MIUI / token refresh / resume)
   Timer? _authDebounce;
 
   bool _upgrading = false;
@@ -44,13 +46,11 @@ class _AccountTabState extends State<AccountTab> {
   bool _restoring = false;
   bool _deleting = false;
 
-  // ✅ cache store products so we can show prices in the sheet
   List<ProductDetails>? _storeProducts;
   bool _pricingLoading = false;
 
   SupabaseClient get _sb => Supabase.instance.client;
 
-  // ✅ set your actual Android package name here (used for Manage Subscription link)
   static const String _androidPackageName = 'com.enyxd.transcript';
   bool _navigatingToGate = false;
 
@@ -74,11 +74,8 @@ class _AccountTabState extends State<AccountTab> {
           return;
         }
 
-        // ✅ Refresh profile first
         await _loadProfile(force: true);
 
-        // ✅ On account switch, re-verify purchases against THIS user
-        // This is what prevents “account B becomes pro”.
         try {
           await SubscriptionService.I.initialize();
           await SubscriptionService.I.reconcileNow(
@@ -86,7 +83,6 @@ class _AccountTabState extends State<AccountTab> {
           );
         } catch (_) {}
 
-        // ✅ Pull profile again after server may have updated it
         if (mounted) await _loadProfile(force: true);
       });
     });
@@ -104,7 +100,6 @@ class _AccountTabState extends State<AccountTab> {
     _navigatingToGate = true;
 
     final nav = Navigator.of(context, rootNavigator: true);
-
     nav.pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => const AppGate(
@@ -118,12 +113,10 @@ class _AccountTabState extends State<AccountTab> {
   // ---------------- Load profile ----------------
 
   Future<void> _loadProfile({bool force = false}) async {
-    // ✅ ALWAYS single-flight
     if (_activeLoad != null) {
       await _activeLoad;
       return;
     }
-
     _activeLoad = _loadProfileInternal(force: force);
     try {
       await _activeLoad;
@@ -198,7 +191,7 @@ class _AccountTabState extends State<AccountTab> {
     }
   }
 
-  // ---------------- Pricing (store) ----------------
+  // ---------------- Pricing ----------------
 
   Future<void> _prefetchPricing() async {
     if (_pricingLoading) return;
@@ -207,12 +200,10 @@ class _AccountTabState extends State<AccountTab> {
     try {
       await SubscriptionService.I.initialize();
       final products = await SubscriptionService.I.fetchProducts();
-
       if (!mounted) return;
       setState(() => _storeProducts = products);
-    } catch (e) {
-      // ignore: avoid_print
-      print('Pricing fetch failed: $e');
+    } catch (_) {
+      // ignore
     } finally {
       _pricingLoading = false;
     }
@@ -229,7 +220,7 @@ class _AccountTabState extends State<AccountTab> {
 
   String _priceLabel(String id) => _productById(id)?.price ?? '—';
 
-  // ---------------- Status helpers ----------------
+  // ---------------- Status ----------------
 
   bool get _trialActive {
     final p = _profile;
@@ -244,19 +235,15 @@ class _AccountTabState extends State<AccountTab> {
     if (p == null) return false;
     if (!p.isUpgraded) return false;
 
-    // ✅ Lifetime must be explicit
     if (_isLifetime) return true;
 
-    // ✅ Subscription must have a real expiry
     final ex = p.proExpiresAt;
     if (ex == null) return false;
-
     return ex.isAfter(DateTime.now().toUtc());
   }
 
   bool get _isLifetime => (_profile?.isLifetime ?? false);
 
-  // ✅ Monthly/Yearly (subscription) is: Pro active AND not lifetime
   bool get _isActiveSubscription => _proActive && !_isLifetime;
 
   String get _proExpiryLabel {
@@ -287,26 +274,7 @@ class _AccountTabState extends State<AccountTab> {
     return '${local.day} ${months[local.month - 1]} ${local.year}';
   }
 
-  Widget _pill(String text, {Color? color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: (color ?? Colors.white24).withOpacity(0.18),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: (color ?? Colors.white24).withOpacity(0.45)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w700,
-          color: color ?? Colors.white70,
-        ),
-      ),
-    );
-  }
-
-  // ---------------- Manage / Update plan ----------------
+  // ---------------- Actions ----------------
 
   Future<void> _openManageSubscription() async {
     if (!Platform.isAndroid) {
@@ -332,7 +300,8 @@ class _AccountTabState extends State<AccountTab> {
     }
   }
 
-  // ---------------- GateSplash-like overlay + eligibility check ----------------
+  // ---------------- Gate overlay + eligibility ----------------
+
   Future<EligibilityGateResult> _showGateSplashAndVerify({
     required String status,
     bool pollForPro = false,
@@ -352,9 +321,7 @@ class _AccountTabState extends State<AccountTab> {
     Future<void> safeLoadProfile({required bool force}) async {
       try {
         await _loadProfile(force: force).timeout(const Duration(seconds: 10));
-      } catch (_) {
-        // swallow
-      }
+      } catch (_) {}
     }
 
     Future<void> safeReconcile() async {
@@ -366,14 +333,11 @@ class _AccountTabState extends State<AccountTab> {
     }
 
     try {
-      // ✅ Step 1: profile (timed)
       await safeLoadProfile(force: true);
 
       if (pollForPro) {
-        // ✅ Step 2: reconcile purchases (timed) => verifies tokens + locks on server
         await safeReconcile();
 
-        // ✅ Step 3: poll profile a bit (timed)
         for (int i = 0; i < 10; i++) {
           await safeLoadProfile(force: true);
           if (_proActive) break;
@@ -381,7 +345,6 @@ class _AccountTabState extends State<AccountTab> {
         }
       }
 
-      // ✅ Step 4: eligibility (timed)
       try {
         res = await checkEligibilityOnce(_sb).timeout(
           const Duration(seconds: 8),
@@ -391,22 +354,19 @@ class _AccountTabState extends State<AccountTab> {
         res = const EligibilityGateResult(eligible: false);
       }
 
-      // ✅ min visible time so it doesn't flash
       final elapsed = DateTime.now().difference(started);
       const minVisible = Duration(milliseconds: 1400);
       final remaining = minVisible - elapsed;
       if (remaining > Duration.zero) await Future.delayed(remaining);
     } finally {
       final nav = Navigator.of(context, rootNavigator: true);
-      if (mounted && nav.canPop()) {
-        nav.pop();
-      }
+      if (mounted && nav.canPop()) nav.pop();
     }
 
     return res;
   }
 
-  // ---------------- Restore flow (keep for debug) ----------------
+  // ---------------- Restore ----------------
 
   Future<void> _restorePurchasesFlow() async {
     if (_restoring || _upgrading) return;
@@ -422,7 +382,6 @@ class _AccountTabState extends State<AccountTab> {
     try {
       await SubscriptionService.I.initialize();
 
-      // ✅ This verifies tokens on server (and will reject if already claimed)
       ok = await SubscriptionService.I.restore(
         timeout: const Duration(seconds: 35),
       );
@@ -464,7 +423,7 @@ class _AccountTabState extends State<AccountTab> {
     }
   }
 
-  // ---------------- Purchase / Upgrade flow ----------------
+  // ---------------- Purchase / Upgrade ----------------
 
   Future<void> _startMonthlyFlow() async {
     if (_upgrading || _restoring) return;
@@ -507,11 +466,13 @@ class _AccountTabState extends State<AccountTab> {
 
       final products =
           _storeProducts ?? await SubscriptionService.I.fetchProducts();
-      final ProductDetails? product =
-          products.where((p) => p.id == productId).isNotEmpty
-          ? products.firstWhere((p) => p.id == productId)
-          : null;
-
+      ProductDetails? product;
+      for (final p in products) {
+        if (p.id == productId) {
+          product = p;
+          break;
+        }
+      }
       if (product == null) throw Exception('Product not found: $productId');
 
       final ok = await SubscriptionService.I.buy(product);
@@ -565,7 +526,8 @@ class _AccountTabState extends State<AccountTab> {
     }
   }
 
-  // ✅ Get Pro sheet: 3 options (Monthly, Yearly, Lifetime) with prices
+  // ---------------- Sheet (glass) ----------------
+
   Future<void> _showUpgradeOptionsSheet() async {
     if (!mounted) return;
 
@@ -577,38 +539,15 @@ class _AccountTabState extends State<AccountTab> {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      showDragHandle: false,
+      isScrollControlled: true,
       builder: (ctx) {
-        final theme = Theme.of(ctx);
-        final isDark = theme.brightness == Brightness.dark;
+        final monthly = _priceLabel(kProMonthlyId);
+        final yearly = _priceLabel(kProYearlyId);
+        final lifetime = _priceLabel(kProLifetimeId);
 
-        const sheetBg = Color(0xFF0B0B0F);
-        final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
-
-        BoxDecoration panel() => BoxDecoration(
-          color: sheetBg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-          border: Border.all(color: border),
-        );
-
-        Widget badgePill(String text, Color c) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: c.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: c.withOpacity(0.45)),
-            ),
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                color: c,
-              ),
-            ),
-          );
-        }
+        String rightMonthly() => monthly == '—' ? 'Loading…' : '$monthly / mo';
+        String rightYearly() => yearly == '—' ? 'Loading…' : '$yearly / yr';
+        String rightLifetime() => lifetime == '—' ? 'Loading…' : lifetime;
 
         Widget optionTile({
           required IconData icon,
@@ -618,27 +557,20 @@ class _AccountTabState extends State<AccountTab> {
           required VoidCallback onTap,
           Widget? badge,
         }) {
-          return Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF101018),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: 18,
-                  color: Colors.black.withOpacity(0.25),
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
+          return GlassCard(
+            variant: GlassCardVariant.panel,
+            padding: EdgeInsets.zero,
             child: ListTile(
-              leading: Icon(icon, color: Colors.white),
+              leading: Icon(icon, color: Colors.white.withValues(alpha: 0.90)),
               title: Row(
                 children: [
                   Expanded(
                     child: Text(
                       title,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white.withValues(alpha: 0.92),
+                      ),
                     ),
                   ),
                   if (badge != null) ...[const SizedBox(width: 8), badge],
@@ -646,7 +578,7 @@ class _AccountTabState extends State<AccountTab> {
               ),
               subtitle: Text(
                 subtitle,
-                style: const TextStyle(color: Colors.white70),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.70)),
               ),
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -654,10 +586,16 @@ class _AccountTabState extends State<AccountTab> {
                 children: [
                   Text(
                     priceRight,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
                   ),
                   const SizedBox(height: 2),
-                  const Icon(Icons.chevron_right),
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.white.withValues(alpha: 0.70),
+                  ),
                 ],
               ),
               onTap: onTap,
@@ -665,121 +603,143 @@ class _AccountTabState extends State<AccountTab> {
           );
         }
 
-        final monthly = _priceLabel(kProMonthlyId);
-        final yearly = _priceLabel(kProYearlyId);
-        final lifetime = _priceLabel(kProLifetimeId);
+        Widget badgePill(String text) {
+          // ✅ black/white only, no orange (you asked everywhere else)
+          return LiquidGlass(
+            borderRadius: BorderRadius.circular(999),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            shadow: false,
+            blurX: 10,
+            blurY: 10,
+            tintOpacityDark: 0.040,
+            tintOpacityLight: 0.032,
+            borderOpacityDark: 0.14,
+            borderOpacityLight: 0.18,
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.2,
+                color: Colors.white.withValues(alpha: 0.78),
+              ),
+            ),
+          );
+        }
 
-        String rightMonthly() => monthly == '—' ? 'Loading…' : '$monthly / mo';
-        String rightYearly() => yearly == '—' ? 'Loading…' : '$yearly / yr';
-        String rightLifetime() => lifetime == '—' ? 'Loading…' : lifetime;
-
-        return Container(
-          decoration: panel(),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 44,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(99),
-                    color: Colors.white.withOpacity(0.14),
-                  ),
-                ),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.workspace_premium_outlined,
-                      color: Colors.white,
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: GlassCard(
+              variant: GlassCardVariant.tile,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 5,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(99),
+                      color: Colors.white.withValues(alpha: 0.14),
                     ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Go Pro',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
+                  ),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.workspace_premium_outlined,
+                        color: Colors.white.withValues(alpha: 0.90),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Go Pro',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white.withValues(alpha: 0.92),
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+                      IconButton(
+                        icon: Icon(
+                          Icons.close,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
 
-                optionTile(
-                  icon: Icons.calendar_month_outlined,
-                  title: 'Monthly',
-                  subtitle: 'Pay month-to-month. Cancel anytime.',
-                  priceRight: rightMonthly(),
-                  onTap: () async {
-                    Navigator.of(ctx).pop();
-                    await _startMonthlyFlow();
-                  },
-                ),
-                const SizedBox(height: 10),
+                  optionTile(
+                    icon: Icons.calendar_month_outlined,
+                    title: 'Monthly',
+                    subtitle: 'Pay month-to-month. Cancel anytime.',
+                    priceRight: rightMonthly(),
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      await _startMonthlyFlow();
+                    },
+                  ),
+                  const SizedBox(height: 10),
 
-                optionTile(
-                  icon: Icons.event_available_outlined,
-                  title: 'Yearly',
-                  subtitle: 'Best value for long-term use.',
-                  priceRight: rightYearly(),
-                  badge: badgePill('Best value', Colors.white),
-                  onTap: () async {
-                    Navigator.of(ctx).pop();
-                    await _startYearlyFlow();
-                  },
-                ),
-                const SizedBox(height: 10),
+                  optionTile(
+                    icon: Icons.event_available_outlined,
+                    title: 'Yearly',
+                    subtitle: 'Best value for long-term use.',
+                    priceRight: rightYearly(),
+                    badge: badgePill('Best value'),
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      await _startYearlyFlow();
+                    },
+                  ),
+                  const SizedBox(height: 10),
 
-                optionTile(
-                  icon: Icons.all_inclusive,
-                  title: 'Lifetime',
-                  subtitle: 'One-time purchase. Keep Pro forever.',
-                  priceRight: rightLifetime(),
-                  badge: badgePill('Best offer', Color(0xFFff8143)),
-                  onTap: () async {
-                    Navigator.of(ctx).pop();
-                    await _startLifetimeFlow();
-                  },
-                ),
+                  optionTile(
+                    icon: Icons.all_inclusive,
+                    title: 'Lifetime',
+                    subtitle: 'One-time purchase. Keep Pro forever.',
+                    priceRight: rightLifetime(),
+                    badge: badgePill('Best offer'),
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      await _startLifetimeFlow();
+                    },
+                  ),
 
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
 
-                // ✅ keep restore for debug
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: (_restoring || _upgrading)
-                        ? null
-                        : () async {
-                            Navigator.of(ctx).pop();
-                            await _restorePurchasesFlow();
-                          },
-                    icon: _restoring
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.restore, color: Colors.white),
-                    label: Text(
-                      _restoring ? 'Restoring…' : 'Restore Purchases',
-                      style: TextStyle(color: Colors.white),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: (_restoring || _upgrading)
+                          ? null
+                          : () async {
+                              Navigator.of(ctx).pop();
+                              await _restorePurchasesFlow();
+                            },
+                      icon: _restoring
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.restore, color: Colors.white),
+                      label: Text(
+                        _restoring ? 'Restoring…' : 'Restore Purchases',
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -793,6 +753,7 @@ class _AccountTabState extends State<AccountTab> {
     final ok = await showConfirmDeleteDialog(
       context,
       title: 'Sign out?',
+      icon: Icons.logout,
       message: 'You will be signed out of your account.',
       confirmText: 'Sign out',
       cancelText: 'Cancel',
@@ -854,31 +815,6 @@ class _AccountTabState extends State<AccountTab> {
     }
   }
 
-  // ---------------- UI helpers (dock style panels) ----------------
-
-  BoxDecoration _panelDecoration(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
-    return BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: border),
-      boxShadow: [
-        BoxShadow(
-          blurRadius: 18,
-          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-          offset: const Offset(0, 10),
-        ),
-      ],
-    );
-  }
-
   // ---------------- UI ----------------
 
   @override
@@ -914,6 +850,7 @@ class _AccountTabState extends State<AccountTab> {
         : (user.email ?? 'User');
 
     final accessEnabled = (_proActive || _trialActive);
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -926,11 +863,9 @@ class _AccountTabState extends State<AccountTab> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
-          const SizedBox(height: 2),
-
-          // ---------- Profile panel ----------
-          Container(
-            decoration: _panelDecoration(context),
+          // ---------- Profile panel (glass) ----------
+          GlassCard(
+            variant: GlassCardVariant.panel,
             padding: const EdgeInsets.all(16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -943,17 +878,19 @@ class _AccountTabState extends State<AccountTab> {
                     children: [
                       Text(
                         heroName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white.withValues(alpha: 0.92),
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _profile?.email ?? user.email ?? 'Unknown',
                         style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black54,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.70)
+                              : Colors.black54,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -962,21 +899,17 @@ class _AccountTabState extends State<AccountTab> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _pill(
-                            'Joined ${_fmtDateLong(_profile?.dateJoined)}',
-                            color: Colors.white,
-                          ),
+                          _Pill('Joined ${_fmtDateLong(_profile?.dateJoined)}'),
                           if (_proActive)
-                            _pill(
+                            _Pill(
                               _isLifetime
                                   ? 'Plan Pro (Lifetime)'
                                   : 'Plan Pro (Subscription)',
-                              color: Colors.white,
                             )
                           else if (_trialActive)
-                            _pill('Plan Trial', color: Colors.white)
+                            const _Pill('Plan Trial')
                           else
-                            _pill('Plan Free'),
+                            const _Pill('Plan Free'),
                         ],
                       ),
                     ],
@@ -996,28 +929,20 @@ class _AccountTabState extends State<AccountTab> {
               ),
             ),
 
-          // if (_error != null) ...[
-          //   Container(
-          //     decoration: _panelDecoration(context),
-          //     padding: const EdgeInsets.all(12),
-          //     child: Text(
-          //       _error!,
-          //       style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
-          //     ),
-          //   ),
-          //   const SizedBox(height: 12),
-          // ],
           if (!_loading && _profile != null) ...[
             // ---------- Plan details panel ----------
-            Container(
-              decoration: _panelDecoration(context),
+            GlassCard(
+              variant: GlassCardVariant.panel,
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Plan details',
-                    style: TextStyle(fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
                   ),
                   const SizedBox(height: 12),
 
@@ -1028,11 +953,10 @@ class _AccountTabState extends State<AccountTab> {
                         : _trialActive
                         ? 'Trial'
                         : 'Free',
-                    valueColor: Colors.white,
                   ),
 
                   const SizedBox(height: 10),
-                  const Divider(height: 1, thickness: 0.6),
+                  const GlassDivider(height: 1),
                   const SizedBox(height: 10),
 
                   if (!_proActive)
@@ -1040,24 +964,22 @@ class _AccountTabState extends State<AccountTab> {
                       'Trial ends',
                       _fmtDateLong(_profile!.trialExpiresAt),
                       trailing: _trialActive
-                          ? _pill('Active', color: Color(0xFFff8143))
-                          : _pill('Expired', color: Colors.redAccent),
+                          ? const _Pill('Active')
+                          : const _Pill('Expired'),
                     ),
 
                   if (_proActive)
                     _kvRow(
                       _isLifetime ? 'Pro plan' : 'Pro expiry',
                       _proExpiryLabel,
-                      trailing: _pill('Active', color: Colors.white),
+                      trailing: const _Pill('Active'),
                     ),
 
                   const SizedBox(height: 14),
 
-                  // ✅ YOUR NEW RULES:
-                  //
-                  // 1) If lifetime: NO Get Pro, just "You are Pro (Lifetime)"
-                  // 2) If monthly/yearly subscription active: show "Update plan" (manage subscription)
-                  // 3) If not pro: show Get Pro (3 options)
+                  // 1) lifetime => disabled button
+                  // 2) active subscription => manage subscription
+                  // 3) not pro => get pro sheet
                   if (_proActive && _isLifetime) ...[
                     SizedBox(
                       width: double.infinity,
@@ -1070,21 +992,21 @@ class _AccountTabState extends State<AccountTab> {
                   ] else if (_isActiveSubscription) ...[
                     SizedBox(
                       width: double.infinity,
-                      child: FilledButton.icon(
+                      child: OutlinedButton.icon(
                         onPressed: (_upgrading || _restoring)
                             ? null
                             : _openManageSubscription,
                         icon: const Icon(Icons.manage_accounts_outlined),
                         label: const Text('Manage subscription'),
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: Colors.white,
+                        style: FilledButton.styleFrom(
+                          foregroundColor: Colors.white,
                         ),
                       ),
                     ),
                   ] else ...[
                     SizedBox(
                       width: double.infinity,
-                      child: FilledButton.icon(
+                      child: OutlinedButton.icon(
                         onPressed: (_upgrading || _restoring)
                             ? null
                             : _showUpgradeOptionsSheet,
@@ -1094,42 +1016,17 @@ class _AccountTabState extends State<AccountTab> {
                                 height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.black,
+                                  color: Colors.white,
                                 ),
                               )
                             : const Icon(Icons.workspace_premium_outlined),
-                        label: Text(
-                          _upgrading ? 'Processing…' : 'Get Pro',
-                          style: TextStyle(color: Colors.black),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: Colors.white,
+                        label: Text(_upgrading ? 'Processing…' : 'Get Pro'),
+                        style: FilledButton.styleFrom(
+                          foregroundColor: Colors.white,
                         ),
                       ),
                     ),
                   ],
-
-                  const SizedBox(height: 10),
-
-                  // ✅ keep restore button always for debug (you said you’ll remove later)
-                  // SizedBox(
-                  //   width: double.infinity,
-                  //   child: OutlinedButton.icon(
-                  //     onPressed: (_restoring || _upgrading)
-                  //         ? null
-                  //         : _restorePurchasesFlow,
-                  //     icon: _restoring
-                  //         ? const SizedBox(
-                  //             width: 18,
-                  //             height: 18,
-                  //             child: CircularProgressIndicator(strokeWidth: 2),
-                  //           )
-                  //         : const Icon(Icons.restore),
-                  //     label: Text(
-                  //       _restoring ? 'Restoring…' : 'Restore Purchases (debug)',
-                  //     ),
-                  //   ),
-                  // ),
                 ],
               ),
             ),
@@ -1137,8 +1034,8 @@ class _AccountTabState extends State<AccountTab> {
             const SizedBox(height: 12),
 
             // ---------- Access status panel ----------
-            Container(
-              decoration: _panelDecoration(context),
+            GlassCard(
+              variant: GlassCardVariant.panel,
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
@@ -1146,17 +1043,15 @@ class _AccountTabState extends State<AccountTab> {
                     accessEnabled
                         ? Icons.lock_open_outlined
                         : Icons.lock_outline,
-                    color: accessEnabled ? Colors.white : Colors.redAccent,
+                    color: Colors.white.withValues(alpha: 0.88),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       accessEnabled ? 'Access enabled' : 'Access disabled',
                       style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: accessEnabled
-                            ? (isDark ? Colors.white70 : Colors.black54)
-                            : Colors.redAccent,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white.withValues(alpha: 0.88),
                       ),
                     ),
                   ),
@@ -1194,16 +1089,31 @@ class _AccountTabState extends State<AccountTab> {
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(
+                    : Icon(
                         Icons.delete_forever_outlined,
-                        color: Colors.redAccent,
+                        color: Colors.white.withValues(alpha: 0.92),
                       ),
                 label: Text(
                   _deleting ? 'Deleting…' : 'Delete account',
-                  style: const TextStyle(
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.w700,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontWeight: FontWeight.w800,
                   ),
+                ),
+              ),
+            ),
+          ],
+
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            GlassCard(
+              variant: GlassCardVariant.panel,
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _error!,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -1215,31 +1125,28 @@ class _AccountTabState extends State<AccountTab> {
     );
   }
 
-  Widget _kvRow(String k, String v, {Widget? trailing, Color? valueColor}) {
+  Widget _kvRow(String k, String v, {Widget? trailing}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Row(
       children: [
-        // left label
         Expanded(
           child: Text(
             k,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: isDark ? Colors.white70 : Colors.black54,
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.70)
+                  : Colors.black54,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
-
         const SizedBox(width: 12),
-
-        // right side (value + optional trailing pill), aligned to the end
         Expanded(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
-            mainAxisSize: MainAxisSize.max,
             children: [
               Flexible(
                 child: Text(
@@ -1248,8 +1155,8 @@ class _AccountTabState extends State<AccountTab> {
                   maxLines: 1,
                   overflow: TextOverflow.visible,
                   style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: valueColor ?? (isDark ? Colors.white : Colors.black),
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white.withValues(alpha: 0.92),
                   ),
                 ),
               ),
@@ -1262,9 +1169,38 @@ class _AccountTabState extends State<AccountTab> {
   }
 }
 
+// -------------------- Reusable small widgets --------------------
+
+class _Pill extends StatelessWidget {
+  const _Pill(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return LiquidGlass(
+      borderRadius: BorderRadius.circular(999),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      shadow: false,
+      blurX: 12,
+      blurY: 12,
+      tintOpacityDark: 0.040,
+      tintOpacityLight: 0.032,
+      borderOpacityDark: 0.14,
+      borderOpacityLight: 0.18,
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: Colors.white.withValues(alpha: 0.78),
+        ),
+      ),
+    );
+  }
+}
+
 class _GateSplashLike extends StatelessWidget {
   const _GateSplashLike({required this.status});
-
   final String status;
 
   @override
@@ -1278,41 +1214,51 @@ class _GateSplashLike extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  height: 72,
-                  width: 72,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A22),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.4)),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: Image.asset(
-                      'assets/logo/transcript-transparent.png',
-                      fit: BoxFit.cover,
+                LiquidGlass(
+                  borderRadius: BorderRadius.circular(20),
+                  padding: const EdgeInsets.all(0),
+                  shadow: false,
+                  blurX: 18,
+                  blurY: 18,
+                  tintOpacityDark: 0.05,
+                  tintOpacityLight: 0.04,
+                  borderOpacityDark: 0.16,
+                  borderOpacityLight: 0.20,
+                  child: SizedBox(
+                    height: 72,
+                    width: 72,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: Image.asset(
+                        'assets/logo/transcript-transparent.png',
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Icon(
+                          Icons.graphic_eq,
+                          color: Colors.white.withValues(alpha: 0.80),
+                        ),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'Starting up…',
                   style: TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.92),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   status,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.70)),
                 ),
                 const SizedBox(height: 20),
-                const LinearProgressIndicator(
+                LinearProgressIndicator(
                   minHeight: 3,
-                  color: Colors.white,
+                  color: Colors.white.withValues(alpha: 0.92),
                   backgroundColor: Colors.black,
                 ),
               ],
@@ -1340,7 +1286,12 @@ class _Avatar extends StatelessWidget {
         (meta['avatar_url'] ?? meta['picture'] ?? meta['photo_url']) as String?;
 
     if (url != null && url.trim().isNotEmpty) {
-      return CircleAvatar(radius: 26, backgroundImage: NetworkImage(url));
+      return CircleAvatar(
+        radius: 26,
+        backgroundImage: NetworkImage(url),
+        backgroundColor: Colors.white.withValues(alpha: 0.08),
+        onBackgroundImageError: (_, _) {},
+      );
     }
 
     final email = fallbackEmail;
@@ -1351,7 +1302,7 @@ class _Avatar extends StatelessWidget {
     return CircleAvatar(
       radius: 26,
       backgroundColor: Colors.white,
-      child: Text(letter),
+      child: Text(letter, style: const TextStyle(fontWeight: FontWeight.w900)),
     );
   }
 }

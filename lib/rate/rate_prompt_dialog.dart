@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+
 import 'in_app_review_helper.dart';
 import 'rate_gate.dart';
 
@@ -7,186 +8,124 @@ Future<void> showRatePrompt(BuildContext context) async {
   final shouldRate = await showDialog<bool>(
     context: context,
     barrierDismissible: true,
-    barrierColor: Colors.black.withOpacity(0.55),
-    builder: (ctx) => const _RateDialog(),
+    barrierColor: Colors.black.withValues(alpha: 0.55),
+    builder: (ctx) => const _RateCardDialog(),
   );
 
-  // If user taps outside / closes / Not now => treat as dismiss
   if (shouldRate != true) {
     await RateGate.onDismiss();
     return;
   }
 
-  // User chose "Rate now"
   await InAppReviewHelper.requestReviewOrStoreFallback();
-
-  // ✅ Treat "Rate now" as rated (stop all future prompts)
   await RateGate.markRated();
 }
 
-class _RateDialog extends StatelessWidget {
-  const _RateDialog();
+class _RateCardDialog extends StatelessWidget {
+  const _RateCardDialog();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark
-        ? Colors.white.withOpacity(0.12)
-        : Colors.black.withOpacity(0.10);
-
-    final titleColor = isDark ? Colors.white : Colors.black;
-    final subColor = isDark ? Colors.white70 : Colors.black54;
-
-    // Brand accent
-    final accent = theme.colorScheme.primary;
+    final titleColor = Colors.white.withValues(alpha: 0.92);
+    final subColor = Colors.white.withValues(alpha: 0.72);
 
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 18),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 420),
-                decoration: BoxDecoration(
-                  color: bg.withOpacity(isDark ? 0.92 : 0.96),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: border),
-                  boxShadow: [
-                    BoxShadow(
-                      blurRadius: 28,
-                      offset: const Offset(0, 18),
-                      color: Colors.black.withOpacity(isDark ? 0.55 : 0.18),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: _GlassCardSurface(
+            borderRadius: BorderRadius.circular(22),
+            blur: isDark ? 14 : 10,
+            backgroundOpacity: isDark ? 0.18 : 0.14,
+            borderOpacity: isDark ? 0.26 : 0.22,
+            shadowOpacity: isDark ? 0.38 : 0.20,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+
+                  // stars
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      5,
+                      (_) => const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 2),
+                        child: Icon(
+                          Icons.star_rounded,
+                          size: 22,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Text(
+                    'Liking the experience?',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.2,
+                      color: titleColor,
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  Text(
+                    'A quick rating helps us improve and reach more people.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: subColor,
+                      fontWeight: FontWeight.w600,
+                      height: 1.25,
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+                  _HairlineDivider(
+                    color: Colors.white.withValues(alpha: isDark ? 0.18 : 0.20),
+                  ),
+                  const SizedBox(height: 14),
+
+                  Row(
                     children: [
-                      // top row: just close (top-right)
-                      Row(
-                        children: [
-                          const Spacer(),
-                          _PillIconButton(
-                            tooltip: 'Close',
-                            icon: Icons.close,
-                            onTap: () => Navigator.of(context).pop(false),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 6),
-
-                      // ✅ 5 stars ABOVE title
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(5, (_) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
-                            child: Icon(
-                              Icons.star_rounded,
-                              size: 22,
-                              color: Color(0xFFff8143),
-                            ),
-                          );
-                        }),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      Text(
-                        'Liking the experience?',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.2,
-                          color: titleColor,
+                      Expanded(
+                        child: _GlassActionButton(
+                          kind: _GlassActionButtonKind.secondary,
+                          label: 'Not now',
+                          onPressed: () => Navigator.of(context).pop(false),
                         ),
                       ),
-
-                      const SizedBox(height: 8),
-
-                      Text(
-                        'A quick rating helps us improve and reach more people.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: subColor,
-                          fontWeight: FontWeight.w600,
-                          height: 1.25,
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                side: BorderSide(
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.14)
-                                      : Colors.black.withOpacity(0.12),
-                                ),
-                              ),
-                              child: Text(
-                                'Not now',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  color: isDark ? Colors.white70 : Colors.black,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                ),
-                                backgroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              child: const Text(
-                                'Rate now',
-                                style: TextStyle(fontWeight: FontWeight.w900),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 6),
-
-                      Text(
-                        'You can change your mind anytime.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: isDark ? Colors.white60 : Colors.black45,
-                          fontWeight: FontWeight.w600,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _GlassActionButton(
+                          kind: _GlassActionButtonKind.primary,
+                          label: 'Rate now',
+                          onPressed: () => Navigator.of(context).pop(true),
                         ),
                       ),
                     ],
                   ),
-                ),
+
+                  const SizedBox(height: 10),
+
+                  Text(
+                    'You can change your mind anytime.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.58),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -196,36 +135,208 @@ class _RateDialog extends StatelessWidget {
   }
 }
 
-class _PillIconButton extends StatelessWidget {
-  const _PillIconButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
+/* ---------------- Card glass surface (NOT full-screen) ---------------- */
+
+class _GlassCardSurface extends StatelessWidget {
+  const _GlassCardSurface({
+    required this.child,
+    required this.borderRadius,
+    required this.blur,
+    required this.backgroundOpacity,
+    required this.borderOpacity,
+    required this.shadowOpacity,
   });
 
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onTap;
+  final Widget child;
+  final BorderRadius borderRadius;
+  final double blur;
+  final double backgroundOpacity;
+  final double borderOpacity;
+  final double shadowOpacity;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
-    final bg = (isDark ? Colors.white : Colors.black).withOpacity(0.06);
 
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: bg,
-            border: Border.all(color: border),
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          // ✅ Blur applies ONLY behind this card region
+          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(
+                    alpha: backgroundOpacity + (isDark ? 0.04 : 0.05),
+                  ),
+                  Colors.white.withValues(alpha: backgroundOpacity),
+                  Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
+                ],
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: borderOpacity),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 26,
+                  offset: const Offset(0, 14),
+                  color: Colors.black.withValues(alpha: shadowOpacity),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                // top highlight line
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: 1,
+                  child: IgnorePointer(
+                    child: Container(
+                      color: Colors.white.withValues(alpha: isDark ? 0.22 : 0.30),
+                    ),
+                  ),
+                ),
+
+                // subtle corner glow (nice touch)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: const Alignment(-0.85, -0.9),
+                          radius: 1.2,
+                          colors: [
+                            Colors.white.withValues(alpha: isDark ? 0.10 : 0.12),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                child,
+              ],
+            ),
           ),
-          child: Icon(icon, size: 18),
+        ),
+      ),
+    );
+  }
+}
+
+class _HairlineDivider extends StatelessWidget {
+  const _HairlineDivider({required this.color});
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(height: 1, color: color);
+  }
+}
+
+enum _GlassActionButtonKind { primary, secondary }
+
+class _GlassActionButton extends StatelessWidget {
+  const _GlassActionButton({
+    required this.label,
+    required this.onPressed,
+    this.kind = _GlassActionButtonKind.primary,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+  final _GlassActionButtonKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final bgA = kind == _GlassActionButtonKind.primary
+        ? (isDark ? 0.14 : 0.12)
+        : (isDark ? 0.09 : 0.08);
+
+    final borderA = kind == _GlassActionButtonKind.primary
+        ? (isDark ? 0.22 : 0.20)
+        : (isDark ? 0.18 : 0.16);
+
+    final fg = Colors.white.withValues(alpha: 0.92);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(16),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              height: 46,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withValues(alpha: bgA + (isDark ? 0.04 : 0.05)),
+                    Colors.white.withValues(alpha: bgA),
+                    Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: borderA),
+                  width: 1,
+                ),
+              ),
+              child: Stack(
+                children: [
+                  // inner top highlight
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    height: 1,
+                    child: IgnorePointer(
+                      child: Container(
+                        color: Colors.white.withValues(
+                          alpha: 
+                          kind == _GlassActionButtonKind.primary
+                              ? (isDark ? 0.22 : 0.28)
+                              : (isDark ? 0.18 : 0.24),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  Center(
+                    // ✅ never overflow
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(
+                          color: fg,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

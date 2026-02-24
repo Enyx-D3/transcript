@@ -1,6 +1,5 @@
 // lib/transcript/isolated_embedding_diarization.dart
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart';
@@ -76,6 +75,10 @@ class DiarizationParams {
   final double switchThreshold;
   final int switchConfirmWindows;
 
+  /// Require a margin between best and 2nd-best cluster before switching.
+  /// Helps both meetings (avoids flip-flops) and podcasts (avoids false switches).
+  final double switchMargin;
+
   final double mergeClustersThreshold;
 
   /// ✅ NEW: sandwich-collapse (stable speaker bridge)
@@ -104,6 +107,12 @@ class DiarizationParams {
   final bool matchSpeakers;
   final double matchThreshold;
 
+
+  /// Require a margin between best and 2nd-best enrolled speaker match.
+  /// Prevents wrong name assignment when voices are similar.
+  final double matchMargin;
+
+  // ignore: unintended_html_in_doc_comment
   /// enrolled speaker embeddings: name -> list of embeddings (each embedding is List<double>)
   final Map<String, List<List<double>>> speakerMemoryData;
 
@@ -118,6 +127,7 @@ class DiarizationParams {
     this.stayThreshold = 0.68,
     this.switchThreshold = 0.80,
     this.switchConfirmWindows = 3,
+    this.switchMargin = 0.04,
 
     this.mergeClustersThreshold = 0.86,
 
@@ -138,6 +148,7 @@ class DiarizationParams {
 
     this.matchSpeakers = true,
     this.matchThreshold = 0.67,
+    this.matchMargin = 0.04,
     this.speakerMemoryData = const {},
   });
 
@@ -274,7 +285,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
   // ✅ new-speaker confirmation (delay creation)
   int pendingNewCount = 0;
-  Float32List? pendingNewEmb;
+      final pendingNewEmbs = <Float32List>[];
+      Float32List? pendingNewEmb;
 
   try {
     int i = 0;
@@ -307,16 +319,19 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
       // best cluster
       double best = -1;
+      double secondBest = -1;
       _IsolatedCluster? bestC;
       for (final c in clusters) {
         final sim = IsolatedSpeakerMatcher.cosine(c.centroid, v);
         if (sim > best) {
+          secondBest = best;
           best = sim;
           bestC = c;
+        } else if (sim > secondBest) {
+          secondBest = sim;
         }
       }
-
-      if (kDebugMode) {
+if (kDebugMode) {
         debugPrint(
           '[DIA] win#$winIndex ${(a / fs).toStringAsFixed(2)}–${(b / fs).toStringAsFixed(2)} '
           'best=${best.toStringAsFixed(3)} bestCid=${bestC?.id} cur=$currentCid clusters=${clusters.length} '
@@ -332,6 +347,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         clusters.add(_IsolatedCluster(candidateCid, v));
         pendingNewCount = 0;
         pendingNewEmb = null;
+          pendingNewEmbs.clear();
         if (kDebugMode) {
           debugPrint(
               '[DIA]   FIRST SPEAKER created cid=$candidateCid clustersNow=${clusters.length}');
@@ -345,9 +361,20 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
           candidateCid = currentCid!;
           pendingNewCount = 0;
           pendingNewEmb = null;
+          pendingNewEmbs.clear();
           if (kDebugMode) {
             debugPrint(
                 '[DIA]   STAY-HYSTERESIS -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})');
+          }
+        } else if (!isStay && (best - secondBest) < params.switchMargin) {
+          // Not enough margin vs second best -> avoid flip-flop.
+          candidateCid = currentCid ?? bestC.id;
+          pendingNewCount = 0;
+          pendingNewEmb = null;
+          pendingNewEmbs.clear();
+          pendingNewEmbs.clear();
+          if (kDebugMode) {
+            debugPrint('[DIA]   NO-SWITCH (margin ${(best - secondBest).toStringAsFixed(3)} < ${params.switchMargin})');
           }
         } else if (best >= th) {
           // normal match
@@ -355,6 +382,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
           candidateCid = bestC.id;
           pendingNewCount = 0;
           pendingNewEmb = null;
+          pendingNewEmbs.clear();
           if (kDebugMode) {
             debugPrint(
               '[DIA]   MATCH -> cid=$candidateCid (best=${best.toStringAsFixed(3)} >= th=${th.toStringAsFixed(3)})',
@@ -366,6 +394,10 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
               clusters.length < params.maxSpeakersCap) {
             pendingNewCount++;
             pendingNewEmb = v;
+            pendingNewEmbs.add(v);
+            if (pendingNewEmbs.length > params.newSpeakerConfirmWindows) {
+              pendingNewEmbs.removeAt(0);
+            }
 
             if (kDebugMode) {
               debugPrint(
@@ -376,9 +408,11 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
             if (pendingNewCount >= params.newSpeakerConfirmWindows) {
               candidateCid = nextId++;
-              clusters.add(_IsolatedCluster(candidateCid, pendingNewEmb!));
+              final seed = _meanNormalizeIsolate(pendingNewEmbs.isNotEmpty ? pendingNewEmbs : [pendingNewEmb!]);
+              clusters.add(_IsolatedCluster(candidateCid, seed));
               pendingNewCount = 0;
               pendingNewEmb = null;
+          pendingNewEmbs.clear();
 
               if (kDebugMode) {
                 debugPrint(
@@ -395,6 +429,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
             candidateCid = bestC.id;
             pendingNewCount = 0;
             pendingNewEmb = null;
+          pendingNewEmbs.clear();
             if (kDebugMode) {
               debugPrint(
                   '[DIA]   NO-MATCH but CLOSE/CAP -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})');
@@ -523,7 +558,16 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   }
 
   final clusterIds = allowedCids.toList();
-  final centroidMap = {for (var c in clusters) c.id: c.centroid};
+  // Recompute centroids from assigned window embeddings (more stable than online centroids).
+  final centroidMap = <int, Float32List>{};
+  final cidToEmbs = <int, List<Float32List>>{};
+  for (final w in filteredMergedWin) {
+    cidToEmbs.putIfAbsent(w.cid, () => <Float32List>[]).addAll(w.embs);
+  }
+  for (final e in cidToEmbs.entries) {
+    centroidMap[e.key] = _meanNormalizeIsolate(e.value);
+  }
+
 
   for (int x = 0; x < clusterIds.length; x++) {
     for (int y = x + 1; y < clusterIds.length; y++) {
@@ -577,7 +621,12 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
           debugPrint(
               '[DIA] overlapFix prevEnd=${prev.b.toStringAsFixed(2)} turnStart=${turn.a.toStringAsFixed(2)}');
         }
-        turn = _IsolatedTurn(turn.spk, prev.b, math.max(prev.b + 0.5, turn.b));
+        if (turn.b <= prev.b + 0.10) {
+          // Fully overlapped (or tiny). Drop it.
+          continue;
+        }
+        // Clamp start to previous end without extending end artificially.
+        turn = _IsolatedTurn(turn.spk, prev.b, turn.b);
       }
     }
     if (turn.b > turn.a) fixed.add(turn);
@@ -614,16 +663,22 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
       if (diarCentroid.isEmpty) continue;
 
       double best = -1;
+      double secondBest = -1;
       String? bestName;
       enrolled.forEach((name, emb) {
         final sim = IsolatedSpeakerMatcher.cosine(diarCentroid, emb);
         if (sim > best) {
+          secondBest = best;
           best = sim;
           bestName = name;
+        } else if (sim > secondBest) {
+          secondBest = sim;
         }
       });
 
-      if (bestName != null && best >= params.matchThreshold) {
+      if (bestName != null &&
+          best >= params.matchThreshold &&
+          (best - secondBest) >= params.matchMargin) {
         diarToEnrolled[diarLab] = bestName!;
         if (kDebugMode) {
           debugPrint(
@@ -893,10 +948,14 @@ List<_IsolatedTurn> _mergeGapAwareTurnsIsolate(
 
 Float32List _l2normIsolate(Float32List v) {
   double s = 0.0;
-  for (final x in v) s += x * x;
+  for (final x in v) {
+    s += x * x;
+  }
   final r = math.sqrt(math.max(s, 1e-12));
   final out = Float32List(v.length);
-  for (int i = 0; i < v.length; i++) out[i] = v[i] / r;
+  for (int i = 0; i < v.length; i++) {
+    out[i] = v[i] / r;
+  }
   return out;
 }
 
@@ -915,9 +974,15 @@ Float32List _meanAndNorm(List<Float32List> embs) {
     n++;
   }
   if (n <= 0) return Float32List(0);
-  for (int i = 0; i < dim; i++) acc[i] /= n;
+  for (int i = 0; i < dim; i++) {
+    acc[i] /= n;
+  }
   return _l2normIsolate(acc);
 }
+
+// Backward-compatible helper name used in a couple of call sites.
+// (Mean of embeddings + L2 normalize)
+Float32List _meanNormalizeIsolate(List<Float32List> embs) => _meanAndNorm(embs);
 
 /// ✅ Collapse “A -> B -> A” when B is short and centroid(B) close to centroid(A)
 List<_IsolatedTurn> _collapseSandwichTurns(

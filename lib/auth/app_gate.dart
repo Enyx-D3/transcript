@@ -2,11 +2,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:transcript/widgets/brand_logo.dart';
+import 'package:transcript/widgets/status_pill.dart';
 
 import '../home_shell.dart';
 import '../billing/subscription_service.dart'; // ✅ ADD
 import 'login_page.dart';
 import 'eligibility_gate.dart';
+
+import '../ui/glass/glass_background.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_tokens.dart';
+
 
 class AppGate extends StatefulWidget {
   const AppGate({super.key, required this.initialEligibility});
@@ -161,167 +169,129 @@ class _AppGateState extends State<AppGate> {
 
 /// A lightweight splash UI used by AppGate (NOT your main SplashGate boot screen)
 class _GateSplash extends StatelessWidget {
-  const _GateSplash({required this.status, this.failed = false, this.onRetry});
+  const _GateSplash({
+    required this.status,
+    this.failed = false,
+    this.onRetry,
+  });
 
   final String status;
 
-  // ✅ Optional: if you ever want to reuse it for an error state like SplashGate
+  // ✅ Optional error mode
   final bool failed;
   final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context, alpha: 0.78);
 
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Padding(
-              padding: const EdgeInsets.all(22),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // ---- Brand header ----
-                  Container(
-                    width: 86,
-                    height: 86,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF12131A),
-                      borderRadius: BorderRadius.circular(26),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.35),
-                      ),
-                      // boxShadow: [
-                      //   BoxShadow(
-                      //     blurRadius: 26,
-                      //     offset: const Offset(0, 14),
-                      //     color: const Color(0xFF8E7CFF).withOpacity(0.18),
-                      //   ),
-                      // ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: Image.asset(
-                        'assets/logo/transcript-transparent.png',
-                        fit: BoxFit.contain,
+      backgroundColor: Colors.transparent,
+      body: GlassBackground(
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Padding(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // ---- Brand header ----
+                    BrandLogo(),
+                    
+                    const SizedBox(height: 16),
+
+                    Text(
+                      'Starting up',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: fg,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
 
-                  Text(
-                    'Starting up',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 8),
 
-                  // ---- Status pill ----
-                  _StatusPill(
-                    text: status,
-                    isError: failed,
-                  ),
+                    // ---- Status pill ----
+                    StatusPill(text: status,isError: failed),
 
-                  const SizedBox(height: 14),
+                    const SizedBox(height: 14),
 
-                  // ---- Progress / error card ----
-                  Card(
-                    elevation: 0.6,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
+                    // ---- Progress / error card ----
+                    GlassCard(
+                      variant: GlassCardVariant.panel,
                       padding: const EdgeInsets.all(16),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (!failed) ...[
-                            const LinearProgressIndicator(minHeight: 3,color: Colors.white,backgroundColor: Colors.black),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                minHeight: 3,
+                                backgroundColor:
+                                    Colors.white.withValues(alpha: 0.10),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  GlassTokens.fg(context, alpha: 0.92),
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 12),
+                            Text(
+                              'Setting things up…',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: muted,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ] else ...[
-                            const Row(
+                            Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.error_outline,
-                                    color: Colors.redAccent),
-                                SizedBox(width: 10),
+                                const Icon(
+                                  Icons.error_outline,
+                                  color: Colors.redAccent,
+                                ),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
                                     'We couldn’t finish setup. Please try again.',
                                     style: TextStyle(
-                                      color: Colors.white70,
+                                      color: GlassTokens.muted(
+                                        context,
+                                        alpha: 0.80,
+                                      ),
                                       height: 1.2,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 14),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                onPressed: onRetry,
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Retry'),
-                              ),
+                            GlassButton(
+                              kind: GlassButtonKind.primary,
+                              label: 'Retry',
+                              icon: Icons.refresh,
+                              onPressed: onRetry,
+                              innerChrome: false,
                             ),
                           ],
                         ],
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 18),
-                ],
+                    const SizedBox(height: 18),
+
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.text, required this.isError});
-  final String text;
-  final bool isError;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isError ? Colors.redAccent : Colors.white;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.25)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isError
-                ? Icons.warning_amber_rounded
-                : Icons.hourglass_bottom_rounded,
-            size: 16,
-            color: color,
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, height: 1.15),
-            ),
-          ),
-        ],
       ),
     );
   }

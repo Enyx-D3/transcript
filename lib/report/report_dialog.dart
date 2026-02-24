@@ -32,6 +32,7 @@ Future<bool?> showReportDialog({
       return StatefulBuilder(
         builder: (ctx, setState) {
           return AlertDialog(
+            backgroundColor: Colors.black87,
             title: const Text('Report response',style: TextStyle(color: Colors.white,fontSize: 16),),
             content: SingleChildScrollView(
               child: Column(

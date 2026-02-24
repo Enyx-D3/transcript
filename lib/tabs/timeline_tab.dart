@@ -5,10 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:transcript/transcript/import_audio_sheet.dart';
 import 'package:transcript/transcript/import_video_sheet.dart';
+import 'package:transcript/ui/glass/glass_button.dart';
+import 'package:transcript/widgets/empty_state.dart';
+import 'package:transcript/widgets/leading_pill_icon.dart';
+import 'package:transcript/widgets/source_tag.dart';
 
 import '../onboarding/enroll_flow.dart';
 import '../debug/speaker_memory_page.dart';
-import '../model_picker_page.dart';
 import '../objectbox/entities.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox.g.dart';
@@ -29,6 +32,12 @@ import '../paywall/paywall_page.dart';
 
 import '../rate/rate_gate.dart';
 import '../rate/rate_prompt_dialog.dart';
+
+// ✅ Glass primitives
+import '../ui/glass/liquid_glass.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
 
 enum _TranscriptSort {
   dateDesc, // default (current first)
@@ -154,9 +163,7 @@ class _TimelineTabState extends State<TimelineTab> {
       if (!downloaded) {
         await _qwen.downloadModel();
       }
-    } catch (_) {
-      // optional: ignore or show toast
-    }
+    } catch (_) {}
   }
 
   Future<void> _comingSoon() async {
@@ -204,6 +211,7 @@ class _TimelineTabState extends State<TimelineTab> {
     final picked = await showModalBottomSheet<_TranscriptSort>(
       context: context,
       showDragHandle: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
         Widget tile(
           _TranscriptSort v,
@@ -213,45 +221,66 @@ class _TimelineTabState extends State<TimelineTab> {
         ) {
           final selected = _sort == v;
           return ListTile(
-            leading: Icon(ic),
-            title: Text(title),
-            subtitle: Text(subtitle),
-            trailing: selected ? const Icon(Icons.check) : null,
+            leading: Icon(ic, color: Colors.white.withValues(alpha: 0.86)),
+            title: Text(
+              title,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text(
+              subtitle,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.70),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            trailing: selected
+                ? Icon(Icons.check, color: Colors.white.withValues(alpha: 0.92))
+                : null,
             onTap: () => Navigator.of(ctx).pop(v),
           );
         }
 
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 6),
-              tile(
-                _TranscriptSort.dateDesc,
-                'Date',
-                'Newest → Oldest',
-                Icons.schedule,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: GlassCard(
+              variant: GlassCardVariant.panel,
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 6),
+                  tile(
+                    _TranscriptSort.dateDesc,
+                    'Date',
+                    'Newest → Oldest',
+                    Icons.schedule,
+                  ),
+                  tile(
+                    _TranscriptSort.dateAsc,
+                    'Date',
+                    'Oldest → Newest',
+                    Icons.schedule,
+                  ),
+                  tile(
+                    _TranscriptSort.titleAsc,
+                    'Title',
+                    'A → Z',
+                    Icons.sort_by_alpha,
+                  ),
+                  tile(
+                    _TranscriptSort.titleDesc,
+                    'Title',
+                    'Z → A',
+                    Icons.sort_by_alpha,
+                  ),
+                  const SizedBox(height: 10),
+                ],
               ),
-              tile(
-                _TranscriptSort.dateAsc,
-                'Date',
-                'Oldest → Newest',
-                Icons.schedule,
-              ),
-              tile(
-                _TranscriptSort.titleAsc,
-                'Title',
-                'A → Z',
-                Icons.sort_by_alpha,
-              ),
-              tile(
-                _TranscriptSort.titleDesc,
-                'Title',
-                'Z → A',
-                Icons.sort_by_alpha,
-              ),
-              const SizedBox(height: 10),
-            ],
+            ),
           ),
         );
       },
@@ -313,88 +342,119 @@ class _TimelineTabState extends State<TimelineTab> {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF0B0C10),
-              title: const Text(
-                'Choose Default Language',
-                style: TextStyle(color: Colors.white, fontSize: 12),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: selected,
-                    isExpanded: true,
-                    items: _langOptions.entries
-                        .map(
-                          (e) => DropdownMenuItem<String>(
-                            value: e.key,
-                            child: Text(
-                              e.value,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white),
+              backgroundColor: Colors.transparent,
+              contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              content: GlassCard(
+                variant: GlassCardVariant.panel,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Choose Default Language',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      initialValue: selected,
+                      isExpanded: true,
+                      items: _langOptions.entries
+                          .map(
+                            (e) => DropdownMenuItem<String>(
+                              value: e.key,
+                              child: Text(
+                                e.value,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.92),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setLocal(() => selected = v);
+                      },
+                      dropdownColor: const Color.fromARGB(190, 0, 0, 0),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            width: 1,
                           ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setLocal(() => selected = v);
-                    },
-                    dropdownColor: const Color(0xFF101018),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 10,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(
-                          color: Color(0xFFff8143),
-                          width: 1,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.32),
+                            width: 1.2,
+                          ),
+                        ),
+                        border: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
                         ),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(
-                          color: Color(0xFFff8143),
-                          width: 1.2,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'You can change the language later when transcribing.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        // Expanded(
+                        //   child: TextButton(
+                        //     onPressed: () => Navigator.of(ctx).pop(null),
+                        //     child: Text(
+                        //       'Cancel',
+                        //       style: TextStyle(
+                        //         color: Colors.white.withValues(alpha: 0.86),
+                        //         fontWeight: FontWeight.w600,
+                        //       ),
+                        //     ),
+                        //   ),
+                        // ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GlassButton(
+                            kind: GlassButtonKind.secondary,
+                            label: 'Continue',
+                            onPressed: () => Navigator.of(ctx).pop(selected),
+                          ),
+                          // child: FilledButton(
+                          //   style: FilledButton.styleFrom(
+                          //     backgroundColor: Colors.white.withValues(
+                          //       alpha: 0.92,
+                          //     ),
+                          //     foregroundColor: Colors.black,
+                          //   ),
+                          //   onPressed: () => Navigator.of(ctx).pop(selected),
+                          //   child: const Text('Continue'),
+                          // ),
                         ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFFff8143)),
-                      ),
+                      ],
                     ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // ✅ Footer
-                  Text(
-                    'You can change the language later when transcribing.',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.55),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(null),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                  ),
-                  onPressed: () => Navigator.of(ctx).pop(selected),
-                  child: const Text('Continue'),
-                ),
-              ],
             );
           },
         );
@@ -508,7 +568,7 @@ class _TimelineTabState extends State<TimelineTab> {
     final ok = await RateGate.shouldPrompt();
     if (!ok || !mounted || _disposed) return;
 
-    await showRatePrompt(context); // your function already handles dismiss/rate
+    await showRatePrompt(context);
   }
 
   // --------------------
@@ -703,31 +763,35 @@ class _TimelineTabState extends State<TimelineTab> {
     _unfocus();
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
     _unfocus();
-
-    // ✅ when coming back to Timeline, refresh list so latest items show
     await _load();
   }
 
-  // ✅ Small tag beside Timeline
+  // ✅ Small tag beside Timeline (NO blur, NO grain)
   Widget _modelDownloadingTag(bool isDark) {
-    final border = Colors.white.withOpacity(isDark ? 0.45 : 0.35);
-    final bg = Colors.white.withOpacity(isDark ? 0.16 : 0.10);
-
-    return Container(
-      margin: const EdgeInsets.only(left: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
+    return Padding(
+      padding: const EdgeInsets.only(left: 10),
+      child: LiquidGlass(
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: const Text(
-        'MODEL DOWNLOADING',
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.3,
-          color: Colors.white,
-          fontSize: 9,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        shadow: false,
+
+        // ✅ PERF: disable expensive effects for small tag
+        blurX: 0,
+        blurY: 0,
+        grain: false,
+
+        tintOpacityDark: 0.040,
+        tintOpacityLight: 0.035,
+        borderOpacityDark: 0.16,
+        borderOpacityLight: 0.18,
+        child: Text(
+          'MODEL DOWNLOADING',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.25,
+            color: Colors.white.withValues(alpha: 0.92),
+            fontSize: 10,
+          ),
         ),
       ),
     );
@@ -738,16 +802,10 @@ class _TimelineTabState extends State<TimelineTab> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final panelBg = isDark
-        ? const Color(0xFF101018)
-        : theme.colorScheme.surface;
-    final panelBorder = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
     final showModelDownloading = _qwenProgress.downloading;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: _unfocus,
@@ -769,9 +827,9 @@ class _TimelineTabState extends State<TimelineTab> {
                               Text(
                                 'Timeline',
                                 style: theme.textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w700,
                                   letterSpacing: -0.2,
-                                  color: Colors.white,
+                                  color: Colors.white.withValues(alpha: 0.92),
                                 ),
                               ),
                               if (showModelDownloading)
@@ -782,7 +840,9 @@ class _TimelineTabState extends State<TimelineTab> {
                           Text(
                             'Your recent recordings and transcripts',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: isDark ? Colors.white : Colors.black54,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.70)
+                                  : Colors.black.withValues(alpha: 0.54),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -802,7 +862,10 @@ class _TimelineTabState extends State<TimelineTab> {
                           onLongPress: () async {
                             await debugResetOnboardingFlags();
                           },
-                          icon: const Icon(Icons.settings),
+                          icon: Icon(
+                            Icons.settings,
+                            color: Colors.white.withValues(alpha: 0.88),
+                          ),
                         ),
                       ],
                     ),
@@ -832,7 +895,6 @@ class _TimelineTabState extends State<TimelineTab> {
                       label: 'YouTube Transcript',
                       onTap: () => _openPage(const TranscriptYoutubePage()),
                     ),
-
                     _QuickTile(
                       icon: Icons.audio_file,
                       label: 'Audio File',
@@ -853,7 +915,7 @@ class _TimelineTabState extends State<TimelineTab> {
 
                 const SizedBox(height: 16),
 
-                // ---------- Fixed transcripts header row (sort/reload stays fixed) ----------
+                // ---------- Fixed transcripts header row ----------
                 _SectionHeader(
                   title: 'Transcripts',
                   subtitle: _items.isEmpty
@@ -864,7 +926,10 @@ class _TimelineTabState extends State<TimelineTab> {
                     children: [
                       IconButton(
                         tooltip: 'Sort',
-                        icon: const Icon(Icons.sort),
+                        icon: Icon(
+                          Icons.sort,
+                          color: Colors.white.withValues(alpha: 0.86),
+                        ),
                         onPressed: _showTranscriptSortSheet,
                       ),
                       IconButton(
@@ -878,7 +943,10 @@ class _TimelineTabState extends State<TimelineTab> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.refresh),
+                            : Icon(
+                                Icons.refresh,
+                                color: Colors.white.withValues(alpha: 0.86),
+                              ),
                       ),
                     ],
                   ),
@@ -886,27 +954,22 @@ class _TimelineTabState extends State<TimelineTab> {
 
                 const SizedBox(height: 10),
 
-                // ✅ ONLY THIS AREA SCROLLS
+                // ✅ ONLY THIS AREA SCROLLS (Glass panel)
                 Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: panelBg,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: panelBorder),
-                      boxShadow: [
-                        BoxShadow(
-                          blurRadius: 18,
-                          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: _items.isEmpty ? const _EmptyState() : _buildList(),
+                  child: GlassCard(
+                    variant: GlassCardVariant.tile,
+                    padding: EdgeInsets.zero,
+                    child: _items.isEmpty
+                        ? const EmptyState(
+                            title: 'No transcripts yet',
+                            subtitle:
+                                'Your transcripts will appear here after you record.',
+                            icon: Icons.dangerous,
+                          )
+                        : _buildList(),
                   ),
                 ),
 
-                // optional bottom breathing room (fixed)
                 const SizedBox(height: 2),
               ],
             ),
@@ -921,14 +984,19 @@ class _TimelineTabState extends State<TimelineTab> {
       itemCount: _items.length,
       padding: EdgeInsets.zero,
       physics: const BouncingScrollPhysics(),
-      separatorBuilder: (_, __) => const Divider(height: 1, thickness: 0.6),
+
+      // ✅ PERF: keep backdrop behavior stable + reduce layer churn
+      addRepaintBoundaries: false,
+      addAutomaticKeepAlives: false,
+
+      separatorBuilder: (_, _) => const GlassDivider(),
       itemBuilder: (ctx, i) {
         final t = _items[i];
 
         final title = (t.title?.trim().isNotEmpty ?? false)
             ? t.title!.trim()
             : 'Untitled transcript';
-
+        debugPrint(t.fullTextCache);
         final st =
             t.sourceType; // 0=record, 1=youtube, 2=audio import, 3=video import
 
@@ -950,12 +1018,8 @@ class _TimelineTabState extends State<TimelineTab> {
                         ? const SourceTag(type: 'video', label: 'VIDEO')
                         : null));
 
-        final String sourceLabel = isYoutube
-            ? 'YouTube'
-            : (isAudio ? 'Audio file' : (isVideo ? 'Video file' : ''));
-        // '${_fmtDate(t.createdAt)} • $sourceLabel'
         final sub = (isYoutube || isAudio || isVideo)
-            ? '${_fmtDate(t.createdAt)}'
+            ? _fmtDate(t.createdAt)
             : '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
 
         return ListTile(
@@ -963,7 +1027,7 @@ class _TimelineTabState extends State<TimelineTab> {
             horizontal: 14,
             vertical: 4,
           ),
-          leading: _LeadingPillIcon(icon: leadingIcon),
+          leading: LeadingPillIcon(icon: leadingIcon),
           title: Row(
             children: [
               Expanded(
@@ -971,13 +1035,22 @@ class _TimelineTabState extends State<TimelineTab> {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               if (tag != null) ...[const SizedBox(width: 8), tag],
             ],
           ),
-          subtitle: Text(sub, style: const TextStyle(color: Colors.white)),
+          subtitle: Text(
+            sub,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.70),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -985,14 +1058,18 @@ class _TimelineTabState extends State<TimelineTab> {
                 tooltip: t.isFavourite ? 'Unfavourite' : 'Favourite',
                 icon: Icon(
                   t.isFavourite ? Icons.favorite : Icons.favorite_border,
-                  color: t.isFavourite ? const Color(0xFFff8143) : null,
+                  color: Colors.white.withValues(
+                    alpha: t.isFavourite ? 0.92 : 0.72,
+                  ),
                 ),
                 onPressed: () => _toggleFavourite(t),
               ),
-
               IconButton(
                 tooltip: 'Delete',
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: Colors.white.withValues(alpha: 0.62),
+                ),
                 onPressed: () async => _onDeletePressed(t),
               ),
             ],
@@ -1053,110 +1130,7 @@ class _TimelineTabState extends State<TimelineTab> {
   }
 }
 
-// ---------------- UI widgets below (unchanged) ----------------
-
-class _SourceTagYoutube extends StatelessWidget {
-  const _SourceTagYoutube();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = Colors.red.withOpacity(isDark ? 0.45 : 0.35);
-    final bg = Colors.red.withOpacity(isDark ? 0.16 : 0.10);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: const Text(
-        'YOUTUBE',
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.3,
-          color: Colors.red,
-          fontSize: 6,
-        ),
-      ),
-    );
-  }
-}
-
-class SourceTag extends StatelessWidget {
-  const SourceTag({
-    super.key,
-    required this.type,
-    this.label,
-    this.color,
-    this.fontSize = 6,
-    this.horizontalPadding = 10,
-    this.verticalPadding = 6,
-  });
-
-  /// e.g. "youtube", "call", "audio", "video"
-  final String type;
-
-  /// Optional custom label (otherwise uses type.toUpperCase()).
-  final String? label;
-
-  /// Optional base color (otherwise auto-picked from type).
-  final Color? color;
-
-  final double fontSize;
-  final double horizontalPadding;
-  final double verticalPadding;
-
-  Color _defaultColorForType(String t) {
-    switch (t.toLowerCase()) {
-      case 'youtube':
-        return Colors.orange;
-      case 'call':
-        return Colors.green;
-      case 'audio':
-        return Colors.blue;
-      case 'video':
-        return Colors.purple;
-      case 'file':
-        return Colors.red;
-      default:
-        return Colors.white; // fallback
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final base = color ?? _defaultColorForType(type);
-    final border = base.withOpacity(isDark ? 0.45 : 0.35);
-    final bg = base.withOpacity(isDark ? 0.16 : 0.10);
-
-    final text = (label ?? type).toUpperCase();
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: verticalPadding,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.3,
-          color: Colors.white,
-          fontSize: fontSize,
-        ),
-      ),
-    );
-  }
-}
+// ---------------- UI widgets below (Glass) ----------------
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
@@ -1171,8 +1145,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -1185,15 +1158,18 @@ class _SectionHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.92),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark ? Colors.white70 : Colors.black54,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.70)
+                        : Colors.black.withValues(alpha: 0.54),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1215,26 +1191,18 @@ class _SectionHeaderWithoutSubtitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 2),
-              ],
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.92),
+              ),
             ),
           ),
         ),
@@ -1250,22 +1218,9 @@ class _QuickActionGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-    final bg = isDark
-        ? Colors.white.withOpacity(0.04)
-        : Colors.black.withOpacity(0.03);
-
-    return Container(
+    return GlassCard(
+      variant: GlassCardVariant.tile,
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-      ),
       child: GridView.count(
         crossAxisCount: 2,
         mainAxisSpacing: 10,
@@ -1292,41 +1247,44 @@ class _QuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-    final bg = isDark
-        ? Colors.white.withOpacity(0.06)
-        : Colors.black.withOpacity(0.04);
-
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => onTap(),
-      child: Ink(
+      child: LiquidGlass(
+        borderRadius: BorderRadius.circular(16),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Color(0xFFff8143).withValues(alpha: 0.4)),
-        ),
+        shadow: false,
+
+        // ✅ PERF: tiles are interactive + many on screen → no blur/grain
+        blurX: 0,
+        blurY: 0,
+        grain: false,
+
+        tintOpacityDark: 0.050,
+        tintOpacityLight: 0.040,
+        borderOpacityDark: 0.14,
+        borderOpacityLight: 0.18,
         child: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-                border: Border.all(
-                  color: (isDark ? Colors.white : Colors.black).withOpacity(
-                    0.10,
-                  ),
-                ),
+            // ✅ PERF: remove nested blur glass — make icon pill tint-only
+            LiquidGlass(
+              borderRadius: BorderRadius.circular(14),
+              padding: const EdgeInsets.all(10),
+              shadow: false,
+
+              blurX: 0,
+              blurY: 0,
+              grain: false,
+
+              tintOpacityDark: 0.030,
+              tintOpacityLight: 0.026,
+              borderOpacityDark: 0.10,
+              borderOpacityLight: 0.12,
+              child: Icon(
+                icon,
+                size: 18,
+                color: Colors.white.withValues(alpha: 0.90),
               ),
-              child: Icon(icon, size: 18),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -1334,147 +1292,13 @@ class _QuickTile extends StatelessWidget {
                 label,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withValues(alpha: 0.92),
                 ),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LeadingPillIcon extends StatelessWidget {
-  const _LeadingPillIcon({required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark
-        ? Colors.white.withOpacity(0.12)
-        : Colors.black.withOpacity(0.08);
-    final bg = isDark
-        ? Colors.white.withOpacity(0.06)
-        : Colors.black.withOpacity(0.04);
-
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border),
-      ),
-      child: Icon(icon, size: 20),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-      child: Column(
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-              border: Border.all(
-                color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
-              ),
-            ),
-            child: const Icon(Icons.article_outlined, size: 26),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'No transcripts yet',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Your transcripts will appear here after you record.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: isDark ? Colors.white : Colors.black54,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SourceTagAudio extends StatelessWidget {
-  const _SourceTagAudio();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = Colors.blue.withOpacity(isDark ? 0.45 : 0.35);
-    final bg = Colors.blue.withOpacity(isDark ? 0.16 : 0.10);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: const Text(
-        'AUDIO',
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.3,
-          color: Colors.blue,
-          fontSize: 9,
-        ),
-      ),
-    );
-  }
-}
-
-class _SourceTagVideo extends StatelessWidget {
-  const _SourceTagVideo();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = Colors.purple.withOpacity(isDark ? 0.45 : 0.35);
-    final bg = Colors.purple.withOpacity(isDark ? 0.16 : 0.10);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: const Text(
-        'VIDEO',
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.3,
-          color: Colors.purple,
-          fontSize: 9,
         ),
       ),
     );

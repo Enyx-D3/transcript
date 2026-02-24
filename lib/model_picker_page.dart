@@ -1,8 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:transcript/widgets/icon_pill_button.dart';
 
 import 'qwen_model_service.dart';
 import 'whisper_service.dart';
+
+// ✅ Glass primitives (match your new system)
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+import '../ui/glass/liquid_glass.dart';
 
 class ModelPickerPage extends StatefulWidget {
   const ModelPickerPage({super.key});
@@ -33,20 +40,18 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
   }
 
   Future<void> _bootstrap() async {
-    setState(() => _error = null);
+    if (mounted) setState(() => _error = null);
     try {
       _qwenDownloaded = await _qwenService.isModelDownloaded();
       _qwenProgress = ModelProgress.idle;
 
+      _qwenSub?.cancel();
       _qwenSub = _qwenService.progress.listen((p) async {
         if (!mounted) return;
         setState(() => _qwenProgress = p);
 
         final finishedOk =
-            !p.downloading &&
-            p.error == null &&
-            p.total == 1 &&
-            p.received == 1;
+            !p.downloading && p.error == null && p.total == 1 && p.received == 1;
         if (finishedOk) {
           final ok2 = await _qwenService.isModelDownloaded();
           if (!mounted) return;
@@ -61,7 +66,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
   }
 
   Future<void> _downloadQwen() async {
-    setState(() => _error = null);
+    if (mounted) setState(() => _error = null);
     try {
       await _qwenService.downloadModel();
     } catch (e) {
@@ -71,7 +76,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
   }
 
   Future<void> _cancelQwen() async {
-    setState(() => _error = null);
+    if (mounted) setState(() => _error = null);
     try {
       await _qwenService.cancelDownload();
     } catch (e) {
@@ -80,93 +85,78 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
     }
   }
 
-  // ---------- UI helpers ----------
-  BoxDecoration _panelDecoration(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
-    return BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: border),
-      boxShadow: [
-        BoxShadow(
-          blurRadius: 18,
-          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-          offset: const Offset(0, 10),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
+
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+    final muted = GlassTokens.muted(context, alpha: 0.70);
 
     final p = _qwenProgress;
     final isDl = p.downloading;
     final isReady = _qwenDownloaded;
 
-    // ✅ Keep your percentage exactly as-is (you said it's fine)
+    // ✅ Keep your percentage exactly as-is
     final pct = (p.percent * 100).clamp(0, 100).toStringAsFixed(0);
 
-    // ✅ FIX: progress bar must NOT use p.percent; use received/total directly
-    final barValue = (p.total <= 0)
-        ? null
-        : (p.received / p.total).clamp(0.0, 1.0);
+    // ✅ progress bar uses received/total
+    final barValue = (p.total <= 0) ? null : (p.received / p.total).clamp(0.0, 1.0);
 
     final statusText = isDl
         ? (p.error != null ? 'Error: ${p.error}' : 'Downloading…')
         : (isReady ? 'Downloaded' : 'Not downloaded');
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),
           children: [
-            // ---------- Custom header ----------
+            // ---------- Header (glass, no AppBar) ----------
             Row(
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Models',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Download local AI models',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark ? Colors.white70 : Colors.black54,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                _IconPillButton(
+                IconPillButton(
                   tooltip: 'Close',
                   icon: Icons.close,
                   onTap: () => Navigator.of(context).pop(),
                 ),
+                
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Models',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.2,
+                            color: fg,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Download local AI models',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: muted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                
               ],
             ),
 
             const SizedBox(height: 14),
 
-            // ---------- Qwen panel ----------
-            Container(
-              decoration: _panelDecoration(context),
+            // ---------- Qwen panel (glass) ----------
+            GlassCard(
+              variant: GlassCardVariant.panel,
               padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,37 +165,39 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          color: (isDark ? Colors.white : Colors.black)
-                              .withOpacity(0.06),
-                          border: Border.all(
-                            color: (isDark ? Colors.white : Colors.black)
-                                .withOpacity(0.10),
-                          ),
+                      LiquidGlass(
+                        borderRadius: BorderRadius.circular(14),
+                        padding: const EdgeInsets.all(10),
+                        shadow: false,
+                        blurX: isDark ? 16 : 12,
+                        blurY: isDark ? 16 : 12,
+                        tintOpacityDark: 0.040,
+                        tintOpacityLight: 0.032,
+                        borderOpacityDark: 0.14,
+                        borderOpacityLight: 0.18,
+                        child: Icon(
+                          Icons.smart_toy_outlined,
+                          color: fg,
                         ),
-                        child: const Icon(Icons.smart_toy_outlined),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Enyx Lite',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
+                                color: fg,
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               'Local LLM used for AI features.',
                               style: TextStyle(
-                                color: isDark ? Colors.white70 : Colors.black54,
+                                color: muted,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -219,8 +211,8 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                                   tone: isReady
                                       ? _PillTone.good
                                       : (p.error != null
-                                            ? _PillTone.bad
-                                            : _PillTone.neutral),
+                                          ? _PillTone.bad
+                                          : _PillTone.neutral),
                                 ),
                                 if (isDl)
                                   _StatusPill(
@@ -235,59 +227,62 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                     ],
                   ),
 
-                  // ✅ Progress bar when downloading (NOW WORKS)
+                  // Progress
                   if (isDl) ...[
                     const SizedBox(height: 14),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(999),
                       child: LinearProgressIndicator(
                         minHeight: 8,
-                        value: barValue, // ✅ fixed'
-                        backgroundColor: Colors.white10,
-                        color: Colors.white,
+                        value: barValue,
+                        backgroundColor: Colors.white.withValues(alpha: 0.16),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.white.withValues(alpha: 0.92),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Text(
-                          p.error != null ? 'Issue detected' : 'Downloading…',
-                          style: TextStyle(
-                            color: p.error != null
-                                ? Colors.red
-                                : (isDark ? Colors.white70 : Colors.black54),
-                            fontWeight: FontWeight.w700,
+                        Expanded(
+                          child: Text(
+                            p.error != null ? 'Issue detected' : 'Downloading…',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: p.error != null
+                                  ? Colors.redAccent
+                                  : muted,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
-                        const Spacer(),
+                        const SizedBox(width: 10),
                         OutlinedButton(
                           onPressed: _cancelQwen,
                           style: OutlinedButton.styleFrom(
-                            side: const BorderSide(
-                              color: Colors.red, // 👈 border color
-                              width: 1.2,
-                            ),
+                            side: const BorderSide(color: Colors.redAccent, width: 1.2),
+                            foregroundColor: Colors.redAccent,
                           ),
-                          child: const Text('Cancel',style: TextStyle(color: Colors.red),),
+                          child: const Text('Cancel'),
                         ),
                       ],
                     ),
                   ],
 
                   const SizedBox(height: 14),
-                  const Divider(height: 1, thickness: 0.6),
+                  const GlassDivider(height: 1, thickness: 0.8),
                   const SizedBox(height: 12),
 
-                  // Bottom actions (download / downloaded)
+                  // Bottom actions
                   Row(
                     children: [
                       Expanded(
                         child: isReady
                             ? OutlinedButton.icon(
                                 onPressed: null,
-                                icon: const Icon(Icons.verified),
-                                label: const Text('Downloaded'),
-                                
+                                icon: const Icon(Icons.verified,color: Colors.white,),
+                                label: const Text('Downloaded',style: TextStyle(color: Colors.white),),
                               )
                             : FilledButton.icon(
                                 onPressed: isDl ? null : _downloadQwen,
@@ -300,9 +295,12 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                                           color: Colors.black,
                                         ),
                                       )
-                                    : const Icon(Icons.download),
-                                label: Text(isDl ? 'Downloading…' : 'Download',style: TextStyle(color: Colors.black),),
-                                style:OutlinedButton.styleFrom(backgroundColor: Colors.white),
+                                    : const Icon(Icons.download,color: Colors.white,),
+                                label: Text(isDl ? 'Downloading…' : 'Download'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: Colors.black,
+                                ),
                               ),
                       ),
                     ],
@@ -314,8 +312,8 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
             // ---------- Error panel ----------
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Container(
-                decoration: _panelDecoration(context),
+              GlassCard(
+                variant: GlassCardVariant.tile,
                 padding: const EdgeInsets.all(12),
                 child: Text(
                   _error!,
@@ -335,40 +333,6 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
   }
 }
 
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-          border: Border.all(
-            color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
-          ),
-        ),
-        child: Tooltip(message: tooltip, child: Icon(icon)),
-      ),
-    );
-  }
-}
-
 enum _PillTone { neutral, good, bad }
 
 class _StatusPill extends StatelessWidget {
@@ -379,23 +343,37 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+
+    // ✅ black/white only (remove orange)
     Color? accent;
-    if (tone == _PillTone.good) accent = Color(0xFFff8143);
-    if (tone == _PillTone.bad) accent = Colors.redAccent;
+    if (tone == _PillTone.good) {
+      accent = Colors.white;
+    } else if (tone == _PillTone.bad) {
+      accent = Colors.redAccent;
+    }
+
+    final base = accent ?? (isDark ? Colors.white : Colors.black);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: (accent ?? Colors.white24).withOpacity(0.18),
+        color: base.withValues(alpha: tone == _PillTone.bad ? 0.10 : 0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: (accent ?? Colors.white24).withOpacity(0.45)),
+        border: Border.all(
+          color: base.withValues(alpha: tone == _PillTone.bad ? 0.45 : 0.28),
+        ),
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 11.5,
-          fontWeight: FontWeight.w700,
-          color: accent ?? Colors.white70,
+          fontWeight: FontWeight.w800,
+          color: tone == _PillTone.good
+              ? Colors.white.withValues(alpha: 0.85)
+              : (tone == _PillTone.bad ? Colors.redAccent : Colors.white70),
         ),
       ),
     );

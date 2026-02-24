@@ -10,22 +10,29 @@ class IsolatedSpeakerMatcher {
   static String? matchSpeaker(
     Float32List probe,
     Map<String, List<Float32List>> enrolledSpeakers,
-    double threshold,
-  ) {
+    double threshold, {
+    double margin = 0.04,
+  }) {
     String? bestMatch;
     double bestScore = -1.0;
+    double secondBestScore = -1.0;
 
     enrolledSpeakers.forEach((name, embeddings) {
       for (final emb in embeddings) {
         final score = cosine(probe, emb);
         if (score > bestScore) {
+          secondBestScore = bestScore;
           bestScore = score;
           bestMatch = name;
+        } else if (score > secondBestScore) {
+          secondBestScore = score;
         }
       }
     });
 
-    if (bestScore >= threshold && bestMatch != null) {
+    if (bestMatch != null &&
+        bestScore >= threshold &&
+        (bestScore - secondBestScore) >= margin) {
       return bestMatch;
     }
     return null;
@@ -35,8 +42,9 @@ class IsolatedSpeakerMatcher {
   static Map<String, String> matchSpeakers(
     Map<String, List<Float32List>> speakerFeatures,
     Map<String, List<Float32List>> enrolledSpeakers,
-    double threshold,
-  ) {
+    double threshold, {
+    double margin = 0.04,
+  }) {
     final matches = <String, String>{};
     
     if (enrolledSpeakers.isEmpty) return matches;
@@ -51,7 +59,7 @@ class IsolatedSpeakerMatcher {
       final centroid = _computeCentroid(features);
       
       // Find best match
-      final matchedName = matchSpeaker(centroid, enrolledSpeakers, threshold);
+      final matchedName = matchSpeaker(centroid, enrolledSpeakers, threshold, margin: margin);
       if (matchedName != null) {
         matches[speakerLabel] = matchedName;
       }
@@ -68,7 +76,8 @@ class IsolatedSpeakerMatcher {
     final sum = Float32List(length);
     
     for (final vec in vectors) {
-      for (int i = 0; i < vec.length; i++) {
+      final n = math.min(length, vec.length);
+      for (int i = 0; i < n; i++) {
         sum[i] += vec[i];
       }
     }

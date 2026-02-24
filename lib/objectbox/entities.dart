@@ -171,8 +171,24 @@ class TranscriptionJobEntity {
   bool translateToEnglish;
   String? titleHint;
 
-  /// 'PENDING' | 'RUNNING' | 'DONE' | 'ERROR'
+  /// 'PENDING' | 'RECORDING' | 'RUNNING' | 'DONE' | 'ERROR'
+  @Index()
   String status;
+
+  /// Human readable stage shown in UI/notifications.
+  /// Examples: 'Recording', 'Diarizing', 'Transcribing', 'Finalizing'
+  @Index()
+  String stage;
+
+  /// Chunk progress (for chunked pipeline).
+  /// totalChunks is known after recording stops; during recording it can be 0.
+  int totalChunks;
+  int processedChunks;
+  int currentChunkIndex; // 1-based for UI, 0 if none
+
+  /// Whether the foreground job is still recording.
+  @Index()
+  bool isRecording;
 
   /// Link the job to the placeholder Transcript
   int transcriptId;
@@ -182,6 +198,9 @@ class TranscriptionJobEntity {
   @Property(type: PropertyType.date)
   DateTime createdAt;
 
+  @Property(type: PropertyType.date)
+  DateTime updatedAt;
+
   TranscriptionJobEntity({
     this.id = 0,
     required this.wavPath,
@@ -189,10 +208,18 @@ class TranscriptionJobEntity {
     required this.transcriptId,
     this.titleHint,
     this.status = 'PENDING',
+    this.stage = 'Preparing',
+    this.totalChunks = 0,
+    this.processedChunks = 0,
+    this.currentChunkIndex = 0,
+    this.isRecording = false,
     this.error,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    DateTime? updatedAt,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
 }
+
 
 // One summary per transcript. We simply reuse transcriptId as the entity id.
 @Entity()

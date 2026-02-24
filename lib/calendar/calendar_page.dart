@@ -1,17 +1,22 @@
 // lib/calendar/calendar_page.dart
 import 'package:flutter/material.dart';
-import 'package:objectbox/objectbox.dart';
+import 'package:transcript/widgets/icon_pill_button.dart';
+import 'package:transcript/widgets/leading_pill_icon.dart';
 
 import '../objectbox/objectbox_store.dart';
 import '../transcript/transcript_detail_page.dart';
 import '../objectbox.g.dart';
 
-/// Month-view calendar: two colors only
-/// - Days with transcripts use a highlight color
-/// - Days without transcripts use a neutral color
-/// - Shows count on each day (bottom-right)
-/// - Tap a day to open a bottom sheet with that day's transcripts
-/// - Today has a neon border
+// ✅ Glass primitives
+import '../ui/glass/liquid_glass.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+
+/// Month-view calendar (Apple glass)
+/// PERF VERSION:
+/// - NO per-cell blur (global background blur recommended)
+/// - Cells are tint+border only (fast)
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
 
@@ -34,6 +39,7 @@ class _CalendarPageState extends State<CalendarPage> {
   // ---------- Data ----------
 
   DateTime _startOfMonth(DateTime m) => DateTime(m.year, m.month, 1);
+
   DateTime _endOfMonthExclusive(DateTime m) {
     final firstNext = (m.month == 12)
         ? DateTime(m.year + 1, 1, 1)
@@ -50,7 +56,8 @@ class _CalendarPageState extends State<CalendarPage> {
     final end = _endOfMonthExclusive(_monthAnchor);
 
     // Query all ordered by createdAt, filter to this month in Dart
-    final qb = obx.transcripts.query(TranscriptEntity_.isDeleted.equals(false))..order(TranscriptEntity_.createdAt);
+    final qb = obx.transcripts.query(TranscriptEntity_.isDeleted.equals(false))
+      ..order(TranscriptEntity_.createdAt);
     final q = qb.build();
     final all = q.find();
     q.close();
@@ -66,9 +73,7 @@ class _CalendarPageState extends State<CalendarPage> {
       map[d] = (map[d] ?? 0) + 1;
     }
 
-    setState(() {
-      _countByDate = map;
-    });
+    setState(() => _countByDate = map);
   }
 
   // ---------- UI ----------
@@ -89,39 +94,15 @@ class _CalendarPageState extends State<CalendarPage> {
     _loadMonth();
   }
 
-  BoxDecoration _panelDecoration(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
-    return BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: border),
-      boxShadow: [
-        BoxShadow(
-          blurRadius: 18,
-          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-          offset: const Offset(0, 10),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final days = _buildMonthDays(_monthAnchor);
     final today = _truncateDate(DateTime.now());
 
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
 
     return Scaffold(
-      // ✅ No default AppBar: custom header for uniqueness
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
@@ -139,62 +120,72 @@ class _CalendarPageState extends State<CalendarPage> {
                           'Calendar',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.2,
-                          ),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.2,
+                                color: Colors.white.withValues(alpha: 0.92),
+                              ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'Tap to view transcripts',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: isDark ? Colors.white70 : Colors.black54,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.70),
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
 
-                  _IconPillButton(
+                  IconPillButton(
                     tooltip: 'Previous month',
                     icon: Icons.chevron_left,
                     onTap: _prevMonth,
                   ),
                   const SizedBox(width: 6),
 
-                  // ✅ Flexible month pill so it never overflows
+                  // Month pill (NO blur)
                   Flexible(
-                    child: Container(
+                    child: LiquidGlass(
+                      borderRadius: BorderRadius.circular(999),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 9,
                       ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        color: (isDark ? Colors.white : Colors.black)
-                            .withOpacity(0.06),
-                        border: Border.all(
-                          color: (isDark ? Colors.white : Colors.black)
-                              .withOpacity(0.10),
-                        ),
-                      ),
+                      shadow: false,
+
+                      // ✅ PERF: no blur/grain for small controls
+                      blurX: 0,
+                      blurY: 0,
+                      grain: false,
+
+                      tintOpacityDark: 0.060,
+                      tintOpacityLight: 0.050,
+                      borderOpacityDark: 0.14,
+                      borderOpacityLight: 0.18,
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.center,
                         child: Text(
                           _monthLabel(_monthAnchor),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.92),
+                            letterSpacing: 0.1,
+                          ),
                         ),
                       ),
                     ),
                   ),
 
                   const SizedBox(width: 6),
-                  _IconPillButton(
+                  IconPillButton(
                     tooltip: 'Next month',
                     icon: Icons.chevron_right,
                     onTap: _nextMonth,
@@ -204,9 +195,9 @@ class _CalendarPageState extends State<CalendarPage> {
 
               const SizedBox(height: 14),
 
-              // Legend + week header inside a panel
-              Container(
-                decoration: _panelDecoration(context),
+              // Legend + week header inside a glass panel
+              GlassCard(
+                variant: GlassCardVariant.tile,
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                 child: Column(
                   children: [
@@ -219,10 +210,10 @@ class _CalendarPageState extends State<CalendarPage> {
 
               const SizedBox(height: 12),
 
-              // Calendar grid inside a panel
+              // Calendar grid (tint-only day cells)
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(12), // 👈 adjust as needed
+                  padding: const EdgeInsets.all(12),
                   child: GridView.builder(
                     physics: const BouncingScrollPhysics(),
                     gridDelegate:
@@ -248,6 +239,7 @@ class _CalendarPageState extends State<CalendarPage> {
                         hasTranscripts: hasTranscripts,
                         count: count,
                         onTap: () => _openDaySheet(d),
+                        isDark: isDark,
                       );
                     },
                   ),
@@ -272,11 +264,11 @@ class _CalendarPageState extends State<CalendarPage> {
               child: Text(
                 t,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.70),
                   fontSize: 12,
                   letterSpacing: 0.2,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -287,30 +279,73 @@ class _CalendarPageState extends State<CalendarPage> {
 
   // Two-color legend (no intensity scale)
   Widget _legendTwoColor() {
-    Widget box(Color c, String label) => Row(
-      children: [
-        Container(
-          width: 14,
-          height: 14,
-          margin: const EdgeInsets.only(right: 6),
-          decoration: BoxDecoration(
-            color: c,
-            borderRadius: BorderRadius.circular(4),
+    Widget box({
+      required double tint,
+      required double borderA,
+      bool showDot = false,
+    }) {
+      return Container(
+        width: 18,
+        height: 18,
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          color: Colors.white.withValues(alpha: tint),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: borderA),
+            width: 1,
           ),
         ),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white60, fontSize: 12),
-        ),
-      ],
-    );
+        child: showDot
+            ? Center(
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              )
+            : null,
+      );
+    }
 
+    Widget item({
+      required double tint,
+      required double borderA,
+      required String label,
+      required bool showDot,
+    }) {
+      return Row(
+        children: [
+          box(tint: tint, borderA: borderA, showDot: showDot),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.60),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Match your day-cell tuning:
+    // No transcript: tint 0.08, border 0.12
+    // Has transcripts: tint 0.20, border 0.26 (and dot)
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        box(_DayCell.neutralColor, 'No transcript'),
+        item(tint: 0.08, borderA: 0.12, label: 'No transcript', showDot: false),
         const SizedBox(width: 16),
-        box(_DayCell.highlightColor.withValues(alpha: 0.3), 'Has transcripts'),
+        item(
+          tint: 0.20,
+          borderA: 0.26,
+          label: 'Has transcripts',
+          showDot: true,
+        ),
       ],
     );
   }
@@ -364,111 +399,136 @@ class _CalendarPageState extends State<CalendarPage> {
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
-      backgroundColor: const Color(0xFF0B0C10),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Sheet header
-                Row(
-                  children: [
-                    const Icon(Icons.calendar_month, color:Colors.white),
-                    const SizedBox(width: 10),
-                    Text(
-                      '${day.day.toString().padLeft(2, '0')} ${_monthLabel(DateTime(day.year, day.month, 1)).split(' ')[0]}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
+            child: GlassCard(
+              variant: GlassCardVariant.panel,
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Sheet header
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_month,
+                        color: Colors.white.withValues(alpha: 0.88),
                       ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        color: Colors.white.withOpacity(0.06),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.10),
-                        ),
-                      ),
-                      child: Text(
-                        '${items.length} item${items.length == 1 ? '' : 's'}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                if (items.isEmpty)
-                  const SizedBox(
-                    height: 120,
-                    child: Center(
-                      child: Text(
-                        'No transcripts on this day.',
+                      const SizedBox(width: 10),
+                      Text(
+                        '${day.day.toString().padLeft(2, '0')} ${_monthLabel(DateTime(day.year, day.month, 1)).split(' ')[0]}',
                         style: TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: Colors.white.withValues(alpha: 0.92),
                         ),
                       ),
-                    ),
-                  )
-                else
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, i) {
-                        final t = items[i];
-                        final when = t.createdAt.toLocal();
-                        final hh = when.hour.toString().padLeft(2, '0');
-                        final mm = when.minute.toString().padLeft(2, '0');
-                        final title = (t.title?.trim().isNotEmpty ?? false)
-                            ? t.title!.trim()
-                            : 'Untitled';
+                      const Spacer(),
 
-                        return ListTile(
-                          leading: const _LeadingPillIcon(
-                            icon: Icons.description,
+                      // Count pill (NO blur)
+                      LiquidGlass(
+                        borderRadius: BorderRadius.circular(999),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        shadow: false,
+                        blurX: 0,
+                        blurY: 0,
+                        grain: false,
+                        tintOpacityDark: 0.060,
+                        tintOpacityLight: 0.050,
+                        borderOpacityDark: 0.14,
+                        borderOpacityLight: 0.18,
+                        child: Text(
+                          '${items.length} item${items.length == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.70),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
-                          title: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            '$hh:$mm • ${_fmtDuration(t.durationSec)}',
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            unfocus();
-                            Navigator.of(context).pop();
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    TranscriptDetailPage(transcriptId: t.id),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
-              ],
+                  const SizedBox(height: 12),
+
+                  if (items.isEmpty)
+                    const SizedBox(
+                      height: 120,
+                      child: Center(
+                        child: Text(
+                          'No transcripts on this day.',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: items.length,
+
+                        // ✅ PERF: keep compositing stable
+                        addRepaintBoundaries: false,
+                        addAutomaticKeepAlives: false,
+
+                        separatorBuilder: (_, _) => const GlassDivider(),
+                        itemBuilder: (_, i) {
+                          final t = items[i];
+                          final when = t.createdAt.toLocal();
+                          final hh = when.hour.toString().padLeft(2, '0');
+                          final mm = when.minute.toString().padLeft(2, '0');
+                          final title = (t.title?.trim().isNotEmpty ?? false)
+                              ? t.title!.trim()
+                              : 'Untitled';
+
+                          return ListTile(
+                            leading: const LeadingPillIcon(
+                              icon: Icons.description,
+                            ),
+                            title: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.92),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '$hh:$mm • ${_fmtDuration(t.durationSec)}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.70),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            trailing: Icon(
+                              Icons.chevron_right,
+                              color: Colors.white.withValues(alpha: 0.72),
+                            ),
+                            onTap: () {
+                              unfocus();
+                              Navigator.of(context).pop();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      TranscriptDetailPage(transcriptId: t.id),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         );
@@ -487,68 +547,6 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 }
 
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-          border: Border.all(
-            color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
-          ),
-        ),
-        child: Tooltip(message: tooltip, child: Icon(icon)),
-      ),
-    );
-  }
-}
-
-class _LeadingPillIcon extends StatelessWidget {
-  const _LeadingPillIcon({required this.icon});
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final border = isDark
-        ? Colors.white.withOpacity(0.12)
-        : Colors.black.withOpacity(0.08);
-    final bg = isDark
-        ? Colors.white.withOpacity(0.06)
-        : Colors.black.withOpacity(0.04);
-
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border),
-      ),
-      child: Icon(icon, size: 20, color: Colors.white),
-    );
-  }
-}
-
 class _DayCell extends StatelessWidget {
   final DateTime date;
   final bool inMonth;
@@ -556,6 +554,7 @@ class _DayCell extends StatelessWidget {
   final bool hasTranscripts;
   final int count;
   final VoidCallback onTap;
+  final bool isDark;
 
   const _DayCell({
     required this.date,
@@ -564,63 +563,107 @@ class _DayCell extends StatelessWidget {
     required this.hasTranscripts,
     required this.count,
     required this.onTap,
-    super.key,
+    required this.isDark,
   });
-
-  static const neutralColor = Color.fromARGB(255, 28, 30, 43);
-  static const highlightColor = Color(0xFFff8143);
-  static const todayBorder = Color(0xFFff8143);
 
   @override
   Widget build(BuildContext context) {
     final dayNum = date.day.toString();
 
-    return Material(
-      color: hasTranscripts ? highlightColor.withValues(alpha: 0.3) : neutralColor,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: Container(
+    // ✅ Make transcript-days visibly “filled”
+    final baseTint = inMonth ? 1.0 : 0.45;
+    final tint = (hasTranscripts ? 0.20 : 0.08) * baseTint;
+
+    // ✅ Stronger border when transcripts exist
+    final borderA = hasTranscripts ? 0.26 : 0.12;
+
+    const borderW = 1.2; // today outline thickness
+    const r = 10.0;
+
+    final outerRadius = BorderRadius.circular(r);
+    final innerRadius = BorderRadius.circular(r - borderW);
+
+    final glassCell = InkWell(
+      borderRadius: outerRadius,
+      onTap: onTap,
+      child: Padding(
+        padding: isToday ? const EdgeInsets.all(borderW) : EdgeInsets.zero,
+        child: LiquidGlass(
+          borderRadius: isToday ? innerRadius : outerRadius,
           padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: isToday
-                ? Border.all(color: todayBorder, width: 1.4)
-                : null,
-          ),
+          shadow: false,
+
+          // ✅ PERF: NO blur/grain per cell
+          blurX: 0,
+          blurY: 0,
+          grain: false,
+
+          tintOpacityDark: tint,
+          tintOpacityLight: tint * 0.80,
+          borderOpacityDark: borderA,
+          borderOpacityLight: borderA + 0.02,
+
           child: Stack(
             children: [
+              // Day number
               Align(
                 alignment: Alignment.topLeft,
                 child: Text(
                   dayNum,
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: inMonth ? Colors.white : Colors.white38,
+                    fontWeight: hasTranscripts
+                        ? FontWeight.w800
+                        : FontWeight.w600,
+                    color: inMonth
+                        ? Colors.white.withValues(alpha: 0.92)
+                        : Colors.white.withValues(alpha: 0.35),
                   ),
                 ),
               ),
+
+              // ✅ Dot indicator (Apple-ish)
+              if (hasTranscripts)
+                Align(
+                  alignment: Alignment.bottomLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 2, bottom: 2),
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Count badge (kept)
               if (count > 0)
                 Align(
                   alignment: Alignment.bottomRight,
-                  child: Container(
+                  child: LiquidGlass(
+                    borderRadius: BorderRadius.circular(8),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
                       vertical: 2,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white.withOpacity(0.08)),
-                    ),
+                    shadow: false,
+                    blurX: 0,
+                    blurY: 0,
+                    grain: false,
+
+                    tintOpacityDark: 0.10,
+                    tintOpacityLight: 0.08,
+                    borderOpacityDark: 0.14,
+                    borderOpacityLight: 0.16,
                     child: Text(
                       '$count',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: Colors.white.withValues(alpha: 0.92),
                         letterSpacing: 0.2,
                       ),
                     ),
@@ -630,6 +673,20 @@ class _DayCell extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    if (!isToday) return glassCell;
+
+    // Today outline
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: outerRadius,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.70),
+          width: borderW,
+        ),
+      ),
+      child: glassCell,
     );
   }
 }

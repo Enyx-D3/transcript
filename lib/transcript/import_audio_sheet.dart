@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -9,14 +8,20 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../audio_converter_service.dart';
-
+import '../audio_utils.dart' show readWavDuration;
 import '../common/app_flushbar.dart';
 import '../objectbox/entities.dart';
 import '../objectbox/objectbox_store.dart';
-import '../audio_utils.dart' show readWavDuration;
 
 import 'background_transcriber.dart';
 import 'transcript_detail_page.dart';
+
+// ✅ Glass primitives (same as RecordSheet)
+import '../ui/glass/liquid_glass.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_divider.dart';
+
 
 class ImportAudioSheet extends StatefulWidget {
   const ImportAudioSheet({super.key});
@@ -30,10 +35,7 @@ class ImportAudioSheet extends StatefulWidget {
 
     final busy = busyFlag && running;
     if (busyFlag && !running) {
-      await FlutterForegroundTask.saveData(
-        key: kBusyTranscribing,
-        value: false,
-      );
+      await FlutterForegroundTask.saveData(key: kBusyTranscribing, value: false);
     }
 
     if (busy) {
@@ -61,10 +63,8 @@ class ImportAudioSheet extends StatefulWidget {
 }
 
 class _ImportAudioSheetState extends State<ImportAudioSheet> {
-  // must match SettingsPage keys
   static const String _kPrefDefaultLang = 'pref_default_lang';
   static const String _kPrefDiarizationEnabled = 'pref_diarization_enabled';
-
   static const String _kBusyTranscribing = 'busy_transcribing';
 
   static const Map<String, String> _langOptions = {
@@ -78,16 +78,13 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     'auto': 'Auto',
   };
 
-  final TextEditingController _targetSpeakersCtrl = TextEditingController(
-    text: '0',
-  );
+  final TextEditingController _targetSpeakersCtrl =
+      TextEditingController(text: '0');
 
   PlatformFile? _picked;
-  String?
-  _inputPathTemp; // temp input copy if needed (deleted after conversion)
+  String? _inputPathTemp;
   bool _working = false;
 
-  // loaded from prefs
   String _selectedLang = 'en';
   bool _diarizationEnabled = true;
 
@@ -116,9 +113,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
         _selectedLang = safeLang;
         _diarizationEnabled = diar;
       });
-    } catch (_) {
-      // ignore
-    }
+    } catch (_) {}
   }
 
   Future<void> _cleanupTempInput() async {
@@ -127,9 +122,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     if (p == null) return;
     try {
       final f = File(p);
-      if (await f.exists()) {
-        await f.delete();
-      }
+      if (await f.exists()) await f.delete();
     } catch (_) {}
   }
 
@@ -142,17 +135,12 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     final n = int.tryParse(raw);
     if (n == null) return null;
 
-    // Same behavior as your RecordSheet:
-    // 0 => auto (null)
     if (n <= 0) return null;
-
     return n.clamp(1, 12);
   }
 
   Future<void> _pickFile() async {
     if (_working) return;
-
-    // Clear previous selection temp input (if any)
     await _cleanupTempInput();
 
     try {
@@ -167,12 +155,11 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
           'flac',
           'mp4',
         ],
-        withReadStream: true, // helps with content:// on Android
-        withData: false, // avoid loading big file into memory
+        withReadStream: true,
+        withData: false,
       );
 
       if (res == null || res.files.isEmpty) return;
-
       final f = res.files.single;
 
       if (!mounted) return;
@@ -180,27 +167,20 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
 
       await AppFlushbar.success(context, message: 'Selected: ${f.name}');
     } on PlatformException catch (e) {
-      if (e.code == 'already_active') {
-        // File picker already open – ignore duplicate tap
-        return;
-      }
+      if (e.code == 'already_active') return;
       rethrow;
     }
   }
 
   Future<String> _ensureReadableLocalPath(PlatformFile f) async {
-    // If file.path exists and is readable, use it.
     final p = f.path;
     if (p != null) {
       final file = File(p);
       if (file.existsSync()) return p;
     }
 
-    // Otherwise, copy from readStream to a temp file (Android content:// case).
     final rs = f.readStream;
-    if (rs == null) {
-      throw Exception('Could not access file path or stream.');
-    }
+    if (rs == null) throw Exception('Could not access file path or stream.');
 
     final tmpDir = await getTemporaryDirectory();
     final ext = (f.extension ?? 'audio').toLowerCase();
@@ -210,7 +190,6 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
 
     final outFile = File(outPath);
     final sink = outFile.openWrite();
-
     try {
       await rs.pipe(sink);
     } finally {
@@ -224,13 +203,11 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
 
   Future<String> _convertToWav16kMono(String inputPath) async {
     final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}/recordings')
-      ..createSync(recursive: true);
+    final dir = Directory('${docs.path}/recordings')..createSync(recursive: true);
 
     final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
     final outPath = '${dir.path}/import_$ts.wav';
 
-    // Use native audio converter (MediaCodec on Android, AVFoundation on iOS)
     try {
       return await AudioConverterService.convertToWav16kMono(
         inputPath,
@@ -254,28 +231,17 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     try {
       await AppFlushbar.info(context, message: 'Preparing audio…');
 
-      // 1) ensure we have a local readable input path
       final inputPath = await _ensureReadableLocalPath(f);
-
-      // 2) convert -> WAV 16k mono (this is what you will save)
       final wavPath = await _convertToWav16kMono(inputPath);
 
-      // ✅ requirement: only save converted audio
-      // we can delete temp input copy now (if created)
       await _cleanupTempInput();
 
-      // 3) duration (nice for UI)
       double durationSec = 0.0;
       try {
         durationSec = await readWavDuration(wavPath);
-      } catch (_) {
-        durationSec = 0.0;
-      }
+      } catch (_) {}
 
-      // 4) create transcript + job (same as RecordSheet)
-      final lang = (_selectedLang.trim().isEmpty)
-          ? 'auto'
-          : _selectedLang.trim();
+      final lang = (_selectedLang.trim().isEmpty) ? 'auto' : _selectedLang.trim();
       final targetSpeakers = _parseTargetSpeakers();
 
       final obx = ObjectBox.I;
@@ -286,7 +252,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
           model: 'whisper',
           sourceType: 2,
           lang: lang,
-          audioPath: wavPath, // ✅ save converted WAV only
+          audioPath: wavPath,
           durationSec: durationSec,
           createdAt: DateTime.now(),
         ),
@@ -303,22 +269,15 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
         ),
       );
 
-      await FlutterForegroundTask.saveData(
-        key: _kBusyTranscribing,
-        value: true,
-      );
+      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
 
       if (!mounted) return;
 
-      // Close sheet then go to detail page (same UX as record flow)
       Navigator.of(context).pop();
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => TranscriptDetailPage(transcriptId: tId),
-        ),
+        MaterialPageRoute(builder: (_) => TranscriptDetailPage(transcriptId: tId)),
       );
 
-      // 5) start background transcriber
       try {
         await BackgroundTranscriber.start(
           wavPath: wavPath,
@@ -341,22 +300,14 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
           job.error = 'Failed to start transcription.';
           obx.jobs.put(job);
         }
-        await FlutterForegroundTask.saveData(
-          key: _kBusyTranscribing,
-          value: false,
-        );
+        await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
 
         if (!mounted) return;
         await AppFlushbar.error(context, message: 'Processing failed!');
       }
-    } catch (e) {
-      await FlutterForegroundTask.saveData(
-        key: _kBusyTranscribing,
-        value: false,
-      );
-      if (mounted) {
-        await AppFlushbar.error(context, message: 'Processing failed!');
-      }
+    } catch (_) {
+      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      if (mounted) await AppFlushbar.error(context, message: 'Processing failed!');
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -364,57 +315,68 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
     final h = MediaQuery.of(context).size.height * 0.70;
 
-    final surface = cs.surface;
-    final border = cs.outlineVariant.withOpacity(0.35);
-    final titleColor = cs.onSurface;
-    final subtle = cs.onSurfaceVariant;
-
+    final fg = Colors.white.withValues(alpha: 0.92);
     final selectedName = _picked?.name;
+
+    // ✅ close pill: tint-only
+    Widget closePill() {
+      return LiquidGlass(
+        borderRadius: BorderRadius.circular(999),
+        padding: const EdgeInsets.all(8),
+        shadow: false,
+        blurX: 0,
+        blurY: 0,
+        grain: false,
+        tintOpacityDark: 0.070,
+        tintOpacityLight: 0.055,
+        borderOpacityDark: 0.16,
+        borderOpacityLight: 0.20,
+        onTap: () => Navigator.of(context).pop(),
+        child: Icon(Icons.close, color: fg, size: 20),
+      );
+    }
 
     return SizedBox(
       height: h,
-      child: Container(
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-          border: Border.all(color: border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      children: [
-                        // Center(
-                        //   child: Container(
-                        //     width: 44,
-                        //     height: 5,
-                        //     margin: const EdgeInsets.only(bottom: 10),
-                        //     decoration: BoxDecoration(
-                        //       borderRadius: BorderRadius.circular(99),
-                        //       color: subtle.withOpacity(0.35),
-                        //     ),
-                        //   ),
-                        // ),
-                        Row(
+            // ✅ PERF: sheet backdrop is tint-only (global blur should exist behind)
+            LiquidGlass(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              padding: EdgeInsets.zero,
+              shadow: false,
+              blurX: 9.0,
+              blurY: 9.0,
+              grain: false,
+              tintOpacityDark: 0.10,
+              tintOpacityLight: 0.08,
+              borderOpacityDark: 0.18,
+              borderOpacityLight: 0.22,
+              child: const SizedBox.expand(),
+            ),
+
+            Column(
+              children: [
+                // ---------- Header ----------
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Row(
                           children: [
-                            Icon(Icons.audio_file, color: Colors.white),
+                            Icon(Icons.audio_file, color: fg),
                             const SizedBox(width: 8),
                             Text(
                               'Audio Transcribe',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                                color: fg,
                               ),
                             ),
                             if (_working) ...[
@@ -424,250 +386,269 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                 height: 14,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  backgroundColor: Colors.black,
-                                  color: Colors.white,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white.withValues(alpha: 0.75),
+                                  ),
                                 ),
                               ),
                             ],
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: titleColor),
-                    onPressed: _working
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Panel(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            selectedName == null
-                                ? 'No file selected'
-                                : selectedName,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: titleColor,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _working ? null : _pickFile,
-                                  icon: const Icon(
-                                    Icons.upload_file,
-                                    color: Colors.white,
-                                  ),
-                                  label: const Text(
-                                    'Choose file',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: (_working || _picked == null)
-                                      ? null
-                                      : _start,
-                                  icon: const Icon(
-                                    Icons.play_arrow_rounded,
-                                    color: Colors.black,
-                                  ),
-                                  label: const Text(
-                                    'Transcribe',
-                                    style: TextStyle(color: Colors.black),
-                                  ),
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor:
-                                        (_working || _picked == null)
-                                        ? null
-                                        : Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Only the converted WAV is saved in the app.',
-                            style: TextStyle(color: subtle, fontSize: 12),
-                          ),
-                        ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    _Panel(
-                      title: 'Options',
-                      // subtitle: 'Set before starting',
-                      child: Column(
-                        children: [
-                          Row(
+                      closePill(),
+                    ],
+                  ),
+                ),
+
+                const GlassDivider(),
+
+                // ---------- Body ----------
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // File panel
+                        GlassCard(
+                          variant: GlassCardVariant.tile,
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  'Language',
-                                  style: TextStyle(
-                                    color: subtle,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                              Text(
+                                selectedName == null
+                                    ? 'No file selected'
+                                    : selectedName,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: fg,
                                 ),
                               ),
-                              SizedBox(
-                                width: 190,
-                                child: DropdownButtonFormField<String>(
-                                  value: _selectedLang,
-                                  items: _langOptions.entries
-                                      .map(
-                                        (e) => DropdownMenuItem<String>(
-                                          value: e.key,
-                                          child: Text(e.value),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: GlassButton(
+                                      kind: GlassButtonKind.secondary,
+                                      label: 'Choose file',
+                                      icon: Icons.upload_file,
+                                      onPressed: _working ? null : _pickFile,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: GlassButton(
+                                      kind: GlassButtonKind.primary,
+                                      label: 'Transcribe',
+                                      icon: Icons.play_arrow_rounded,
+                                      loading: false,
+                                      onPressed:
+                                          (_working || _picked == null) ? null : _start,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Only the converted WAV is saved in the app.',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.70),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // Options panel
+                        GlassCard(
+                          variant: GlassCardVariant.tile,
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Options',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: fg,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Language row
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Language',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.72),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 180,
+                                    child: _GlassField(
+                                      enabled: !_working,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue: _selectedLang,
+                                        isDense: true,
+                                        iconEnabledColor:
+                                            Colors.white.withValues(alpha: 0.80),
+                                        dropdownColor: const Color(0xFF0B0C10),
+                                        items: _langOptions.entries
+                                            .map(
+                                              (e) => DropdownMenuItem<String>(
+                                                value: e.key,
+                                                child: Text(
+                                                  e.value,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: Colors.white
+                                                        .withValues(alpha: 0.92),
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: _working
+                                            ? null
+                                            : (v) {
+                                                if (v == null) return;
+                                                setState(() => _selectedLang = v);
+                                              },
+                                        decoration: const InputDecoration(
+                                          isDense: true,
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 10,
+                                          ),
                                         ),
-                                      )
-                                      .toList(),
-                                  onChanged: _working
-                                      ? null
-                                      : (v) {
-                                          if (v == null) return;
-                                          setState(() => _selectedLang = v);
-                                        },
-                                  decoration: const InputDecoration(
-                                    isDense: true,
-                                    border: OutlineInputBorder(),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color: Color(0xFFff8143),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color: Color(0xFFff8143),
-                                        width: 1,
                                       ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Speaker diarization',
-                                  style: TextStyle(
-                                    color: subtle,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              Switch(
-                                value: _diarizationEnabled,
-                                onChanged: _working
-                                    ? null
-                                    : (v) => setState(
-                                        () => _diarizationEnabled = v,
+
+                              const SizedBox(height: 12),
+
+                              // Diarization
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Speaker diarization',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.72),
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                activeColor: Colors.black, // thumb
-                                activeTrackColor: const Color(
-                                  0xFFff8143,
-                                ), // track
-                              ),
-                            ],
-                          ),
-                          if (_diarizationEnabled) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Target speakers',
-                                    style: TextStyle(
-                                      color: subtle,
-                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                ),
-                                SizedBox(
-                                  width: 120,
-                                  child: Theme(
-                                    data: Theme.of(context).copyWith(
-                                      textSelectionTheme:
-                                          const TextSelectionThemeData(
+                                  Switch(
+                                    value: _diarizationEnabled,
+                                    onChanged: _working
+                                        ? null
+                                        : (v) => setState(
+                                              () => _diarizationEnabled = v,
+                                            ),
+                                    activeThumbColor: Colors.black,
+                                    activeTrackColor:
+                                        Colors.white.withValues(alpha: 0.55),
+                                    inactiveThumbColor:
+                                        Colors.white.withValues(alpha: 0.70),
+                                    inactiveTrackColor:
+                                        Colors.white.withValues(alpha: 0.18),
+                                  ),
+                                ],
+                              ),
+
+                              if (_diarizationEnabled) ...[
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Target speakers',
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.72),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 120,
+                                      child: Theme(
+                                        data: Theme.of(context).copyWith(
+                                          textSelectionTheme: TextSelectionThemeData(
                                             selectionHandleColor:
-                                                Colors.white, // ✅ bubble color
-                                            cursorColor: Colors.white,
-                                            selectionColor: Color.fromARGB(
-                                              128,
-                                              255,
-                                              130,
-                                              67,
+                                                Colors.white.withValues(alpha: 0.90),
+                                            cursorColor:
+                                                Colors.white.withValues(alpha: 0.90),
+                                            selectionColor:
+                                                Colors.white.withValues(alpha: 0.18),
+                                          ),
+                                        ),
+                                        child: _GlassField(
+                                          enabled: !_working,
+                                          child: TextField(
+                                            controller: _targetSpeakersCtrl,
+                                            enabled: !_working,
+                                            keyboardType: TextInputType.number,
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter.digitsOnly,
+                                            ],
+                                            style: TextStyle(
+                                              color: Colors.white.withValues(alpha: 0.92),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            cursorColor:
+                                                Colors.white.withValues(alpha: 0.90),
+                                            decoration: InputDecoration(
+                                              hintText: '0',
+                                              hintStyle: TextStyle(
+                                                color: Colors.white.withValues(alpha: 0.45),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                              isDense: true,
+                                              border: InputBorder.none,
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 10,
+                                              ),
                                             ),
                                           ),
-                                    ),
-                                    child: TextField(
-                                      cursorColor: Colors.white,
-                                      controller: _targetSpeakersCtrl,
-                                      enabled: !_working,
-                                      keyboardType: TextInputType.number,
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.digitsOnly,
-                                      ],
-                                      decoration: const InputDecoration(
-                                        hintText: '0',
-                                        isDense: true,
-                                        border: OutlineInputBorder(),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderSide: BorderSide(
-                                            color: Color(0xFFff8143),
-                                            width: 1,
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderSide: BorderSide(
-                                            color: Color(0xFFff8143),
-                                            width: 1,
-                                          ),
                                         ),
                                       ),
                                     ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Use 0 for auto-detect.',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.55),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Use 0 for auto-detect',
-                              style: TextStyle(color: subtle, fontSize: 12),
-                            ),
-                          ],
-                        ],
-                      ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Tip: For best accuracy, use clear audio. You can rename speakers later in the transcript view.',
-                      style: TextStyle(color: subtle, fontSize: 12),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),
@@ -676,56 +657,33 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
   }
 }
 
-class _Panel extends StatelessWidget {
-  const _Panel({required this.child, this.title, this.subtitle});
+/// ✅ optimized helper: tint-only field
+class _GlassField extends StatelessWidget {
+  const _GlassField({required this.child, required this.enabled});
 
   final Widget child;
-  final String? title;
-  final String? subtitle;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    Widget field = LiquidGlass(
+      borderRadius: BorderRadius.circular(14),
+      padding: EdgeInsets.zero,
+      shadow: false,
 
-    final bg = cs.surfaceContainerHighest;
-    final border = cs.outlineVariant.withOpacity(0.35);
-    final titleColor = cs.onSurface;
-    final subtle = cs.onSurfaceVariant;
+      // ✅ PERF: fields are interactive => tint-only
+      blurX: 0,
+      blurY: 0,
+      grain: false,
 
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 18,
-            color: Colors.black.withOpacity(
-              theme.brightness == Brightness.dark ? 0.20 : 0.08,
-            ),
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title != null) ...[
-            Text(
-              title!,
-              style: TextStyle(fontWeight: FontWeight.w800, color: titleColor),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(subtitle!, style: TextStyle(color: subtle, fontSize: 12)),
-            ],
-            const SizedBox(height: 12),
-          ],
-          child,
-        ],
-      ),
+      tintOpacityDark: 0.075,
+      tintOpacityLight: 0.060,
+      borderOpacityDark: 0.16,
+      borderOpacityLight: 0.20,
+      child: child,
     );
+
+    if (!enabled) field = Opacity(opacity: 0.55, child: field);
+    return field;
   }
 }

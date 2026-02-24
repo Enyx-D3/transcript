@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../objectbox/objectbox_store.dart';
-import '../objectbox/entities.dart';
 
 // ✅ Use your existing key (matches Settings page)
 const String _kPrefDeleteAudioAfter = 'pref_delete_audio_after_transcription';

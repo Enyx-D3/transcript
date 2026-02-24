@@ -82,12 +82,16 @@ class SpeakerEmbedder {
       if (sum == null) {
         sum = Float32List.fromList(v);
       } else {
-        for (var i = 0; i < v.length; i++) sum[i] += v[i];
+        for (var i = 0; i < v.length; i++) {
+          sum[i] += v[i];
+        }
       }
       count++;
     }
     if (sum == null) return Float32List(0);
-    for (var i = 0; i < sum.length; i++) sum[i] /= count;
+    for (var i = 0; i < sum.length; i++) {
+      sum[i] /= count;
+    }
     return _l2norm(sum);
   }
 
@@ -103,10 +107,14 @@ static double cosine(Float32List a, Float32List b) {
 }
   static Float32List _l2norm(Float32List v) {
     double s = 0.0;
-    for (final x in v) s += x * x;
+    for (final x in v) {
+      s += x * x;
+    }
     final r = math.sqrt(math.max(s, 1e-12));
     final out = Float32List(v.length);
-    for (var i = 0; i < v.length; i++) out[i] = v[i] / r;
+    for (var i = 0; i < v.length; i++) {
+      out[i] = v[i] / r;
+    }
     return out;
   }
 

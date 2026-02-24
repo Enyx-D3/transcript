@@ -1,7 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../objectbox/objectbox_store.dart';
 import '../send_transcript/send_transcript_healper.dart';
-import '../objectbox/entities.dart';
 import '../objectbox.g.dart';
 
 class AutoEmailService {
