@@ -1687,12 +1687,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                         runSpacing: 8,
                         children: [
                           _MetaPill(text: 'Stage • $_progressStage'),
-                          _MetaPill(
-                            text:
-                                'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
-                                ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (t.durationSec)) * 1000).round()))}',
-                          ),
-                          _MetaPill(text: 'Segments • ${_turns.length}'),
+                          // _MetaPill(
+                          //   text:
+                          //       'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
+                          //       ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (t.durationSec)) * 1000).round()))}',
+                          // ),
+                          // _MetaPill(text: 'Segments • ${_turns.length}'),
                         ],
                       ),
                       const SizedBox(height: 8),

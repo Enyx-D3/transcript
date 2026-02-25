@@ -86,14 +86,23 @@ class BackgroundTranscriber {
     String lang = 'auto',
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
-    await FlutterForegroundTask.saveData(key: _kTranslate, value: translateToEnglish);
+    await FlutterForegroundTask.saveData(
+      key: _kTranslate,
+      value: translateToEnglish,
+    );
 
     // ✅ busy true for the whole job (all chunks)
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
 
-    await FlutterForegroundTask.saveData(key: _kProgressProcessedSec, value: 0.0);
+    await FlutterForegroundTask.saveData(
+      key: _kProgressProcessedSec,
+      value: 0.0,
+    );
     await FlutterForegroundTask.saveData(key: _kProgressTotalSec, value: 0.0);
-    await FlutterForegroundTask.saveData(key: _kProgressStage, value: 'Preparing');
+    await FlutterForegroundTask.saveData(
+      key: _kProgressStage,
+      value: 'Preparing',
+    );
 
     await FlutterForegroundTask.saveData(
       key: _kTargetSpeakers,
@@ -109,7 +118,10 @@ class BackgroundTranscriber {
       await FlutterForegroundTask.saveData(key: _kTitleHint, value: titleHint);
     }
     if (existingTranscriptId != null) {
-      await FlutterForegroundTask.saveData(key: _kExistingId, value: existingTranscriptId);
+      await FlutterForegroundTask.saveData(
+        key: _kExistingId,
+        value: existingTranscriptId,
+      );
     }
 
     await FlutterForegroundTask.startService(
@@ -125,7 +137,9 @@ class BackgroundTranscriber {
     return v;
   }
 
-  static StreamSubscription<dynamic> onData(void Function(dynamic data) handler) {
+  static StreamSubscription<dynamic> onData(
+    void Function(dynamic data) handler,
+  ) {
     FlutterForegroundTask.addTaskDataCallback(handler);
     final ctrl = StreamController<dynamic>();
     ctrl.onCancel = () => FlutterForegroundTask.removeTaskDataCallback(handler);
@@ -146,7 +160,11 @@ class _TranscribeTaskHandler extends TaskHandler {
 
   String _escapeTurnText(String s) {
     // TSV safety: avoid newlines/tabs breaking parsing
-    return s.replaceAll('\t', ' ').replaceAll('\r', ' ').replaceAll('\n', ' ').trim();
+    return s
+        .replaceAll('\t', ' ')
+        .replaceAll('\r', ' ')
+        .replaceAll('\n', ' ')
+        .trim();
   }
 
   Future<String> _runTypoFixModel({
@@ -155,12 +173,11 @@ class _TranscribeTaskHandler extends TaskHandler {
   }) async {
     final buf = StringBuffer();
 
-    // Using your existing LLMService.generateText (no shared prefs, no saved path).
     await for (final r in LLMService.generateText(
       prompt: prompt,
       modelPath: modelPath,
       maxTokens: 4096,
-      temperature: 0.0, // ✅ critical: reduce rewriting
+      temperature: 0.0,
       contextSize: 32768,
       conversationHistory: const [],
     )) {
@@ -170,6 +187,7 @@ class _TranscribeTaskHandler extends TaskHandler {
     }
 
     final out = buf.toString().trim();
+    // If model produced nothing, keep original prompt (we will reject later anyway).
     return out.isEmpty ? prompt : out;
   }
 
@@ -183,7 +201,6 @@ class _TranscribeTaskHandler extends TaskHandler {
     if (mp.isEmpty) return turns;
     if (turns.isEmpty) return turns;
 
-    // TSV contract: model may ONLY edit TEXT column.
     final b = StringBuffer();
     b.writeln('You will receive transcript turns in TSV format:');
     b.writeln('SPEAKER<TAB>START_SEC<TAB>END_SEC<TAB>TEXT');
@@ -201,9 +218,11 @@ class _TranscribeTaskHandler extends TaskHandler {
       );
     }
 
-    final fixedRaw = await _runTypoFixModel(modelPath: mp, prompt: b.toString());
+    final fixedRaw = await _runTypoFixModel(
+      modelPath: mp,
+      prompt: b.toString(),
+    );
 
-    // Parse TSV back; if anything mismatches => fallback to original turns.
     final lines = fixedRaw
         .split('\n')
         .map((e) => e.trimRight())
@@ -255,11 +274,13 @@ class _TranscribeTaskHandler extends TaskHandler {
     final wavPath = await FlutterForegroundTask.getData<String>(
       key: BackgroundTranscriber._kWavPath,
     );
+
     final translate =
         await FlutterForegroundTask.getData<bool>(
           key: BackgroundTranscriber._kTranslate,
         ) ??
         false;
+
     final titleHint = await FlutterForegroundTask.getData<String>(
       key: BackgroundTranscriber._kTitleHint,
     );
@@ -309,10 +330,6 @@ class _TranscribeTaskHandler extends TaskHandler {
         notificationText: 'Preparing Transcript',
       );
 
-      // ============================================================
-      // ✅ Chunked pipeline (NO parallel recording)
-      // ============================================================
-
       const double chunkSec = 10 * 60.0;
 
       final cleaned = await preprocessWav16kMono(wavPath);
@@ -350,6 +367,7 @@ class _TranscribeTaskHandler extends TaskHandler {
         }
         if (localLabels.isEmpty) return const {};
 
+        // Load models once
         final mp = await ensureDiarizationModels();
         final emb = await SpeakerEmbedder.instance(mp.embOnnx);
 
@@ -357,37 +375,54 @@ class _TranscribeTaskHandler extends TaskHandler {
         final samples = wave.samples;
         final fs = wave.sampleRate;
 
+        // ✅ Hard guard: Titanet expects 16k
+        if (fs != 16000 || samples.isEmpty) return const {};
+
+        const double windowSec = 2.5;
+        const int maxSegsPerSpeaker = 3;
+
         final localCentroids = <String, Float32List>{};
 
         for (final lab in localLabels) {
-          final segs = r.turns
-              .where((t) => t.speaker == lab)
-              .where((t) => (t.endSec - t.startSec) >= 1.2)
-              .take(3)
-              .toList();
+          // ✅ Only segments long enough to support fixed embedding window.
+          // Pick LONGEST for better SNR / stability.
+          final segs =
+              r.turns
+                  .where((t) => t.speaker == lab)
+                  .where((t) => (t.endSec - t.startSec) >= windowSec)
+                  .toList()
+                ..sort(
+                  (a, b) =>
+                      (b.endSec - b.startSec).compareTo(a.endSec - a.startSec),
+                );
+
           if (segs.isEmpty) continue;
 
           final embs = <Float32List>[];
-          for (final s in segs) {
-            final a = (s.startSec * fs).round().clamp(0, samples.length - 1);
-            final b = (s.endSec * fs).round().clamp(0, samples.length);
-            if (b <= a) continue;
-            try {
-              final v = await emb.embedFromSamplesRange(
-                samples: samples,
-                sampleRate: fs,
-                startIndex: a,
-                endIndex: b,
-              );
-              if (v.isNotEmpty) embs.add(v);
-            } catch (_) {}
+
+          for (final s in segs.take(maxSegsPerSpeaker)) {
+            final startIndex = (s.startSec * fs).round();
+            final endIndex = (s.endSec * fs).round();
+            if (endIndex <= startIndex) continue;
+
+            // ✅ Fixed-window embedding avoids ORT shape crash.
+            final v = await emb.embedFromSamplesFixedWindow(
+              samples: samples,
+              sampleRate: fs,
+              startIndex: startIndex,
+              endIndex: endIndex,
+              windowSec: windowSec,
+            );
+            if (v.isNotEmpty) embs.add(v);
           }
+
           if (embs.isEmpty) continue;
 
           final len = embs.first.length;
           final sum = Float32List(len);
           for (final v in embs) {
-            for (int i = 0; i < len; i++) {
+            final m = math.min(len, v.length);
+            for (int i = 0; i < m; i++) {
               sum[i] += v[i];
             }
           }
@@ -399,7 +434,14 @@ class _TranscribeTaskHandler extends TaskHandler {
 
         if (localCentroids.isEmpty) return const {};
 
-        const double matchTh = 0.78;
+        // ✅ NEW: stabilize speaker count across chunks
+        // - Accept match with threshold + margin vs 2nd best
+        // - DO NOT create new global speaker for "maybe same person"
+        // - Only create new global speaker when similarity is clearly low
+        const double matchTh = 0.74; // chunk-to-chunk is harder than within-chunk
+        const double matchMargin = 0.03;
+        const double newSpeakerFloor = 0.62; // below this => truly new
+
         final mapping = <String, String>{};
 
         for (final e in localCentroids.entries) {
@@ -408,23 +450,53 @@ class _TranscribeTaskHandler extends TaskHandler {
 
           String? bestName;
           double best = -1;
+          double secondBest = -1;
 
           globalCentroids.forEach((name, g) {
             final sim = IsolatedSpeakerMatcher.cosine(vec, g);
             if (sim > best) {
+              secondBest = best;
               best = sim;
               bestName = name;
+            } else if (sim > secondBest) {
+              secondBest = sim;
             }
           });
 
-          if (bestName != null && best >= matchTh) {
+          final okMatch = bestName != null &&
+              best >= matchTh &&
+              (best - secondBest) >= matchMargin;
+
+          if (okMatch) {
             mapping[localLab] = bestName!;
-          } else {
-            final newName = 'S$nextGlobalSpeaker';
-            nextGlobalSpeaker += 1;
-            globalCentroids[newName] = vec;
-            mapping[localLab] = newName;
+
+            // Optional: slowly adapt centroid (helps drift across long recordings)
+            // Weighted update to reduce noise; keep normalized.
+            final prev = globalCentroids[bestName!];
+            if (prev != null && prev.length == vec.length) {
+              final out = Float32List(vec.length);
+              for (int i = 0; i < vec.length; i++) {
+                out[i] = (prev[i] * 0.85) + (vec[i] * 0.15);
+              }
+              globalCentroids[bestName!] = normalize(out);
+            }
+
+            continue;
           }
+
+          // ✅ key: prevent speaker explosion.
+          // If it's "close-ish", do NOT mint a new global label.
+          if (best >= newSpeakerFloor) {
+            // Keep local label; we still preserve transcript text/timestamps.
+            mapping[localLab] = localLab;
+            continue;
+          }
+
+          // ✅ Only now: create a truly new global speaker
+          final newName = 'S$nextGlobalSpeaker';
+          nextGlobalSpeaker += 1;
+          globalCentroids[newName] = vec;
+          mapping[localLab] = newName;
         }
 
         return mapping;
@@ -521,12 +593,7 @@ class _TranscribeTaskHandler extends TaskHandler {
         for (final t in chunkResult.turns) {
           final spk = spkMap[t.speaker] ?? t.speaker;
           chunkTurnsMapped.add(
-            LiteTurn(
-              spk,
-              t.startSec + start,
-              t.endSec + start,
-              t.text,
-            ),
+            LiteTurn(spk, t.startSec + start, t.endSec + start, t.text),
           );
         }
 
@@ -605,8 +672,10 @@ class _TranscribeTaskHandler extends TaskHandler {
       final title = (titleHint != null && titleHint.trim().isNotEmpty)
           ? titleHint.trim()
           : (firstText.isEmpty
-              ? null
-              : (firstText.length > 48 ? '${firstText.substring(0, 48)}…' : firstText));
+                ? null
+                : (firstText.length > 48
+                      ? '${firstText.substring(0, 48)}…'
+                      : firstText));
 
       final result = TranscriptionResult(
         model: modelName,
@@ -621,6 +690,7 @@ class _TranscribeTaskHandler extends TaskHandler {
         'existingId': existingId,
         'wavPath': wavPath,
         'payload': result.toJson(),
+        'translated': translate, // keep for your UI if needed
       });
 
       if (existingId != null) {
@@ -644,7 +714,6 @@ class _TranscribeTaskHandler extends TaskHandler {
         notificationText: 'See app',
       );
     } finally {
-      // ✅ busy false ONLY after last chunk + typo-fix + final merge
       await FlutterForegroundTask.saveData(
         key: BackgroundTranscriber._kBusyTranscribing,
         value: false,

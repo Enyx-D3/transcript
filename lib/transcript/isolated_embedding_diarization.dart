@@ -76,21 +76,18 @@ class DiarizationParams {
   final int switchConfirmWindows;
 
   /// Require a margin between best and 2nd-best cluster before switching.
-  /// Helps both meetings (avoids flip-flops) and podcasts (avoids false switches).
   final double switchMargin;
 
   final double mergeClustersThreshold;
 
   /// ✅ NEW: sandwich-collapse (stable speaker bridge)
-  /// If we see A -> B -> A and B is short, and cosine(B,A) >= stableMergeThreshold,
-  /// relabel B to A (prevents fake extra speakers).
   final double stableMergeThreshold;
   final double stableBridgeMaxSec;
 
   final double minClusterTalkSec;
   final double minSegmentSec;
 
-  /// Safety cap only (keeps the online clustering from exploding)
+  /// Safety cap only
   final int maxSpeakersCap;
 
   /// ✅ prevent fake speakers (create new only after N consecutive windows)
@@ -101,15 +98,12 @@ class DiarizationParams {
   final double stayHysteresis;
 
   /// ✅ OPTIONAL: if provided, force FINAL number of speakers to this count (merge-until-N)
-  /// This is applied at the end (safe), not during window clustering.
   final int? targetSpeakers;
 
   final bool matchSpeakers;
   final double matchThreshold;
 
-
   /// Require a margin between best and 2nd-best enrolled speaker match.
-  /// Prevents wrong name assignment when voices are similar.
   final double matchMargin;
 
   // ignore: unintended_html_in_doc_comment
@@ -120,32 +114,22 @@ class DiarizationParams {
     required this.wavPath,
     required this.durationSec,
     required this.embOnnxPath,
-
     this.windowSec = 2.5,
     this.hopSec = 1.25,
-
     this.stayThreshold = 0.68,
     this.switchThreshold = 0.80,
     this.switchConfirmWindows = 3,
     this.switchMargin = 0.04,
-
     this.mergeClustersThreshold = 0.86,
-
-    /// sensible defaults (you can tweak from caller)
     this.stableMergeThreshold = 0.78,
     this.stableBridgeMaxSec = 1.6,
-
     this.minClusterTalkSec = 2.5,
     this.minSegmentSec = 0.8,
-
     this.maxSpeakersCap = 12,
-
     this.newSpeakerFloor = 0.58,
     this.newSpeakerConfirmWindows = 4,
     this.stayHysteresis = 0.06,
-
     this.targetSpeakers,
-
     this.matchSpeakers = true,
     this.matchThreshold = 0.67,
     this.matchMargin = 0.04,
@@ -161,11 +145,10 @@ class DiarizationParams {
         'stayThreshold': stayThreshold,
         'switchThreshold': switchThreshold,
         'switchConfirmWindows': switchConfirmWindows,
+        'switchMargin': switchMargin,
         'mergeClustersThreshold': mergeClustersThreshold,
-
         'stableMergeThreshold': stableMergeThreshold,
         'stableBridgeMaxSec': stableBridgeMaxSec,
-
         'minClusterTalkSec': minClusterTalkSec,
         'minSegmentSec': minSegmentSec,
         'maxSpeakersCap': maxSpeakersCap,
@@ -175,6 +158,7 @@ class DiarizationParams {
         'targetSpeakers': targetSpeakers,
         'matchSpeakers': matchSpeakers,
         'matchThreshold': matchThreshold,
+        'matchMargin': matchMargin,
         'speakerMemoryData': speakerMemoryData,
       };
 
@@ -188,21 +172,23 @@ class DiarizationParams {
       stayThreshold: (json['stayThreshold'] as num).toDouble(),
       switchThreshold: (json['switchThreshold'] as num).toDouble(),
       switchConfirmWindows: json['switchConfirmWindows'] as int,
+      switchMargin: (json['switchMargin'] as num?)?.toDouble() ?? 0.04,
       mergeClustersThreshold: (json['mergeClustersThreshold'] as num).toDouble(),
-
       stableMergeThreshold:
           (json['stableMergeThreshold'] as num?)?.toDouble() ?? 0.78,
-      stableBridgeMaxSec: (json['stableBridgeMaxSec'] as num?)?.toDouble() ?? 1.6,
-
+      stableBridgeMaxSec:
+          (json['stableBridgeMaxSec'] as num?)?.toDouble() ?? 1.6,
       minClusterTalkSec: (json['minClusterTalkSec'] as num).toDouble(),
       minSegmentSec: (json['minSegmentSec'] as num).toDouble(),
       maxSpeakersCap: (json['maxSpeakersCap'] as int?) ?? 12,
       newSpeakerFloor: (json['newSpeakerFloor'] as num?)?.toDouble() ?? 0.58,
-      newSpeakerConfirmWindows: (json['newSpeakerConfirmWindows'] as int?) ?? 4,
+      newSpeakerConfirmWindows:
+          (json['newSpeakerConfirmWindows'] as int?) ?? 4,
       stayHysteresis: (json['stayHysteresis'] as num?)?.toDouble() ?? 0.06,
       targetSpeakers: (json['targetSpeakers'] as int?),
       matchSpeakers: (json['matchSpeakers'] as bool?) ?? true,
       matchThreshold: (json['matchThreshold'] as num?)?.toDouble() ?? 0.67,
+      matchMargin: (json['matchMargin'] as num?)?.toDouble() ?? 0.04,
       speakerMemoryData: json['speakerMemoryData'] != null
           ? (json['speakerMemoryData'] as Map<String, dynamic>).map(
               (k, v) => MapEntry(
@@ -256,8 +242,46 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   var wave = readWaveSimple(params.wavPath);
   var samples = wave.samples;
   final fs = wave.sampleRate;
+
   // Release Wave object's reference early (samples var still holds it)
   wave = Wave(samples: Float32List(0), sampleRate: fs);
+
+  // ✅ HARD GUARD: the speaker embedding model expects 16kHz PCM float waveform.
+  // If input isn't 16k, skip diarization instead of crashing native ORT.
+  if (fs != 16000) {
+    return EnhancedDiarizationResult(turns: const [], speakerMatches: const {});
+  }
+
+  // ✅ Model input length fix:
+  // Your crash showed broadcast mismatch 12288 vs 19248.
+  // This strongly indicates the embedding model expects a FIXED length = 19248 samples.
+  const int kExpectedSamples = 19248;
+  final win = kExpectedSamples;
+  final hop = (kExpectedSamples ~/ 2).clamp(1, 1 << 30);
+
+  Float32List fixedWindow(int a, int b) {
+    // Always return EXACTLY kExpectedSamples; pad with zeros if needed.
+    final out = Float32List(kExpectedSamples);
+
+    final aa = a.clamp(0, samples.length);
+    final bb = b.clamp(0, samples.length);
+    final len = math.max(0, bb - aa);
+    if (len <= 0) return out;
+
+    if (len >= kExpectedSamples) {
+      // take centered window of required length
+      final mid = aa + (len ~/ 2);
+      final start = (mid - (kExpectedSamples ~/ 2))
+          .clamp(0, samples.length - kExpectedSamples);
+      out.setAll(0, samples.sublist(start, start + kExpectedSamples));
+      return out;
+    }
+
+    // shorter => center insert and pad
+    final insertAt = ((kExpectedSamples - len) ~/ 2).clamp(0, kExpectedSamples);
+    out.setAll(insertAt, samples.sublist(aa, aa + len));
+    return out;
+  }
 
   initBindings();
   final cfg = SpeakerEmbeddingExtractorConfig(
@@ -268,8 +292,6 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   );
   final ext = SpeakerEmbeddingExtractor(config: cfg);
 
-  final win = (params.windowSec * fs).round().clamp(1, 1 << 30);
-  final hop = (params.hopSec * fs).round().clamp(1, 1 << 30);
   final totalSamples = samples.length;
 
   final clusters = <_IsolatedCluster>[];
@@ -285,8 +307,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
   // ✅ new-speaker confirmation (delay creation)
   int pendingNewCount = 0;
-      final pendingNewEmbs = <Float32List>[];
-      Float32List? pendingNewEmb;
+  final pendingNewEmbs = <Float32List>[];
+  Float32List? pendingNewEmb;
 
   try {
     int i = 0;
@@ -295,7 +317,10 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     while (i < totalSamples) {
       final a = i;
       final b = math.min(a + win, totalSamples);
-      if (b - a < (0.6 * fs)) break;
+      if (b <= a) break;
+
+      // We can still compute at the end because we pad, but skip near-empty.
+      if ((b - a) < (0.20 * fs)) break;
 
       if (_isSilentIsolate(samples, a, b)) {
         i += hop;
@@ -303,10 +328,14 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         continue;
       }
 
-      final slice = samples.sublist(a, b);
+      // ✅ Always fixed length input to prevent ORT broadcast crash
+      final slice = fixedWindow(a, b);
+
       final stream = ext.createStream();
       stream.acceptWaveform(samples: slice, sampleRate: fs);
       stream.inputFinished();
+
+      // NOTE: native code may SIGABRT on model mismatch; we prevent mismatch via fixedWindow
       final raw = ext.compute(stream);
       stream.free();
 
@@ -331,7 +360,8 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
           secondBest = sim;
         }
       }
-if (kDebugMode) {
+
+      if (kDebugMode) {
         debugPrint(
           '[DIA] win#$winIndex ${(a / fs).toStringAsFixed(2)}–${(b / fs).toStringAsFixed(2)} '
           'best=${best.toStringAsFixed(3)} bestCid=${bestC?.id} cur=$currentCid clusters=${clusters.length} '
@@ -347,7 +377,7 @@ if (kDebugMode) {
         clusters.add(_IsolatedCluster(candidateCid, v));
         pendingNewCount = 0;
         pendingNewEmb = null;
-          pendingNewEmbs.clear();
+        pendingNewEmbs.clear();
         if (kDebugMode) {
           debugPrint(
               '[DIA]   FIRST SPEAKER created cid=$candidateCid clustersNow=${clusters.length}');
@@ -372,9 +402,9 @@ if (kDebugMode) {
           pendingNewCount = 0;
           pendingNewEmb = null;
           pendingNewEmbs.clear();
-          pendingNewEmbs.clear();
           if (kDebugMode) {
-            debugPrint('[DIA]   NO-SWITCH (margin ${(best - secondBest).toStringAsFixed(3)} < ${params.switchMargin})');
+            debugPrint(
+                '[DIA]   NO-SWITCH (margin ${(best - secondBest).toStringAsFixed(3)} < ${params.switchMargin})');
           }
         } else if (best >= th) {
           // normal match
@@ -408,11 +438,15 @@ if (kDebugMode) {
 
             if (pendingNewCount >= params.newSpeakerConfirmWindows) {
               candidateCid = nextId++;
-              final seed = _meanNormalizeIsolate(pendingNewEmbs.isNotEmpty ? pendingNewEmbs : [pendingNewEmb!]);
+              final seed = _meanNormalizeIsolate(
+                pendingNewEmbs.isNotEmpty
+                    ? pendingNewEmbs
+                    : [pendingNewEmb!],
+              );
               clusters.add(_IsolatedCluster(candidateCid, seed));
               pendingNewCount = 0;
               pendingNewEmb = null;
-          pendingNewEmbs.clear();
+              pendingNewEmbs.clear();
 
               if (kDebugMode) {
                 debugPrint(
@@ -429,7 +463,7 @@ if (kDebugMode) {
             candidateCid = bestC.id;
             pendingNewCount = 0;
             pendingNewEmb = null;
-          pendingNewEmbs.clear();
+            pendingNewEmbs.clear();
             if (kDebugMode) {
               debugPrint(
                   '[DIA]   NO-MATCH but CLOSE/CAP -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})');
@@ -443,11 +477,15 @@ if (kDebugMode) {
         currentCid = candidateCid;
         pendingCid = null;
         pendingCount = 0;
-        if (kDebugMode) debugPrint('[DIA]   set currentCid=$currentCid (initial)');
+        if (kDebugMode) {
+          debugPrint('[DIA]   set currentCid=$currentCid (initial)');
+        }
       } else if (candidateCid == currentCid) {
         pendingCid = null;
         pendingCount = 0;
-        if (kDebugMode) debugPrint('[DIA]   stay on cid=$currentCid (reset pending)');
+        if (kDebugMode) {
+          debugPrint('[DIA]   stay on cid=$currentCid (reset pending)');
+        }
       } else {
         if (pendingCid == candidateCid) {
           pendingCount++;
@@ -465,10 +503,14 @@ if (kDebugMode) {
           currentCid = candidateCid;
           pendingCid = null;
           pendingCount = 0;
-          if (kDebugMode) debugPrint('[DIA]   SWITCH CONFIRMED -> currentCid=$currentCid');
+          if (kDebugMode) {
+            debugPrint('[DIA]   SWITCH CONFIRMED -> currentCid=$currentCid');
+          }
         } else {
           candidateCid = currentCid; // keep current until confirmed
-          if (kDebugMode) debugPrint('[DIA]   SWITCH NOT CONFIRMED -> stick cid=$currentCid');
+          if (kDebugMode) {
+            debugPrint('[DIA]   SWITCH NOT CONFIRMED -> stick cid=$currentCid');
+          }
         }
       }
 
@@ -558,7 +600,8 @@ if (kDebugMode) {
   }
 
   final clusterIds = allowedCids.toList();
-  // Recompute centroids from assigned window embeddings (more stable than online centroids).
+
+  // Recompute centroids from assigned window embeddings
   final centroidMap = <int, Float32List>{};
   final cidToEmbs = <int, List<Float32List>>{};
   for (final w in filteredMergedWin) {
@@ -567,7 +610,6 @@ if (kDebugMode) {
   for (final e in cidToEmbs.entries) {
     centroidMap[e.key] = _meanNormalizeIsolate(e.value);
   }
-
 
   for (int x = 0; x < clusterIds.length; x++) {
     for (int y = x + 1; y < clusterIds.length; y++) {
@@ -622,10 +664,8 @@ if (kDebugMode) {
               '[DIA] overlapFix prevEnd=${prev.b.toStringAsFixed(2)} turnStart=${turn.a.toStringAsFixed(2)}');
         }
         if (turn.b <= prev.b + 0.10) {
-          // Fully overlapped (or tiny). Drop it.
           continue;
         }
-        // Clamp start to previous end without extending end artificially.
         turn = _IsolatedTurn(turn.spk, prev.b, turn.b);
       }
     }
@@ -724,7 +764,7 @@ if (kDebugMode) {
     mergedTurns = _mergeGapAwareTurnsIsolate(mergedTurns, maxGap: 0.4);
   }
 
-  // Apply collapse to diarEmbs too (so later constraints use the collapsed labels)
+  // Apply collapse to diarEmbs too
   final diarEmbsCollapsed = <String, List<Float32List>>{};
   diarEmbs.forEach((lab, list) {
     final enrolledName = diarToEnrolled[lab];
@@ -733,7 +773,7 @@ if (kDebugMode) {
     diarEmbsCollapsed.putIfAbsent(canon, () => <Float32List>[]).addAll(list);
   });
 
-  // ===== ✅ STABLE “SANDWICH” COLLAPSE (uses stableMergeThreshold / stableBridgeMaxSec) =====
+  // ===== ✅ STABLE “SANDWICH” COLLAPSE =====
   final diarCentroids = <String, Float32List>{};
   diarEmbsCollapsed.forEach((lab, list) {
     final c = _meanAndNorm(list);
@@ -757,7 +797,6 @@ if (kDebugMode) {
       debug: kDebugMode,
     );
     mergedTurns = res.mergedTurns;
-    // res.diarEmbs is available if you later want to log centroids, etc.
   }
 
   // ===== FINAL LABELING (S1, S2, ...) =====
@@ -879,8 +918,8 @@ _ForceCountResult _forceSpeakerCount({
     // Merge into the label with higher talk
     final durA = talk[bestA] ?? 0.0;
     final durB = talk[bestB] ?? 0.0;
-    final keep = (durA >= durB) ? bestA! : bestB!;
-    final drop = (keep == bestA) ? bestB! : bestA!;
+    final keep = (durA >= durB) ? bestA : bestB;
+    final drop = (keep == bestA) ? bestB : bestA;
 
     if (debug) {
       debugPrint(
@@ -981,7 +1020,6 @@ Float32List _meanAndNorm(List<Float32List> embs) {
 }
 
 // Backward-compatible helper name used in a couple of call sites.
-// (Mean of embeddings + L2 normalize)
 Float32List _meanNormalizeIsolate(List<Float32List> embs) => _meanAndNorm(embs);
 
 /// ✅ Collapse “A -> B -> A” when B is short and centroid(B) close to centroid(A)
@@ -1045,68 +1083,50 @@ Future<EnhancedDiarizationResult> runEmbeddingDiarizationInIsolate({
   required String wavPath,
   required double durationSec,
   required String embOnnxPath,
-
   double windowSec = 2.5,
   double hopSec = 1.25,
-
   double stayThreshold = 0.68,
   double switchThreshold = 0.80,
   int switchConfirmWindows = 3,
-
+  double switchMargin = 0.04,
   double mergeClustersThreshold = 0.86,
-
-  /// ✅ added back to public API
   double stableMergeThreshold = 0.78,
   double stableBridgeMaxSec = 1.6,
-
   double minClusterTalkSec = 2.5,
   double minSegmentSec = 0.8,
-
   int maxSpeakersCap = 12,
-
-  // ✅ new speaker controls
   double newSpeakerFloor = 0.58,
   int newSpeakerConfirmWindows = 4,
   double stayHysteresis = 0.06,
-
-  // ✅ OPTIONAL: force final number of speakers
   int? targetSpeakers,
-
-  // ✅ speaker matching (only used if speakerMemoryData is not empty AND matchSpeakers=true)
   bool matchSpeakers = true,
   double matchThreshold = 0.67,
+  double matchMargin = 0.04,
   Map<String, List<List<double>>> speakerMemoryData = const {},
 }) async {
   final params = DiarizationParams(
     wavPath: wavPath,
     durationSec: durationSec,
     embOnnxPath: embOnnxPath,
-
     windowSec: windowSec,
     hopSec: hopSec,
-
     stayThreshold: stayThreshold,
     switchThreshold: switchThreshold,
     switchConfirmWindows: switchConfirmWindows,
-
+    switchMargin: switchMargin,
     mergeClustersThreshold: mergeClustersThreshold,
-
     stableMergeThreshold: stableMergeThreshold,
     stableBridgeMaxSec: stableBridgeMaxSec,
-
     minClusterTalkSec: minClusterTalkSec,
     minSegmentSec: minSegmentSec,
-
     maxSpeakersCap: maxSpeakersCap,
-
     newSpeakerFloor: newSpeakerFloor,
     newSpeakerConfirmWindows: newSpeakerConfirmWindows,
     stayHysteresis: stayHysteresis,
-
     targetSpeakers: targetSpeakers,
-
     matchSpeakers: matchSpeakers,
     matchThreshold: matchThreshold,
+    matchMargin: matchMargin,
     speakerMemoryData: speakerMemoryData,
   );
 

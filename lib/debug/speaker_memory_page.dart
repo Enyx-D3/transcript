@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:transcript/common/app_flushbar.dart';
 import 'package:transcript/common/confirm_dialog.dart';
+import 'package:transcript/widgets/leading_pill_icon.dart';
 
 import 'speaker_memory.dart';
 
@@ -134,7 +135,7 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
               children: [
                 Row(
                   children: [
-                    const _LeadingPillIcon(icon: Icons.person),
+                    const LeadingPillIcon(icon: Icons.person),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -172,7 +173,7 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                           final v = protos[i];
                           return ListTile(
                             leading:
-                                const _LeadingPillIcon(icon: Icons.graphic_eq),
+                                const LeadingPillIcon(icon: Icons.graphic_eq),
                             title: Text(
                               'Vector ${i + 1}',
                               style: TextStyle(
@@ -434,7 +435,7 @@ class _ProfileRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
         child: Row(
           children: [
-            const _LeadingPillIcon(icon: Icons.person),
+            const LeadingPillIcon(icon: Icons.person),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -520,42 +521,7 @@ class _GlassIconButton extends StatelessWidget {
   }
 }
 
-class _LeadingPillIcon extends StatelessWidget {
-  const _LeadingPillIcon({required this.icon});
-  final IconData icon;
 
-  @override
-  Widget build(BuildContext context) {
-    final fg = GlassTokens.fg(context);
-
-    return SizedBox(
-      width: 42,
-      height: 42,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: LiquidGlass(
-              borderRadius: BorderRadius.circular(14),
-              padding: EdgeInsets.zero,
-              shadow: false,
-              // ✅ avoid double blur (page is already glass)
-              blurX: 0,
-              blurY: 0,
-              grain: false,
-              tintOpacityLight: 0.035,
-              tintOpacityDark: 0.045,
-              borderOpacityLight: 0.20,
-              borderOpacityDark: 0.14,
-              onTap: null,
-              child: const SizedBox.expand(),
-            ),
-          ),
-          Center(child: Icon(icon, size: 20, color: fg)),
-        ],
-      ),
-    );
-  }
-}
 
 class _GlassBottomSheet extends StatelessWidget {
   const _GlassBottomSheet({required this.child});

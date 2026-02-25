@@ -420,6 +420,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const SizedBox(height: 6),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(999),
                         child: LinearProgressIndicator(
@@ -429,14 +430,14 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text(
-                        '${(progress * 100).round()}% • ${_index + 1}/${widget.prompts.length}',
-                        style: TextStyle(
-                          color: GlassTokens.muted(context, alpha: 0.62),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
+                      // Text(
+                      //   '${(progress * 100).round()}% • ${_index + 1}/${widget.prompts.length}',
+                      //   style: TextStyle(
+                      //     color: GlassTokens.muted(context, alpha: 0.62),
+                      //     fontWeight: FontWeight.w700,
+                      //     fontSize: 12,
+                      //   ),
+                      // ),
                     ],
                   ),
                 ),
