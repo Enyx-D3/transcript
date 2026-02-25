@@ -17,6 +17,7 @@ class SubscriptionService {
 
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   bool _initialized = false;
+  bool _storeAvailable = false;
 
   /// Completers to allow UI to await a specific purchase outcome.
   final Map<String, Completer<bool>> _pending = {};
@@ -30,6 +31,7 @@ class SubscriptionService {
   // ✅ NEW: expose last server result for UI
   String? lastVerifyCode;   // e.g. TOKEN_ALREADY_CLAIMED
   String? lastVerifyError;  // human readable
+  String? lastStoreError;
 
   // ✅ IMPORTANT: must match your deployed edge function names
   static const String _fnVerifyAndroid = 'verify-play-subscription';
@@ -39,7 +41,11 @@ class SubscriptionService {
     if (_initialized) return;
 
     final available = await _iap.isAvailable();
+    _storeAvailable = available;
     if (!available) {
+      if (Platform.isIOS) {
+        lastStoreError = 'STORE_UNAVAILABLE';
+      }
       _initialized = true;
       return;
     }
@@ -63,7 +69,19 @@ class SubscriptionService {
 
     final resp = await _iap.queryProductDetails(kProProductIds);
     if (resp.error != null) {
+      if (Platform.isIOS) {
+        lastStoreError = 'STORE_QUERY_ERROR: ${resp.error!.message}';
+      }
       throw Exception(resp.error!.message);
+    }
+
+    if (Platform.isIOS && resp.productDetails.isEmpty) {
+      final missing = resp.notFoundIDs.join(', ');
+      lastStoreError = 'STORE_PRODUCTS_UNAVAILABLE: $missing';
+      throw Exception(
+        'STORE_PRODUCTS_UNAVAILABLE: No products returned from App Store. '
+        'Missing: $missing',
+      );
     }
 
     // Keep a stable order: lifetime, monthly, yearly
@@ -92,10 +110,15 @@ class SubscriptionService {
   /// So we use a shorter timeout to avoid "infinite loading" UX.
   Future<bool> buy(ProductDetails product) async {
     await initialize();
+    if (Platform.isIOS && !_storeAvailable) {
+      lastStoreError = 'STORE_UNAVAILABLE';
+      return false;
+    }
 
     // reset last verify info
     lastVerifyCode = null;
     lastVerifyError = null;
+    lastStoreError = null;
 
     // If another pending exists for same product, complete it false.
     final old = _pending.remove(product.id);
@@ -131,6 +154,7 @@ class SubscriptionService {
     // reset last verify info
     lastVerifyCode = null;
     lastVerifyError = null;
+    lastStoreError = null;
 
     final completer = Completer<bool>();
     late StreamSubscription sub;
@@ -158,6 +182,7 @@ class SubscriptionService {
     // reset last verify info
     lastVerifyCode = null;
     lastVerifyError = null;
+    lastStoreError = null;
 
     // We consider success if any entitlement gets applied.
     final completer = Completer<bool>();

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+
+import 'package:url_launcher/url_launcher.dart';
 
 enum PaywallPlan { lifetime, yearly, monthly }
 
@@ -24,6 +27,15 @@ class _PaywallPageState extends State<PaywallPage> {
   // User won’t choose, but we must keep signature
   // so we send lifetime by default (you can change later).
   static const PaywallPlan _defaultPlan = PaywallPlan.lifetime;
+  static const String _policyUrl = 'https://enyx.app/privacy/enyx-transcriptor';
+
+  Future<void> _openExternal(String url) async {
+    final ok = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok) return;
+  }
 
   Future<void> _close() async {
     if (_busy) return;
@@ -269,6 +281,36 @@ class _PaywallPageState extends State<PaywallPage> {
                             ),
                       ),
                     ),
+
+                    if (Platform.isIOS) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'Payment will be charged to your Apple ID at confirmation. '
+                        'Subscription renews automatically unless canceled at least 24 hours before the end of the current period.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.white54,
+                              height: 1.3,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 12,
+                        children: [
+                          TextButton(
+                            onPressed: () => _openExternal(_policyUrl),
+                            child: const Text('Terms & Privacy'),
+                          ),
+                          TextButton(
+                            onPressed: () => _openExternal(
+                              'https://apps.apple.com/account/subscriptions',
+                            ),
+                            child: const Text('Manage Subscription'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

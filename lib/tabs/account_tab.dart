@@ -16,7 +16,6 @@ import '../billing/subscription_service.dart';
 import '../billing/subscription_products.dart';
 import '../common/confirm_dialog.dart';
 import '../auth/app_gate.dart';
-import '../auth/eligibility_gate.dart';
 
 class AccountTab extends StatefulWidget {
   const AccountTab({super.key, this.onUpgradeSuccess});
@@ -309,11 +308,23 @@ class _AccountTabState extends State<AccountTab> {
   // ---------------- Manage / Update plan ----------------
 
   Future<void> _openManageSubscription() async {
+    if (Platform.isIOS) {
+      final url = Uri.parse('https://apps.apple.com/account/subscriptions');
+      final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        await AppFlushbar.error(
+          context,
+          message: 'Could not open Apple subscription settings',
+        );
+      }
+      return;
+    }
+
     if (!Platform.isAndroid) {
       if (mounted) {
         await AppFlushbar.error(
           context,
-          message: 'Manage subscription is Android-only right now',
+          message: 'Manage subscription is unavailable on this platform',
         );
       }
       return;
@@ -527,8 +538,21 @@ class _AccountTabState extends State<AccountTab> {
       }
     } catch (e) {
       if (mounted) {
+        final raw = e.toString();
+        final storeErr = SubscriptionService.I.lastStoreError ?? '';
+        String message = 'Purchase failed';
+
+        if (Platform.isIOS &&
+            (raw.contains('STORE_PRODUCTS_UNAVAILABLE') ||
+                storeErr.contains('STORE_PRODUCTS_UNAVAILABLE'))) {
+          message =
+              'Products are not available yet. Please check App Store setup and try again.';
+        } else if (Platform.isIOS && storeErr.contains('STORE_UNAVAILABLE')) {
+          message = 'App Store is unavailable on this device right now.';
+        }
+
         setState(() => _error = 'Purchase failed: $e');
-        await AppFlushbar.error(context, message: 'Purchase failed');
+        await AppFlushbar.error(context, message: message);
       }
     } finally {
       if (!mounted) return;

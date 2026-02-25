@@ -1,5 +1,6 @@
 // lib/auth/app_gate.dart
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -64,7 +65,8 @@ class _AppGateState extends State<AppGate> {
       } else {
         // logged out
         setState(() {
-          _eligibility = const EligibilityGateResult(eligible: false);
+          // iOS review requirement: keep non-account features available in guest mode.
+          _eligibility = EligibilityGateResult(eligible: Platform.isIOS);
           _checkingEligibility = false;
         });
       }
@@ -134,14 +136,25 @@ class _AppGateState extends State<AppGate> {
     return res;
   }
 
+  Future<EligibilityGateResult> _retryGuestEligibility() async {
+    return EligibilityGateResult(eligible: Platform.isIOS);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_ready) {
       return const _GateSplash(status: 'Preparing…');
     }
 
-    // ✅ Not logged in -> Login
+    // ✅ iOS only: guest mode for non-account features (Guideline 5.1.1(v)).
     if (_session == null) {
+      if (Platform.isIOS) {
+        return HomeShell(
+          initialEligible: true,
+          eligibilityError: null,
+          onRetryEligibility: _retryGuestEligibility,
+        );
+      }
       return const LoginPage();
     }
 

@@ -24,6 +24,7 @@ serve(async (req: Request) => {
     const body = (await req.json()) as Body;
     const productId = body.product_id?.trim();
     const purchaseToken = body.purchase_token?.trim();
+    const tokenLooksJws = looksLikeJWS(purchaseToken ?? "");
 
     if (!productId || !purchaseToken) {
       return json({ ok: false, error: "Missing product_id / purchase_token" }, 400);
@@ -103,7 +104,7 @@ serve(async (req: Request) => {
 
       proExpiresAt = result.expiresAt ?? null;
       verifiedTransactionId = result.transactionId ?? purchaseToken;
-    } else {
+    } else if (!tokenLooksJws) {
       // ---- Fallback: verifyReceipt (legacy, but works without API key) ----
       const result = await verifyWithReceiptEndpoint({
         receiptData: purchaseToken,
@@ -117,6 +118,17 @@ serve(async (req: Request) => {
 
       proExpiresAt = result.expiresAt ?? null;
       verifiedTransactionId = result.transactionId ?? purchaseToken;
+    } else {
+      // StoreKit 2 usually provides JWS transaction data, which cannot be
+      // verified via verifyReceipt fallback. Require App Store Server API keys.
+      return json(
+        {
+          ok: false,
+          error:
+            "Missing APPLE_KEY_ID / APPLE_ISSUER_ID / APPLE_PRIVATE_KEY for StoreKit transaction verification",
+        },
+        500,
+      );
     }
 
     // Use transactionId as the lock key (more stable than receipt data)
@@ -249,9 +261,16 @@ async function verifyWithAppStoreServerAPI(opts: {
 
     const baseUrl = opts.isProduction ? APPLE_PRODUCTION_URL : APPLE_SANDBOX_URL;
 
-    // The purchaseToken from StoreKit 2 / in_app_purchase plugin is a
-    // transaction ID or a signed transaction (JWS). Try lookup by transactionId.
-    const transactionId = opts.purchaseToken;
+    // The purchase token may be:
+    // 1) transaction ID
+    // 2) signed transaction JWS (StoreKit 2)
+    let transactionId = opts.purchaseToken;
+    if (looksLikeJWS(opts.purchaseToken)) {
+      const purchasePayload = decodeJWSPayload(opts.purchaseToken);
+      const fromPayload = purchasePayload?.transactionId ??
+        purchasePayload?.originalTransactionId;
+      if (fromPayload) transactionId = String(fromPayload);
+    }
 
     const url = `${baseUrl}/inApps/v1/transactions/${encodeURIComponent(transactionId)}`;
     const resp = await fetch(url, {
@@ -501,6 +520,10 @@ function decodeJWSPayload(jws: string): any | null {
   } catch {
     return null;
   }
+}
+
+function looksLikeJWS(value: string): boolean {
+  return value.split(".").length === 3;
 }
 
 function base64urlEncode(str: string): string {

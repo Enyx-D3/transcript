@@ -82,6 +82,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+dependency_overrides:
+  # iOS runtime workaround: avoid objective_c native-asset loader crash
+  # observed on simulator/device with latest path_provider_foundation stack.
+  path_provider_foundation: 2.4.1
+  objective_c: 8.0.0
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
