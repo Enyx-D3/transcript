@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:ui' show DartPluginRegistrant;
-import 'package:path/path.dart' as p;
+
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -40,109 +40,35 @@ final TranscriptMailService _mailer = TranscriptMailService(
   // authToken: 'optional', // if you use it
 );
 
-// Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async {
-//   final obx = ObjectBox.I;
-
-//   final t = obx.transcripts.get(transcriptId);
-//   if (t == null) return;
-
-//   final st = t.sourceType; // expects 2=audio import, 3=video import
-//   if (st != 2 && st != 3) return;
-
-//   final a = (t.audioPath ?? '').trim();
-//   final p = (t.processedAudioPath ?? '').trim();
-
-//   // Already correct => do nothing
-//   if (p.isEmpty && a == wavPath.trim()) return;
-//   if (p.isEmpty && a.isNotEmpty && wavPath.trim().isEmpty) return;
-
-//   // Force import rule
-//   t.audioPath = wavPath.trim().isEmpty ? (a.isEmpty ? null : a) : wavPath.trim();
-//   t.processedAudioPath = null;
-
-//   // optional timestamp
-//   t.updatedAt = DateTime.now();
-
-//   obx.transcripts.put(t);
-
-//   debugPrint('[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)');
-// }
-
-Future<void> _finalizeTranscriptAfterProcessing({
-  required int transcriptId,
-  required String audioPath,
-}) async {
+Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async {
   final obx = ObjectBox.I;
+
   final t = obx.transcripts.get(transcriptId);
   if (t == null) return;
 
-  final st = t.sourceType;
-
-  // ------------------------------------------------------------
-  // sourceType == 1: recorded => title from first 5 words
-  // ------------------------------------------------------------
-  if (st == 1) {
-    final currentTitle = (t.title ?? '').trim();
-    if (currentTitle.isEmpty) {
-      final full = (t.fullTextCache ?? '').trim();
-      if (full.isNotEmpty) {
-        final words = full
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .split(' ')
-            .where((w) => w.trim().isNotEmpty)
-            .toList();
-
-        if (words.isNotEmpty) {
-          final title = words.take(5).join(' ').trim();
-          if (title.isNotEmpty) {
-            t.title = title;
-            obx.transcripts.put(t);
-            debugPrint('[FINALIZE] sourceType=1 title="$title"');
-          }
-        }
-      }
-    }
-    return; // nothing else to do for recordings
-  }
-
-  // ------------------------------------------------------------
-  // sourceType == 2/3: imports => title from filename + delete audio
-  // ------------------------------------------------------------
+  final st = t.sourceType; // expects 2=audio import, 3=video import
   if (st != 2 && st != 3) return;
 
-  final trimmedPath = audioPath.trim();
-  if (trimmedPath.isEmpty) return;
+  final a = (t.audioPath ?? '').trim();
+  final p = (t.processedAudioPath ?? '').trim();
 
-  // 1) Title = file name (without extension)
-  try {
-    final filename = p.basename(trimmedPath); // e.g. meeting.wav
-    final nameWithoutExt = p.basenameWithoutExtension(filename); // meeting
-    if (nameWithoutExt.trim().isNotEmpty) {
-      t.title = nameWithoutExt.trim();
-    }
-  } catch (e) {
-    debugPrint('[FINALIZE] Failed extracting filename: $e');
-  }
+  // Already correct => do nothing
+  if (p.isEmpty && a == wavPath.trim()) return;
+  if (p.isEmpty && a.isNotEmpty && wavPath.trim().isEmpty) return;
 
-  // 2) Delete audio file
-  try {
-    final file = File(trimmedPath);
-    if (await file.exists()) {
-      await file.delete();
-      debugPrint('[FINALIZE] Deleted file: $trimmedPath');
-    }
-  } catch (e) {
-    debugPrint('[FINALIZE] Failed deleting file: $e');
-  }
-
-  // 3) Null both audio paths
-  t.audioPath = null;
+  // Force import rule
+  t.audioPath = wavPath.trim().isEmpty ? (a.isEmpty ? null : a) : wavPath.trim();
   t.processedAudioPath = null;
+
+  // optional timestamp
+  t.updatedAt = DateTime.now();
 
   obx.transcripts.put(t);
 
-  debugPrint('[FINALIZE] Applied transcriptId=$transcriptId sourceType=$st');
+  debugPrint('[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)');
 }
+
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -191,7 +117,7 @@ Future<void> main() async {
               );
               transcriptId = existingId;
               // await _normalizeImportAudioPaths(transcriptId, wavPath);
-              await _finalizeTranscriptAfterProcessing(transcriptId:  transcriptId,audioPath: wavPath);
+              await _normalizeImportAudioPaths(transcriptId, wavPath);
               await deleteTranscriptAudioIfUserEnabled(existingId);
             } else {
               transcriptId = await persistNewTranscriptionFromResult(
@@ -199,7 +125,7 @@ Future<void> main() async {
                 result: result,
               );
               // await _normalizeImportAudioPaths(transcriptId, wavPath);
-              await _finalizeTranscriptAfterProcessing(transcriptId:  transcriptId,audioPath: wavPath);
+              await _normalizeImportAudioPaths(transcriptId, wavPath);
               await deleteTranscriptAudioIfUserEnabled(transcriptId);
             }
 

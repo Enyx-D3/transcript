@@ -455,7 +455,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Only the extracted WAV is saved in the app.',
+                                'Do not close this while intial processing',
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.70),
                                   fontSize: 12,

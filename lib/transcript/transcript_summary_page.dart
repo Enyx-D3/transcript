@@ -49,6 +49,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
   String? _summaryText;
   String? _error;
   StreamSubscription<Map<String, dynamic>>? _streamSub;
+  Timer? _busyWatch;
 
   final ReportService _reportService = const ReportService(
     baseUrl: 'YOUR_BASE_URL_HERE',
@@ -89,17 +90,38 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
 
   @override
   void dispose() {
+    _busyWatch?.cancel();
+    _busyWatch = null;
     _qwenSub?.cancel();
     _streamSub?.cancel();
     super.dispose();
+  }
+
+  void _startBusyWatch() {
+    _busyWatch?.cancel();
+    _busyWatch = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      final busy = await _isSummaryBusy();
+      if (!mounted) return;
+      if (!busy) {
+        _busyWatch?.cancel();
+        _busyWatch = null;
+
+        await _loadExistingSummary();
+        if (!mounted) return;
+        setState(() => _generating = false);
+      }
+    });
   }
 
   Future<void> _hydrateGeneratingFromBusyFlag() async {
     try {
       final busy = await _isSummaryBusy();
       if (!mounted) return;
-      if (busy && !_generating) {
-        setState(() => _generating = true);
+      if (busy) {
+        if (!_generating) setState(() => _generating = true);
+        _startBusyWatch();
+      } else {
+        if (_generating) setState(() => _generating = false);
       }
     } catch (_) {}
   }
@@ -109,7 +131,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
       final sp = await SharedPreferences.getInstance();
       final v = sp.getInt(_kSummaryLengthPref);
       if (!mounted) return;
-      setState(() => _summaryLengthIndex = (v ?? 1).clamp(0, 2));
+      setState(() => _summaryLengthIndex = (v ?? 1).clamp(0, 2)); // ✅ default Balanced
     } catch (_) {}
   }
 
@@ -154,7 +176,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
         return 1200;
       case 1:
       default:
-        return 650;
+        return 650; // ✅ Balanced default
     }
   }
 
@@ -274,6 +296,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
           _error = null;
         });
       }
+      _startBusyWatch();
       return;
     }
 
@@ -392,7 +415,6 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
 
   // ===================== Glass helpers =====================
 
-  // ✅ UPDATED: Container pill -> LiquidGlass capsule (perfectly round + crisp)
   Widget _metaPill(String text, {Color? accent, IconData? icon}) {
     final c = accent;
     final tl = c != null ? 0.055 : 0.050;
@@ -448,7 +470,6 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     );
   }
 
-  // ✅ UPDATED: icon box uses LiquidGlass (same size/shape)
   Widget _banner({
     required IconData icon,
     required String text,
@@ -501,7 +522,6 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     );
   }
 
-  // ✅ UPDATED: icon box uses LiquidGlass (same size/shape)
   Widget _emptyState({
     required IconData icon,
     required String title,
@@ -569,7 +589,6 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     );
   }
 
-  // ✅ UPDATED: icon box uses LiquidGlass (same size/shape)
   Widget _summaryCard(String text) {
     final isDark = GlassTokens.isDark(context);
     final fg = Colors.white.withValues(alpha: 0.92);

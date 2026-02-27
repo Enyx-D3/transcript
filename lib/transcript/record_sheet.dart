@@ -1,6 +1,7 @@
 // lib/record/record_sheet.dart
 import 'dart:io';
 
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -14,13 +15,6 @@ import '../transcript/transcript_detail_page.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
 import '../transcript/background_transcriber.dart';
-
-// ✅ Glass primitives (same language as ImportAudioSheet)
-import '../ui/glass/liquid_glass.dart';
-import '../ui/glass/glass_card.dart';
-import '../ui/glass/glass_button.dart';
-import '../ui/glass/glass_divider.dart';
-
 
 class RecordSheet extends StatefulWidget {
   const RecordSheet({super.key});
@@ -76,8 +70,9 @@ class _RecordSheetState extends State<RecordSheet> {
   static const String _kBusyTranscribing = 'busy_transcribing';
   bool _handledStop = false;
 
-  final TextEditingController _targetSpeakersCtrl =
-      TextEditingController(text: '0');
+  final TextEditingController _targetSpeakersCtrl = TextEditingController(
+    text: '0',
+  );
 
   static const Map<String, String> _langOptions = {
     'en': 'English',
@@ -258,8 +253,9 @@ class _RecordSheetState extends State<RecordSheet> {
     try {
       _handledStop = false;
 
-      final int? targetSpeakers =
-          _diarizationEnabled ? _parseTargetSpeakers() : null;
+      final int? targetSpeakers = _diarizationEnabled
+          ? _parseTargetSpeakers()
+          : null;
 
       await _ensureMic();
 
@@ -368,8 +364,9 @@ class _RecordSheetState extends State<RecordSheet> {
     int? targetSpeakers,
     required String lang,
   }) async {
-    final placeholderDuration =
-        (_seconds.isFinite && _seconds >= 0) ? _seconds : 0.0;
+    final placeholderDuration = (_seconds.isFinite && _seconds >= 0)
+        ? _seconds
+        : 0.0;
 
     final obx = ObjectBox.I;
 
@@ -446,110 +443,109 @@ class _RecordSheetState extends State<RecordSheet> {
         ? (_paused ? 'Paused' : (_starting ? 'Starting…' : 'Recording…'))
         : 'Record';
 
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    // ✅ close pill = tint-only (same as ImportAudioSheet preferred)
-    Widget closePill() {
-      return LiquidGlass(
-        borderRadius: BorderRadius.circular(999),
-        padding: const EdgeInsets.all(8),
-        shadow: false,
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-        tintOpacityDark: 0.070,
-        tintOpacityLight: 0.055,
-        borderOpacityDark: 0.16,
-        borderOpacityLight: 0.20,
-        onTap: _starting ? null : () => Navigator.of(context).pop(),
-        child: Icon(Icons.close, color: fg, size: 20),
-      );
-    }
+    const sheetBg = Color(0xFF0B0C10);
+    final border = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.10);
 
     return SizedBox(
       height: h,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      child: Container(
+        decoration: BoxDecoration(
+          color: sheetBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          border: Border.all(color: border),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            // ✅ sheet backdrop (moderate blur + stronger tint for readability)
-            LiquidGlass(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-              padding: EdgeInsets.zero,
-              shadow: false,
-              blurX: 9.0,
-              blurY: 9.0,
-              grain: false,
-              tintOpacityDark: 0.10,
-              tintOpacityLight: 0.08,
-              borderOpacityDark: 0.18,
-              borderOpacityLight: 0.22,
-              child: const SizedBox.expand(),
-            ),
-
+            // Positioned.fill(
+            //   child: IgnorePointer(
+            //     child: Container(
+            //       decoration: BoxDecoration(
+            //         gradient: LinearGradient(
+            //           begin: Alignment.topCenter,
+            //           end: Alignment.bottomCenter,
+            //           colors: [
+            //             const Color(0xFFCD66FD).withOpacity(0.12),
+            //             Colors.transparent,
+            //           ],
+            //         ),
+            //       ),
+            //     ),
+            //   ),
+            // ),
             Column(
               children: [
-                // ---------- Header ----------
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
                   child: Row(
                     children: [
                       Expanded(
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.mic, color: fg),
-                            const SizedBox(width: 8),
-                            Text(
-                              title,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: fg,
-                              ),
-                            ),
-                            if (_starting) ...[
-                              const SizedBox(width: 10),
-                              SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white.withValues(alpha: 0.75),
+                            // Center(
+                            //   child: Container(
+                            //     width: 44,
+                            //     height: 5,
+                            //     margin: const EdgeInsets.only(bottom: 10),
+                            //     decoration: BoxDecoration(
+                            //       borderRadius: BorderRadius.circular(99),
+                            //       color: Colors.white.withOpacity(0.14),
+                            //     ),
+                            //   ),
+                            // ),
+                            Row(
+                              children: [
+                                const Icon(Icons.mic, color: Colors.white),
+                                const SizedBox(width: 8),
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                              ),
-                            ],
+                                if (_starting) ...[
+                                  const SizedBox(width: 10),
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white.withValues(alpha: 0.75),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ],
                         ),
                       ),
-                      closePill(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
                     ],
                   ),
                 ),
-
-                const GlassDivider(),
-
-                // ---------- Body ----------
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // ===== Main panel =====
-                        GlassCard(
-                          variant: GlassCardVariant.tile,
-                          padding: const EdgeInsets.all(16),
+                        _Panel(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Center(
-                                child: _TimerRing(
-                                  timeText: _fmtTime(_seconds),
-                                  active: _recording && !_paused,
-                                  paused: _paused,
-                                ),
+                              _TimerRing(
+                                timeText: _fmtTime(_seconds),
+                                active: _recording && !_paused,
+                                paused: _paused,
                               ),
                               const SizedBox(height: 12),
                               LevelBars(
@@ -558,123 +554,54 @@ class _RecordSheetState extends State<RecordSheet> {
                                 barCount: 22,
                               ),
                               const SizedBox(height: 14),
-
                               Row(
                                 children: [
                                   Expanded(
-                                    child: GlassButton(
-                                      kind: GlassButtonKind.secondary,
-                                      label: 'Cancel',
-                                      icon: Icons.close_rounded,
+                                    child: OutlinedButton.icon(
                                       onPressed: _recording ? _cancel : null,
+                                      icon: const Icon(
+                                        Icons.close_rounded,
+                                        color: Colors.white,
+                                      ),
+                                      label: const Text(
+                                        'Cancel',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
-                                    child: GlassButton(
-                                      kind: GlassButtonKind.secondary,
-                                      label: _paused ? 'Resume' : 'Pause',
-                                      icon: _paused
-                                          ? Icons.play_arrow_rounded
-                                          : Icons.pause_rounded,
+                                    child: OutlinedButton.icon(
                                       onPressed: (!_recording || _starting)
                                           ? null
                                           : (_paused ? _resume : _pause),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-
-                              GlassButton(
-                                kind: GlassButtonKind.primary,
-                                label:
-                                    _recording ? 'Stop & transcribe' : 'Start recording',
-                                icon: _recording
-                                    ? Icons.stop_rounded
-                                    : Icons.fiber_manual_record,
-                                onPressed: _starting ? null : (_recording ? _stop : _start),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // ===== Options =====
-                        GlassCard(
-                          variant: GlassCardVariant.tile,
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                'Options',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: fg,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Set before recording',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.65),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Language row
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Language',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
-                                        fontWeight: FontWeight.w600,
+                                      icon: Icon(
+                                        _paused
+                                            ? Icons.play_arrow_rounded
+                                            : Icons.pause_rounded,
+                                        color: Colors.white,
                                       ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 180,
-                                    child: _GlassField(
-                                      enabled: !_recording && !_starting,
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue: _selectedLang,
-                                        isDense: true,
-                                        iconEnabledColor:
-                                            Colors.white.withValues(alpha: 0.80),
-                                        dropdownColor: const Color(0xFF0B0C10),
-                                        items: _langOptions.entries
-                                            .map(
-                                              (e) => DropdownMenuItem<String>(
-                                                value: e.key,
-                                                child: Text(
-                                                  e.value,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: Colors.white.withValues(alpha: 0.92),
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (_recording || _starting)
-                                            ? null
-                                            : (v) {
-                                                if (v == null) return;
-                                                setState(() => _selectedLang = v);
-                                              },
-                                        decoration: const InputDecoration(
-                                          isDense: true,
-                                          border: InputBorder.none,
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 10,
+                                      label: Text(
+                                        _paused ? 'Resume' : 'Pause',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
                                           ),
                                         ),
                                       ),
@@ -682,17 +609,98 @@ class _RecordSheetState extends State<RecordSheet> {
                                   ),
                                 ],
                               ),
-
-                              const SizedBox(height: 12),
-
-                              // Diarization
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: _recording ? _stop : _start,
+                                  icon: Icon(
+                                    _recording
+                                        ? Icons.stop_rounded
+                                        : Icons.fiber_manual_record,
+                                  ),
+                                  label: Text(
+                                    _recording
+                                        ? 'Stop & transcribe'
+                                        : 'Start recording',
+                                  ),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _Panel(
+                          title: 'Options',
+                          subtitle: 'Set before recording',
+                          child: Column(
+                            children: [
                               Row(
                                 children: [
-                                  Expanded(
+                                  const Expanded(
+                                    child: Text(
+                                      'Language',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 180,
+                                    child: DropdownButtonFormField<String>(
+                                      initialValue: _selectedLang,
+                                      items: _langOptions.entries
+                                          .map(
+                                            (e) => DropdownMenuItem<String>(
+                                              value: e.key,
+                                              child: Text(e.value),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (_recording || _starting)
+                                          ? null
+                                          : (v) {
+                                              if (v == null) return;
+                                              setState(() => _selectedLang = v);
+                                            },
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        border: OutlineInputBorder(),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Color(0xFFff8143),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Color(0xFFff8143),
+                                            width: 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  const Expanded(
                                     child: Text(
                                       'Speaker diarization',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
+                                        color: Colors.white70,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -702,26 +710,22 @@ class _RecordSheetState extends State<RecordSheet> {
                                     onChanged: (_recording || _starting)
                                         ? null
                                         : _setDiarizationEnabledLocal,
-                                    activeThumbColor: Colors.black,
-                                    activeTrackColor:
-                                        Colors.white.withValues(alpha: 0.55),
-                                    inactiveThumbColor:
-                                        Colors.white.withValues(alpha: 0.70),
-                                    inactiveTrackColor:
-                                        Colors.white.withValues(alpha: 0.18),
+                                    activeThumbColor: Colors.black, // thumb
+                                    activeTrackColor: const Color(
+                                      0xFFff8143,
+                                    ), // track
                                   ),
                                 ],
                               ),
-
                               if (_diarizationEnabled) ...[
                                 const SizedBox(height: 12),
                                 Row(
                                   children: [
-                                    Expanded(
+                                    const Expanded(
                                       child: Text(
                                         'Target speakers',
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.72),
+                                          color: Colors.white70,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -730,41 +734,42 @@ class _RecordSheetState extends State<RecordSheet> {
                                       width: 120,
                                       child: Theme(
                                         data: Theme.of(context).copyWith(
-                                          textSelectionTheme: TextSelectionThemeData(
-                                            selectionHandleColor:
-                                                Colors.white.withValues(alpha: 0.90),
-                                            cursorColor:
-                                                Colors.white.withValues(alpha: 0.90),
-                                            selectionColor:
-                                                Colors.white.withValues(alpha: 0.18),
-                                          ),
-                                        ),
-                                        child: _GlassField(
-                                          enabled: !_recording && !_starting,
-                                          child: TextField(
-                                            cursorColor: Colors.white.withValues(alpha: 0.90),
-                                            controller: _targetSpeakersCtrl,
-                                            enabled: !_recording && !_starting,
-                                            keyboardType: TextInputType.number,
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter.digitsOnly,
-                                            ],
-                                            style: TextStyle(
-                                              color: Colors.white.withValues(alpha: 0.92),
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            decoration: InputDecoration(
-                                              hintText: '0',
-                                              hintStyle: TextStyle(
-                                                color: Colors.white.withValues(alpha: 0.45),
-                                                fontWeight: FontWeight.w600,
+                                          textSelectionTheme:
+                                              const TextSelectionThemeData(
+                                                selectionHandleColor: Colors
+                                                    .white, // ✅ bubble color
+                                                cursorColor: Colors.white,
+                                                selectionColor: Color.fromARGB(
+                                                  128,
+                                                  255,
+                                                  130,
+                                                  67,
+                                                ),
                                               ),
-                                              isDense: true,
-                                              border: InputBorder.none,
-                                              contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 10,
+                                        ),
+                                        child: TextField(
+                                          cursorColor: Colors.white,
+                                          controller: _targetSpeakersCtrl,
+                                          enabled: !_recording && !_starting,
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter
+                                                .digitsOnly,
+                                          ],
+                                          decoration: const InputDecoration(
+                                            hintText: '0',
+                                            isDense: true,
+                                            border: OutlineInputBorder(),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: Color(0xFFff8143),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: Color(0xFFff8143),
+                                                width: 1,
                                               ),
                                             ),
                                           ),
@@ -774,28 +779,24 @@ class _RecordSheetState extends State<RecordSheet> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
-                                  'Use 0 for auto-detect.',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.55),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                                const Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Use 0 for auto-detect.',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
                               ],
                             ],
                           ),
                         ),
-
                         const SizedBox(height: 12),
-
-                        Text(
+                        const Text(
                           'Tip: keep the phone close and speak clearly. You can rename speakers later in the transcript view.',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.65),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -817,34 +818,53 @@ class _RecordSheetState extends State<RecordSheet> {
   }
 }
 
-/// ✅ your preferred: tint-only interactive field container
-class _GlassField extends StatelessWidget {
-  const _GlassField({required this.child, required this.enabled});
+class _Panel extends StatelessWidget {
+  const _Panel({required this.child, this.title, this.subtitle});
 
   final Widget child;
-  final bool enabled;
+  final String? title;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
-    Widget field = LiquidGlass(
-      borderRadius: BorderRadius.circular(14),
-      padding: EdgeInsets.zero,
-      shadow: false,
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-      // ✅ PERF: interactive => tint-only
-      blurX: 0,
-      blurY: 0,
-      grain: false,
+    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
+    final border = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.10);
 
-      tintOpacityDark: 0.075,
-      tintOpacityLight: 0.060,
-      borderOpacityDark: 0.16,
-      borderOpacityLight: 0.20,
-      child: child,
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 18,
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null) ...[
+            Text(title!, style: const TextStyle(fontWeight: FontWeight.w800)),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                subtitle!,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 12),
+          ],
+          child,
+        ],
+      ),
     );
-
-    if (!enabled) field = Opacity(opacity: 0.55, child: field);
-    return field;
   }
 }
 
