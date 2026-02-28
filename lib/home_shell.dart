@@ -1,6 +1,5 @@
 // lib/home_shell.dart
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'tabs/timeline_tab.dart';
@@ -10,6 +9,13 @@ import 'tabs/search_tab.dart';
 import 'tabs/favourites_tab.dart';
 import 'settings/settings_page.dart';
 import 'auth/eligibility_gate.dart';
+
+// ✅ glass primitives
+import 'ui/glass/glass_dock.dart';
+import 'ui/glass/glass_modal.dart';
+import 'ui/glass/glass_button.dart';
+import 'ui/glass/liquid_glass.dart';
+import 'ui/glass/glass_tokens.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -21,7 +27,6 @@ class HomeShell extends StatefulWidget {
 
   final bool initialEligible;
   final String? eligibilityError;
-
   final Future<EligibilityGateResult> Function() onRetryEligibility;
 
   @override
@@ -34,7 +39,6 @@ class _HomeShellState extends State<HomeShell> {
 
   late bool _eligible;
   String? _eligibilityError;
-
   bool _retrying = false;
 
   @override
@@ -43,8 +47,6 @@ class _HomeShellState extends State<HomeShell> {
     _eligible = widget.initialEligible;
     _eligibilityError = widget.eligibilityError;
   }
-
-  // ---------------- Navigation ----------------
 
   Future<void> _openRecordSheet() async {
     if (!_eligible) return;
@@ -69,8 +71,6 @@ class _HomeShellState extends State<HomeShell> {
   bool get _showLockOverlay => !_eligible;
 
   void _handleUpgradeSuccess() {
-    // AccountTab/Settings expects a VoidCallback (sync).
-    // Trigger the async refresh without awaiting.
     if (_retrying) return;
     // ignore: unawaited_futures
     _retryEligibility();
@@ -82,8 +82,8 @@ class _HomeShellState extends State<HomeShell> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SettingsPage(
-          openAccount: true, // ✅ Settings auto-opens Account page
-          onUpgradeSuccess: _handleUpgradeSuccess, // ✅ flows to AccountTab
+          openAccount: true,
+          onUpgradeSuccess: _handleUpgradeSuccess,
         ),
       ),
     );
@@ -94,7 +94,6 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _retrying = true);
 
     try {
-      // ✅ hard timeout so UI never freezes
       final res = await widget.onRetryEligibility().timeout(
         const Duration(seconds: 12),
         onTimeout: () => const EligibilityGateResult(eligible: false),
@@ -106,9 +105,7 @@ class _HomeShellState extends State<HomeShell> {
         _eligibilityError = res.error;
       });
 
-      if (res.eligible) {
-        setState(() => _index = 0);
-      }
+      if (res.eligible) setState(() => _index = 0);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -121,41 +118,37 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
-  // ---------------- UI ----------------
-
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
       TimelineTab(
         onNavigateToTab: _goTo,
-        onUpgradeSuccess:
-            _handleUpgradeSuccess, // ✅ Timeline -> Settings -> Account
-      ), // 0
-      const CalendarPage(), // 1
-      const SizedBox.shrink(), // 2 (never shown; record is action)
-      const SearchTab(), // 3
-      const FavouritesTab(), // 4
+        onUpgradeSuccess: _handleUpgradeSuccess,
+      ),
+      const CalendarPage(),
+      const SizedBox.shrink(),
+      const SearchTab(),
+      const FavouritesTab(),
     ];
 
     return Scaffold(
+      backgroundColor: Colors.transparent, // ✅ let wallpaper show
       body: Stack(
         children: [
           IgnorePointer(
             ignoring: _showLockOverlay,
             child: _AnimatedIndexedStack(index: _index, children: pages),
           ),
+
           if (_showLockOverlay)
             _AccessLockedOverlaySheet(
               error: _eligibilityError,
               retrying: _retrying,
-              onUpgrade:
-                  _openSettingsToAccount, // ✅ Upgrade -> Settings -> Account
+              onUpgrade: _openSettingsToAccount,
               onRetry: _retryEligibility,
             ),
         ],
       ),
-
-      // ✅ Still a bottom nav, but styled as a dock
       bottomNavigationBar: IgnorePointer(
         ignoring: _showLockOverlay,
         child: _BottomDockNav(
@@ -225,110 +218,89 @@ class _BottomDockNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
 
-    final bg = isDark ? const Color(0xFF101018) : Colors.white;
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
+    Color iconColor(Set<WidgetState > states) {
+      final selected = states.contains(WidgetState.selected);
+      if (selected) return Colors.white.withValues(alpha: 0.96);
+      return Colors.white.withValues(alpha: 0.70);
+    }
 
-    // Record gets a distinctive “capsule” icon so the nav doesn’t look generic.
-    Widget recordIcon(bool selected) {
-      final base = selected
-          ? (isDark ? Colors.white : Colors.black)
-          : (isDark ? Colors.white70 : Colors.black54);
-
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: base.withOpacity(selected ? 0.10 : 0.06),
-          border: Border.all(color: base.withOpacity(0.14)),
-        ),
-        child: Icon(Icons.mic, size: 22, color: base),
+    TextStyle labelStyle(Set<WidgetState > states) {
+      final selected = states.contains(WidgetState.selected);
+      return TextStyle(
+        fontSize: 12,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w600, // ✅ Apple-ish
+        letterSpacing: 0.1,
+        color: selected
+            ? Colors.white.withValues(alpha: 0.92)
+            : Colors.white.withValues(alpha: 0.68),
       );
     }
 
-    return SafeArea(
-      top: false,
+    Widget recordIcon(bool selected) {
+      final fg = selected
+          ? Colors.white.withValues(alpha: 0.95)
+          : Colors.white.withValues(alpha: 0.72);
+
+      return LiquidGlass(
+        borderRadius: BorderRadius.circular(999),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        blurX: isDark ? 16 : 12,
+        blurY: isDark ? 16 : 12,
+        shadow: false,
+        tintOpacityDark: selected ? 0.070 : 0.045,
+        tintOpacityLight: selected ? 0.055 : 0.035,
+        borderOpacityDark: selected ? 0.18 : 0.14,
+        borderOpacityLight: selected ? 0.22 : 0.18,
+        child: Icon(Icons.mic, size: 22, color: fg),
+      );
+    }
+
+    return GlassDock(
+      // Dock tuning already “Apple”; keep it.
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: bg.withOpacity(0.92),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: border),
-            boxShadow: [
-              BoxShadow(
-                blurRadius: 20,
-                spreadRadius: 0,
-                color: Colors.black.withOpacity(isDark ? 0.35 : 0.12),
-                offset: const Offset(0, 10),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: NavigationBarTheme(
+          data: NavigationBarThemeData(
+            height: 66,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            indicatorColor: Colors.white.withValues(alpha: 0.08),
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            labelTextStyle: WidgetStateProperty.resolveWith(labelStyle),
+            iconTheme: WidgetStateProperty .resolveWith(
+              (states) => IconThemeData(size: 22, color: iconColor(states)),
+            ),
+          ),
+          child: NavigationBar(
+            selectedIndex: index,
+            onDestinationSelected: onSelect,
+            destinations: [
+              const NavigationDestination(
+                icon: Icon(Icons.timeline),
+                label: 'Timeline',
+              ),
+              const NavigationDestination(
+                icon: Icon(Icons.calendar_month),
+                label: 'Calendar',
+              ),
+              NavigationDestination(
+                icon: recordIcon(false),
+                selectedIcon: recordIcon(true),
+                label: 'Record',
+              ),
+              const NavigationDestination(
+                icon: Icon(Icons.search),
+                label: 'Search',
+              ),
+              const NavigationDestination(
+                icon: Icon(Icons.favorite_outline),
+                label: 'Favourites',
               ),
             ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: NavigationBarTheme(
-            data: NavigationBarThemeData(
-              height: 66,
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              indicatorColor: (isDark ? Colors.white : Colors.black)
-                  .withOpacity(0.08),
-              indicatorShape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              labelTextStyle: MaterialStateProperty.resolveWith((states) {
-                final selected = states.contains(MaterialState.selected);
-                return TextStyle(
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  color: selected
-                      ? (isDark ? Colors.white : Colors.black)
-                      : (isDark ? Colors.white70 : Colors.black54),
-                );
-              }),
-              iconTheme: MaterialStateProperty.resolveWith((states) {
-                final selected = states.contains(MaterialState.selected);
-                return IconThemeData(
-                  size: 22,
-                  color: selected
-                      ? (isDark ? Colors.white : Colors.black)
-                      : (isDark ? Colors.white70 : Colors.black54),
-                );
-              }),
-            ),
-            child: NavigationBar(
-              selectedIndex: index,
-              onDestinationSelected: onSelect,
-              destinations: [
-                const NavigationDestination(
-                  icon: Icon(Icons.timeline),
-                  label: 'Timeline',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.calendar_month),
-                  label: 'Calendar',
-                ),
-
-                // ✅ Record stays INSIDE the nav, but visually distinct
-                NavigationDestination(
-                  icon: recordIcon(false),
-                  selectedIcon: recordIcon(true),
-                  label: 'Record',
-                ),
-
-                const NavigationDestination(
-                  icon: Icon(Icons.search),
-                  label: 'Search',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.favorite_outline),
-                  label: 'Favourites',
-                ),
-              ],
-            ),
           ),
         ),
       ),
@@ -336,7 +308,7 @@ class _BottomDockNav extends StatelessWidget {
   }
 }
 
-// ---------------- Overlay (Bottom Sheet style) ----------------
+// ---------------- Overlay (Glass Modal) ----------------
 
 class _AccessLockedOverlaySheet extends StatelessWidget {
   const _AccessLockedOverlaySheet({
@@ -353,207 +325,123 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
+    final titleColor = Colors.white.withValues(alpha: 0.92);
+    final subColor = Colors.white.withValues(alpha: 0.70);
 
-    final panelBg = isDark ? const Color(0xFF141422) : const Color(0xFFF7F7FB);
-    final panelBorder = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
+    return Stack(
+      children: [
+        // ✅ Proper glass barrier (blur + dim)
+        GlassModalBarrier(onTap: null),
 
-    return Positioned.fill(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {},
-        child: Stack(
-          children: [
-            // ✅ dim + blur background
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.35),
-                      Colors.black.withOpacity(0.60),
-                    ],
+        // ✅ Glass panel
+        GlassModal(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  LiquidGlass(
+                    borderRadius: BorderRadius.circular(14),
+                    padding: const EdgeInsets.all(10),
+                    blurX: isDark ? 16 : 12,
+                    blurY: isDark ? 16 : 12,
+                    shadow: false,
+                    tintOpacityDark: 0.055,
+                    tintOpacityLight: 0.040,
+                    borderOpacityDark: 0.14,
+                    borderOpacityLight: 0.18,
+                    child: Icon(Icons.lock_outline,
+                        color: Colors.white.withValues(alpha: 0.92)),
                   ),
-                ),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                  child: const SizedBox.expand(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Access locked',
+                          style: TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w700, // ✅ less heavy
+                            color: titleColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Trial ended or Pro inactive',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: subColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Upgrade to continue using the app.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: subColor,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
 
-            // ✅ CENTERED panel (middle of screen)
-            Center(
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 520),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: panelBg,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: panelBorder),
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 30,
-                            color: Colors.black.withOpacity(0.25),
-                            offset: const Offset(0, 18),
-                          ),
-                        ],
-                      ),
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // ✅ removed "drag handle" since this is not a bottom sheet
-                          Row(
-                            children: [
-                              Container(
-                                height: 44,
-                                width: 44,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14),
-                                  color: (isDark ? Colors.white : Colors.black)
-                                      .withOpacity(0.06),
-                                  border: Border.all(
-                                    color:
-                                        (isDark ? Colors.white : Colors.black)
-                                            .withOpacity(0.10),
-                                  ),
-                                ),
-                                child: Icon(
-                                  Icons.lock_outline,
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Access locked',
-                                      style: TextStyle(
-                                        fontSize: 16.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: isDark
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Trial ended or Pro inactive',
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: isDark
-                                            ? Colors.white70
-                                            : Colors.black54,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          Text(
-                            'Upgrade to continue using the app.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: isDark ? Colors.white70 : Colors.black54,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-
-                          if (error != null && error!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: Colors.red.withOpacity(0.20),
-                                ),
-                              ),
-                              child: Text(
-                                'Internet is required to verify access.\nDetails: $error',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-
-                          const SizedBox(height: 12),
-
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: retrying ? null : onRetry,
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                  child: retrying
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Text('Retry'),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: onUpgrade,
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                  icon: const Icon(
-                                    Icons.workspace_premium_outlined,
-                                  ),
-                                  label: const Text('Upgrade'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+              if (error != null && error!.trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                LiquidGlass(
+                  borderRadius: BorderRadius.circular(14),
+                  padding: const EdgeInsets.all(10),
+                  blurX: isDark ? 16 : 12,
+                  blurY: isDark ? 16 : 12,
+                  shadow: false,
+                  tintOpacityDark: 0.040,
+                  tintOpacityLight: 0.035,
+                  borderOpacityDark: 0.14,
+                  borderOpacityLight: 0.18,
+                  child: Text(
+                    'Internet is required to verify access.\nDetails: $error',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.82),
+                      height: 1.25,
                     ),
                   ),
                 ),
+              ],
+
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: GlassButton(
+                      label: retrying ? 'Checking…' : 'Retry',
+                      kind: GlassButtonKind.secondary,
+                      onPressed: retrying ? null : onRetry,
+                      loading: retrying,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GlassButton(
+                      label: 'Upgrade',
+                      kind: GlassButtonKind.primary,
+                      icon: Icons.workspace_premium_outlined,
+                      onPressed: onUpgrade,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
-

@@ -8,6 +8,13 @@ import '../objectbox.g.dart';
 import '../common/app_flushbar.dart';
 import '../common/confirm_dialog.dart';
 
+// ✅ Glass primitives
+import '../ui/glass/glass_background.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+import '../ui/glass/liquid_glass.dart';
+
 class TrashPage extends StatefulWidget {
   const TrashPage({super.key});
 
@@ -18,8 +25,6 @@ class TrashPage extends StatefulWidget {
 class _TrashPageState extends State<TrashPage> {
   List<TranscriptEntity> _items = [];
   bool _loading = false;
-
-  static const Color _bg = Color(0xFF0B0C10);
 
   @override
   void initState() {
@@ -36,11 +41,14 @@ class _TrashPageState extends State<TrashPage> {
       ..order(TranscriptEntity_.deletedAt, flags: Order.descending);
 
     final q = qb.build();
-    _items = q.find();
+    final items = q.find();
     q.close();
 
     if (!mounted) return;
-    setState(() => _loading = false);
+    setState(() {
+      _items = items;
+      _loading = false;
+    });
   }
 
   Future<void> _restore(int id) async {
@@ -61,7 +69,7 @@ class _TrashPageState extends State<TrashPage> {
     await AppFlushbar.success(context, message: 'Restored');
   }
 
-  // ✅ Hard delete (cascade) — copied from your TimelineTab logic
+  // ✅ Hard delete (cascade)
   Future<void> _deleteTranscriptCascade(int transcriptId) async {
     final store = ObjectBox.I.store;
 
@@ -109,9 +117,7 @@ class _TrashPageState extends State<TrashPage> {
         }
 
         final chatQ = chatsBox
-            .query(
-              TranscriptChatMessageEntity_.transcriptId.equals(transcriptId),
-            )
+            .query(TranscriptChatMessageEntity_.transcriptId.equals(transcriptId))
             .build();
         try {
           final ids = chatQ.findIds();
@@ -142,8 +148,7 @@ class _TrashPageState extends State<TrashPage> {
     final ok = await showConfirmDeleteDialog(
       context,
       title: 'Delete permanently?',
-      message:
-          'This will permanently delete the transcript and its related data.',
+      message: 'This will permanently delete the transcript and its related data.',
     );
     if (!ok) return;
 
@@ -164,11 +169,12 @@ class _TrashPageState extends State<TrashPage> {
     );
     if (!ok) return;
 
-    for (final t in _items) {
-      await _deleteTranscriptCascade(t.id);
+    final ids = _items.map((e) => e.id).toList();
+    for (final id in ids) {
+      await _deleteTranscriptCascade(id);
     }
-    await _load();
 
+    await _load();
     if (!mounted) return;
     await AppFlushbar.success(context, message: 'Trash emptied');
   }
@@ -183,141 +189,174 @@ class _TrashPageState extends State<TrashPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
+
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+    final muted = GlassTokens.muted(context, alpha: 0.70);
 
     return Scaffold(
-      backgroundColor: _bg,
-
-      // ✅ APP BAR
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(64),
+      backgroundColor: Colors.transparent,
+      body: GlassBackground(
         child: SafeArea(
-          bottom: false,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            child: Row(
-              children: [
-                _IconPillButton(
-                  tooltip: 'Back',
-                  icon: Icons.arrow_back,
-                  onTap: () => Navigator.of(context).maybePop(),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Trash',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.2,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                _PillButton(
-                  text: 'Empty',
-                  icon: Icons.delete_sweep_outlined,
-                  enabled: _items.isNotEmpty && !_loading,
-                  accent: Colors.redAccent,
-                  onTap: _emptyTrash,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-
-      body: SafeArea(
-        top: false, // ✅ prevent double top padding (AppBar already safe-area’d)
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 18),
-          children: [
-            // ❌ REMOVE the old header Row from here
-
-            // ================= CONTENT =================
-            if (_loading)
-              const _Panel(
+          child: Column(
+            children: [
+              // ✅ header (no AppBar)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 child: Row(
                   children: [
-                    SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                    LiquidGlass(
+                      borderRadius: BorderRadius.circular(999),
+                      padding: const EdgeInsets.all(8),
+                      shadow: false,
+                      blurX: isDark ? 16 : 12,
+                      blurY: isDark ? 16 : 12,
+                      tintOpacityDark: 0.040,
+                      tintOpacityLight: 0.032,
+                      borderOpacityDark: 0.14,
+                      borderOpacityLight: 0.18,
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: Icon(Icons.arrow_back, color: fg, size: 20),
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Loading…',
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                        'Trash',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.2,
+                          color: fg,
+                        ),
                       ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // ✅ Custom compact header button (never overflows)
+                    _HeaderGlassButton(
+                      label: 'Empty',
+                      icon: Icons.delete_sweep_outlined,
+                      enabled: _items.isNotEmpty && !_loading,
+                      onTap: _emptyTrash,
                     ),
                   ],
                 ),
-              )
-            else if (_items.isEmpty)
-              _Panel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Trash is empty',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Deleted transcripts will appear here. You can restore them or delete permanently.',
-                      style: TextStyle(color: Colors.white70, height: 1.35),
-                    ),
-                  ],
-                ),
-              )
-            else ...[
-              Row(
-                children: [
-                  Text(
-                    'Deleted transcripts',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const Spacer(),
-                  _MetaPill(text: '${_items.length}'),
-                ],
+              ),
+
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: GlassDivider(height: 1, thickness: 0.8),
               ),
               const SizedBox(height: 10),
 
-              ..._items.map((t) {
-                final title = (t.title?.trim().isNotEmpty ?? false)
-                    ? t.title!.trim()
-                    : 'Untitled transcript';
+              Expanded(
+                child: RefreshIndicator.adaptive(
+                  onRefresh: _load,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+                    children: [
+                      if (_loading)
+                        GlassCard(
+                          variant: GlassCardVariant.tile,
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white.withValues(alpha: 0.75),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Loading…',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: fg,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (_items.isEmpty)
+                        GlassCard(
+                          variant: GlassCardVariant.tile,
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Trash is empty',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  color: fg,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Deleted transcripts will appear here. You can restore them or delete permanently.',
+                                style: TextStyle(
+                                  color: muted,
+                                  height: 1.35,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else ...[
+                        Row(
+                          children: [
+                            Text(
+                              'Deleted transcripts',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                color: fg,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const Spacer(),
+                            _MetaPill(text: '${_items.length}'),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        ..._items.map((t) {
+                          final title = (t.title?.trim().isNotEmpty ?? false)
+                              ? t.title!.trim()
+                              : 'Untitled transcript';
 
-                final isYoutube = (t.sourceType) == 1;
-                final isAudio = (t.sourceType) == 2;
-                final isVideo = (t.sourceType) == 3;
-                final when = _fmtDeleted(t.deletedAt);
+                          final isYoutube = (t.sourceType) == 1;
+                          final isAudio = (t.sourceType) == 2;
+                          final isVideo = (t.sourceType) == 3;
 
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _TrashCard(
-                    title: title,
-                    subtitle: 'Deleted: $when',
-                    badge: isYoutube
-                        ? 'YouTube'
-                        : (isAudio ? 'Audio' : (isVideo ? 'Video' : 'Voice')),
-                    onRestore: () => _restore(t.id),
-                    onDeleteNow: () => _deleteNow(t.id),
-                    isDark: isDark,
+                          final when = _fmtDeleted(t.deletedAt);
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _TrashCard(
+                              title: title,
+                              subtitle: 'Deleted: $when',
+                              badge: isYoutube
+                                  ? 'YouTube'
+                                  : (isAudio ? 'Audio' : (isVideo ? 'Video' : 'Voice')),
+                              onRestore: () => _restore(t.id),
+                              onDeleteNow: () => _deleteNow(t.id),
+                            ),
+                          );
+                        }),
+                      ],
+                    ],
                   ),
-                );
-              }),
+                ),
+              ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -326,70 +365,67 @@ class _TrashPageState extends State<TrashPage> {
 
 // ===================== UI HELPERS =====================
 
-class _Panel extends StatelessWidget {
-  const _Panel({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 18,
-            color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(14),
-      child: child,
-    );
-  }
-}
-
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
+class _HeaderGlassButton extends StatelessWidget {
+  const _HeaderGlassButton({
+    required this.label,
     required this.icon,
     required this.onTap,
+    required this.enabled,
   });
 
-  final String tooltip;
+  final String label;
   final IconData icon;
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context, alpha: enabled ? 0.92 : 0.70);
 
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-            border: Border.all(
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
-            ),
+    // Header space is tight. This keeps it compact AND safe.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 120),
+      child: Opacity(
+        opacity: enabled ? 1 : 0.55,
+        child: LiquidGlass(
+          borderRadius: BorderRadius.circular(16),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          shadow: false,
+          blurX: 0,
+          blurY: 0,
+          grain: false,
+          tintOpacityDark: isDark ? 0.075 : 0.060,
+          tintOpacityLight: isDark ? 0.060 : 0.050,
+          borderOpacityDark: isDark ? 0.16 : 0.18,
+          borderOpacityLight: isDark ? 0.20 : 0.22,
+          onTap: enabled ? onTap : null,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: fg),
+              const SizedBox(width: 6),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible, // avoid debug overflow yellows
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13.5,
+                      height: 1.0,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          child: Icon(icon, size: 20, color: Colors.white),
         ),
       ),
     );
@@ -410,70 +446,17 @@ class _MetaPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: (c ?? Colors.white).withOpacity(0.06),
-        border: Border.all(color: (c ?? Colors.white).withOpacity(0.12)),
+        color: (c ?? Colors.white).withValues(alpha: 0.06),
+        border: Border.all(color: (c ?? Colors.white).withValues(alpha: 0.12)),
       ),
       child: Text(
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: c != null ? c.withOpacity(0.95) : Colors.white70,
+          color: c != null ? c.withValues(alpha: 0.95) : Colors.white70,
           fontSize: 12,
           fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _PillButton extends StatelessWidget {
-  const _PillButton({
-    required this.text,
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-    this.accent,
-  });
-
-  final String text;
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-  final Color? accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = accent ?? Colors.white;
-
-    return Opacity(
-      opacity: enabled ? 1 : 0.45,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: enabled ? onTap : null,
-        child: Ink(
-          height: 34,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: c.withOpacity(0.10),
-            border: Border.all(color: c.withOpacity(0.18)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: c.withOpacity(0.95)),
-              const SizedBox(width: 8),
-              Text(
-                text,
-                style: TextStyle(
-                  color: c.withOpacity(0.95),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12.5,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -487,7 +470,6 @@ class _TrashCard extends StatelessWidget {
     required this.badge,
     required this.onRestore,
     required this.onDeleteNow,
-    required this.isDark,
   });
 
   final String title;
@@ -495,11 +477,15 @@ class _TrashCard extends StatelessWidget {
   final String badge;
   final VoidCallback onRestore;
   final VoidCallback onDeleteNow;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+    final muted = GlassTokens.muted(context, alpha: 0.70);
+
+    return GlassCard(
+      variant: GlassCardVariant.tile,
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -510,11 +496,11 @@ class _TrashCard extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.1,
                     fontSize: 15.5,
-                    color: Colors.white,
+                    color: fg,
                   ),
                 ),
               ),
@@ -525,54 +511,101 @@ class _TrashCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: muted,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 12),
+
+          // ✅ Buttons that will never overflow in narrow widths
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(
-                    Icons.restore_rounded,
-                    size: 18,
-                    color: Colors.white,
-                  ),
-                  label: const Text(
-                    'Restore',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 40),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  onPressed: onRestore,
+                child: _CompactRowButton(
+                  label: 'Restore',
+                  icon: Icons.restore_rounded,
+                  onTap: onRestore,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.delete_forever, size: 18),
-                  label: const Text('Delete'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 40),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    foregroundColor: Colors.redAccent,
-                    side: BorderSide(color: Colors.redAccent.withOpacity(0.65)),
-                  ),
-                  onPressed: onDeleteNow,
+                child: _CompactRowButton(
+                  label: 'Delete',
+                  icon: Icons.delete_forever,
+                  onTap: onDeleteNow,
                 ),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CompactRowButton extends StatelessWidget {
+  const _CompactRowButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        final small = c.maxWidth < 150;
+        final padV = small ? 10.0 : 12.0;
+        final padH = small ? 10.0 : 14.0;
+        final fontSize = small ? 13.0 : 14.0;
+
+        return LiquidGlass(
+          borderRadius: BorderRadius.circular(16),
+          padding: EdgeInsets.symmetric(vertical: padV, horizontal: padH),
+          shadow: false,
+          blurX: 0,
+          blurY: 0,
+          grain: false,
+          tintOpacityDark: isDark ? 0.075 : 0.060,
+          tintOpacityLight: isDark ? 0.060 : 0.050,
+          borderOpacityDark: isDark ? 0.16 : 0.18,
+          borderOpacityLight: isDark ? 0.20 : 0.22,
+          onTap: onTap,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18, color: fg),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible, // stops yellow overflow warnings
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w900,
+                      fontSize: fontSize,
+                      height: 1.0,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

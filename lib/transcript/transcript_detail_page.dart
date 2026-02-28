@@ -4,22 +4,33 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:transcript/common/app_flushbar.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter/services.dart';
-import 'package:transcript/send_transcript/send_transcript_healper.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import '../objectbox/objectbox_store.dart';
+import '../common/app_flushbar.dart';
 import '../objectbox/entities.dart';
+import '../objectbox/objectbox_store.dart';
 import '../objectbox.g.dart';
+import '../report/report_dialog.dart';
+import '../report/report_service.dart';
+import '../send_transcript/send_transcript_healper.dart';
+
+import '../llm_service.dart' show LLMService, qwenMaxContext;
+import '../qwen_model_service.dart';
 
 import 'background_transcriber.dart';
-import 'transcript_summary_page.dart';
 import 'transcript_chat_page.dart';
-import '../report/report_service.dart';
-import '../report/report_dialog.dart';
-import 'package:share_plus/share_plus.dart';
+import 'transcript_summary_page.dart';
+
+// ✅ Glass primitives (match ImportAudioSheet)
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+import '../ui/glass/liquid_glass.dart';
 
 class _DisplayTurn {
   final String speaker;
@@ -54,8 +65,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   Duration _dur = Duration.zero;
   String? _loadedPath;
 
-  static const _kBusyTranscribing = 'busy_transcribing';
+  bool _busyFlag = false;
 
+  static const _kBusyTranscribing = 'busy_transcribing';
   static const _kProgressProcessedSec = 'progress_processed_sec';
   static const _kProgressTotalSec = 'progress_total_sec';
   static const _kProgressStage = 'progress_stage';
@@ -76,6 +88,149 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   _AudioVariant _audioVariant = _AudioVariant.original;
 
   // ============================================================
+  // ✅ AUTO SUMMARY (ONLY ONCE)
+  // ============================================================
+
+  final QwenModelService _qwenService = QwenModelService();
+
+  String _summaryBusyKey(int id) => 'summary_busy_$id';
+  String _autoSummaryOnceKey(int id) => 'auto_summary_once_$id';
+
+  static const _kPrefAutoSummaryEnabled = 'pref_auto_summary_enabled'; // bool
+
+  Future<bool> _isAutoSummaryEnabled() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return sp.getBool(_kPrefAutoSummaryEnabled) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<bool> _isSummaryBusy() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return sp.getBool(_summaryBusyKey(widget.transcriptId)) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _setSummaryBusy(bool v) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setBool(_summaryBusyKey(widget.transcriptId), v);
+    } catch (_) {}
+  }
+
+  Future<bool> _didAutoSummaryRunOnce() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return sp.getBool(_autoSummaryOnceKey(widget.transcriptId)) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _markAutoSummaryRanOnce() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setBool(_autoSummaryOnceKey(widget.transcriptId), true);
+    } catch (_) {}
+  }
+
+  bool _summaryExistsInDb() {
+    final obx = ObjectBox.I;
+    final qb = obx.summaries.query(
+      TranscriptSummaryEntity_.transcriptId.equals(widget.transcriptId),
+    );
+    final q = qb.build();
+    final existing = q.findFirst();
+    q.close();
+    return existing != null && (existing.summary ?? '').trim().isNotEmpty;
+  }
+
+  Future<void> _maybeStartAutoSummaryOnce() async {
+    if (_isProcessingNow || _processingFailed) return;
+    if (_summaryExistsInDb()) return;
+    if (!await _isAutoSummaryEnabled()) return;
+    if (await _isSummaryBusy()) return;
+    if (await _didAutoSummaryRunOnce()) return;
+    if (_turns.isEmpty) return;
+
+    final exists = await _qwenService.isModelDownloaded();
+    if (!exists) return;
+    final modelPath = await _qwenService.modelFilePath();
+    if (modelPath.trim().isEmpty) return;
+
+    await _markAutoSummaryRanOnce();
+    await _setSummaryBusy(true);
+
+    unawaited(_runAutoSummaryBalanced(modelPath));
+  }
+
+  Future<void> _runAutoSummaryBalanced(String modelPath) async {
+    try {
+      final obx = ObjectBox.I;
+
+      final buf = StringBuffer();
+      for (final u in _turns) {
+        final txt = u.text.trim();
+        if (txt.isEmpty) continue;
+        buf.writeln('${u.speakerLabel}: $txt');
+      }
+      final transcriptText = buf.toString().trim();
+      if (transcriptText.isEmpty) {
+        await _setSummaryBusy(false);
+        return;
+      }
+
+      const maxTokens = 650;
+      String latestFullText = '';
+
+      final stream = LLMService.summarizeTranscript(
+        transcript: transcriptText,
+        modelPath: modelPath,
+        maxTokens: maxTokens,
+        temperature: 0.3,
+        contextSize: qwenMaxContext,
+      );
+
+      stream.listen(
+        (evt) {
+          final full = (evt['full_text'] ?? '') as String;
+          if (full.isNotEmpty) latestFullText = full;
+        },
+        onError: (_) async {
+          await _setSummaryBusy(false);
+        },
+        onDone: () async {
+          try {
+            final qb2 = obx.summaries.query(
+              TranscriptSummaryEntity_.transcriptId.equals(widget.transcriptId),
+            );
+            final q2 = qb2.build();
+            final existing = q2.findFirst();
+            q2.close();
+
+            final entity = TranscriptSummaryEntity(
+              id: existing?.id ?? 0,
+              transcriptId: widget.transcriptId,
+              summary: latestFullText.trim(),
+              updatedAt: DateTime.now(),
+            );
+            obx.summaries.put(entity);
+          } catch (_) {}
+
+          await _setSummaryBusy(false);
+        },
+      );
+    } catch (_) {
+      await _setSummaryBusy(false);
+    }
+  }
+
+  // ============================================================
   // Lifecycle
   // ============================================================
 
@@ -83,12 +238,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   void initState() {
     super.initState();
     _wirePlayer();
-    _loadOnce();
-
     _bgSub = BackgroundTranscriber.onData(_onBgData);
 
-    _syncPoller();
-    _syncWatchdog();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _refreshTick();
+    });
   }
 
   @override
@@ -102,13 +257,141 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   // ============================================================
-  // Playback gating (✅ disable until transcription ends)
+  // ✅ Busy flag
   // ============================================================
 
-  bool get _isTranscribingNow {
-    final s = _job?.status;
-    return s == 'PENDING' || s == 'RUNNING';
+  Future<bool> _readBusyFlag() async {
+    try {
+      final v = await FlutterForegroundTask.getData(key: _kBusyTranscribing);
+      return v == true;
+    } catch (_) {
+      return false;
+    }
   }
+
+  bool get _isProcessingNow => _busyFlag && !_processingFailed;
+  bool get _isTranscribingNow => _isProcessingNow;
+
+  // ============================================================
+  // ✅ APPLY BACKGROUND RESULT TO OBJECTBOX  (FIXES YOUR BUG)
+  // ============================================================
+
+  String _firstFiveWords(String s) {
+    final words = s
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+    if (words.isEmpty) return '';
+    final firstFive = words.take(5).join(' ');
+    return words.length > 5 ? '$firstFive…' : firstFive;
+  }
+
+  void _applyBgResultToDb({
+    required int transcriptId,
+    required String wavPath,
+    required Map<String, dynamic> payload,
+  }) {
+    final obx = ObjectBox.I;
+
+    // 1) Update transcript entity (metadata)
+    final t = obx.transcripts.get(transcriptId);
+    if (t != null) {
+      final lang = (payload['lang'] ?? payload['language'] ?? t.lang ?? 'auto').toString();
+      t.lang = lang;
+
+      final durRaw = payload['durationSec'] ?? payload['duration_sec'] ?? payload['duration'];
+      if (durRaw is num) {
+        t.durationSec = durRaw.toDouble();
+      } else {
+        final dd = double.tryParse('$durRaw');
+        if (dd != null) t.durationSec = dd;
+      }
+
+      // If title empty, try to build from first 5 words of transcript
+      final currentTitle = (t.title ?? '').trim();
+      if (currentTitle.isEmpty) {
+        String seed = '';
+
+        // prefer payload full text if exists, else from first non-empty turn
+        final fullText = (payload['text'] ?? payload['fullText'] ?? '').toString().trim();
+        if (fullText.isNotEmpty) {
+          seed = fullText;
+        } else {
+          final turns = payload['turns'];
+          if (turns is List) {
+            for (final it in turns) {
+              if (it is Map) {
+                final txt = (it['text'] ?? '').toString().trim();
+                if (txt.isNotEmpty) {
+                  seed = txt;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        final suggested = _firstFiveWords(seed);
+        if (suggested.isNotEmpty) {
+          t.title = suggested;
+        }
+      }
+
+      // Ensure audioPath is at least set if empty
+      final ap = (t.audioPath ?? '').trim();
+      if (ap.isEmpty) {
+        t.audioPath = wavPath;
+      }
+
+      obx.transcripts.put(t);
+      _t = t;
+    }
+
+    // 2) Replace turns for this transcript
+    final turnsRaw = payload['turns'];
+    if (turnsRaw is List) {
+      // delete existing turns
+      final qbDel = obx.turns.query(
+        TranscriptTurnEntity_.transcript.equals(transcriptId),
+      );
+      final qDel = qbDel.build();
+      final existing = qDel.find();
+      qDel.close();
+      for (final u in existing) {
+        obx.turns.remove(u.id);
+      }
+
+      // insert new turns
+      for (final it in turnsRaw) {
+        if (it is! Map) continue;
+        final m = it.cast<String, dynamic>();
+
+        final spk = (m['speaker'] ?? m['spk'] ?? 'Speaker').toString().trim();
+        final txt = (m['text'] ?? '').toString();
+
+        final s0 = m['startSec'] ?? m['start_sec'] ?? m['start'] ?? 0.0;
+        final s1 = m['endSec'] ?? m['end_sec'] ?? m['end'] ?? 0.0;
+
+        final start = (s0 is num) ? s0.toDouble() : double.tryParse('$s0') ?? 0.0;
+        final end = (s1 is num) ? s1.toDouble() : double.tryParse('$s1') ?? 0.0;
+
+        obx.turns.put(
+          TranscriptTurnEntity(
+            id: 0,
+            speakerLabel: spk.isEmpty ? 'Speaker' : spk,
+            startSec: start,
+            endSec: end,
+            text: txt,
+          )..transcript.targetId = transcriptId,
+        );
+      }
+    }
+  }
+
+  // ============================================================
+  // Playback gating
+  // ============================================================
 
   Future<void> _stopPlaybackIfNeeded() async {
     if (!_isTranscribingNow) return;
@@ -121,7 +404,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     setState(() {
       _isPlaying = false;
       _pos = Duration.zero;
-      _loadedPath = null; // force reload when allowed again
+      _loadedPath = null;
     });
   }
 
@@ -131,15 +414,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   Future<void> _pullProgressFromFgStorage() async {
     try {
-      final processedRaw = await FlutterForegroundTask.getData(
-        key: _kProgressProcessedSec,
-      );
-      final totalRaw = await FlutterForegroundTask.getData(
-        key: _kProgressTotalSec,
-      );
-      final stageRaw = await FlutterForegroundTask.getData(
-        key: _kProgressStage,
-      );
+      final processedRaw = await FlutterForegroundTask.getData(key: _kProgressProcessedSec);
+      final totalRaw = await FlutterForegroundTask.getData(key: _kProgressTotalSec);
+      final stageRaw = await FlutterForegroundTask.getData(key: _kProgressStage);
 
       final processed = (processedRaw is num) ? processedRaw.toDouble() : null;
       final total = (totalRaw is num) ? totalRaw.toDouble() : null;
@@ -149,14 +426,13 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       setState(() {
         if (processed != null) _progressProcessedSec = processed;
         if (total != null) _progressTotalSec = total;
-        if (stage != null && stage.trim().isNotEmpty)
-          _progressStage = stage.trim();
+        if (stage != null && stage.trim().isNotEmpty) _progressStage = stage.trim();
       });
     } catch (_) {}
   }
 
   // ============================================================
-  // ✅ Audio source selection (Original / Enhanced)
+  // ✅ Audio helpers
   // ============================================================
 
   String? _getOriginalPath() =>
@@ -166,19 +442,29 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       ? null
       : _t!.processedAudioPath!.trim();
 
-  String? _getSelectedPath() {
-    final orig = _getOriginalPath();
-    final enh = _getEnhancedPath();
-
-    if (_audioVariant == _AudioVariant.enhanced) {
-      return enh ?? orig;
-    }
-    return orig ?? enh;
-  }
-
   bool _fileExists(String? path) {
     if (path == null || path.trim().isEmpty) return false;
     return File(path).existsSync();
+  }
+
+  _AudioVariant _effectiveVariant({
+    required bool origExists,
+    required bool enhExists,
+  }) {
+    if (_audioVariant == _AudioVariant.enhanced && !enhExists && origExists) {
+      return _AudioVariant.original;
+    }
+    if (_audioVariant == _AudioVariant.original && !origExists && enhExists) {
+      return _AudioVariant.enhanced;
+    }
+    return _audioVariant;
+  }
+
+  String? _getSelectedPath(_AudioVariant v) {
+    final orig = _getOriginalPath();
+    final enh = _getEnhancedPath();
+    if (v == _AudioVariant.enhanced) return enh ?? orig;
+    return orig ?? enh;
   }
 
   void _debugPrintAudioPaths() {
@@ -189,11 +475,11 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     debugPrint('[AUDIO][DB] original exists: ${_fileExists(orig)}');
     debugPrint('[AUDIO][DB] enhanced exists: ${_fileExists(enh)}');
     debugPrint('[AUDIO][DB] selected variant: $_audioVariant');
-    debugPrint('[AUDIO][DB] selected path: ${_getSelectedPath()}');
+    debugPrint('[AUDIO][DB] selected path: ${_getSelectedPath(_audioVariant)}');
   }
 
   // ============================================================
-  // Cache helpers (FTS-like)
+  // Cache helpers
   // ============================================================
 
   String _cleanTurnText(String raw) {
@@ -213,9 +499,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       final reRangeSec = RegExp(r'^\d+(\.\d+)?\s*[-–]\s*\d+(\.\d+)?\s*s$');
       final reClock = RegExp(r'^\[?\d{1,2}:\d{2}(\.\d{1,3})?\]?$');
       final reClockLong = RegExp(r'^\[?\d{1,2}:\d{2}:\d{2}(\.\d{1,3})?\]?$');
-      return reRangeSec.hasMatch(l) ||
-          reClock.hasMatch(l) ||
-          reClockLong.hasMatch(l);
+      return reRangeSec.hasMatch(l) || reClock.hasMatch(l) || reClockLong.hasMatch(l);
     }
 
     if (lines.isNotEmpty && looksLikeTimecode(lines.last)) {
@@ -274,34 +558,33 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     await showReportDialog(
       outerContext: context,
       responseText: responseText,
-      sendReport:
-          ({
-            Map<String, dynamic>? meta,
-            required String reason,
-            required String note,
-            required String response,
-          }) async {
-            final localMeta = <String, dynamic>{
-              'page': 'transcript_detail',
-              'transcriptId': widget.transcriptId,
-              'title': (_t?.title ?? '').trim(),
-              'hasEditedText': (_t?.editedText ?? '').trim().isNotEmpty,
-              'turnCount': _turns.length,
-            };
+      sendReport: ({
+        Map<String, dynamic>? meta,
+        required String reason,
+        required String note,
+        required String response,
+      }) async {
+        final localMeta = <String, dynamic>{
+          'page': 'transcript_detail',
+          'transcriptId': widget.transcriptId,
+          'title': (_t?.title ?? '').trim(),
+          'hasEditedText': (_t?.editedText ?? '').trim().isNotEmpty,
+          'turnCount': _turns.length,
+        };
 
-            final mergedMeta = <String, dynamic>{
-              if (meta != null) ...meta,
-              ...localMeta,
-            };
+        final mergedMeta = <String, dynamic>{
+          if (meta != null) ...meta,
+          ...localMeta,
+        };
 
-            final combinedNote = ('[meta] $mergedMeta\n${note.trim()}').trim();
+        final combinedNote = ('[meta] $mergedMeta\n${note.trim()}').trim();
 
-            await _reportService.sendReport(
-              reason: reason,
-              note: combinedNote,
-              response: response,
-            );
-          },
+        await _reportService.sendReport(
+          reason: reason,
+          note: combinedNote,
+          response: response,
+        );
+      },
     );
   }
 
@@ -331,10 +614,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     });
   }
 
-  Future<bool> _ensureSourceLoaded() async {
+  Future<bool> _ensureSourceLoaded(_AudioVariant v) async {
     if (_isTranscribingNow) return false;
 
-    final path = _getSelectedPath();
+    final path = _getSelectedPath(v);
     if (path == null || path.isEmpty) return false;
 
     final f = File(path);
@@ -347,7 +630,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       await _player.setSource(DeviceFileSource(path));
       _loadedPath = path;
 
-      // ✅ Try to fetch duration immediately
       try {
         final d = await _player.getDuration();
         if (d != null && mounted) setState(() => _dur = d);
@@ -357,7 +639,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     return true;
   }
 
-  Future<void> _togglePlayPause() async {
+  Future<void> _togglePlayPause(_AudioVariant effectiveV) async {
     if (_isTranscribingNow) {
       if (!mounted) return;
       await AppFlushbar.info(
@@ -367,7 +649,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       return;
     }
 
-    if (!await _ensureSourceLoaded()) {
+    if (!await _ensureSourceLoaded(effectiveV)) {
       if (!mounted) return;
       await AppFlushbar.error(
         context,
@@ -375,11 +657,11 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       );
       return;
     }
+
     if (_isPlaying) {
       await _player.pause();
     } else {
-      if (_dur > Duration.zero &&
-          _pos >= _dur - const Duration(milliseconds: 300)) {
+      if (_dur > Duration.zero && _pos >= _dur - const Duration(milliseconds: 300)) {
         await _player.seek(Duration.zero);
       }
       await _player.resume();
@@ -393,10 +675,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   Future<void> _switchVariant(_AudioVariant v) async {
     if (_isTranscribingNow) return;
-
     if (v == _audioVariant) return;
 
-    // stop playback before switching sources
     try {
       await _player.stop();
     } catch (_) {}
@@ -406,20 +686,16 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       _isPlaying = false;
       _pos = Duration.zero;
       _dur = Duration.zero;
-      _loadedPath = null; // force reload
+      _loadedPath = null;
     });
-    await _ensureSourceLoaded();
+
+    await _ensureSourceLoaded(v);
     _debugPrintAudioPaths();
   }
 
   // ============================================================
   // Job helpers
   // ============================================================
-
-  bool _isJobActive(TranscriptionJobEntity? j) {
-    final s = j?.status;
-    return s == 'PENDING' || s == 'RUNNING';
-  }
 
   TranscriptionJobEntity? _getLatestJob() {
     final obx = ObjectBox.I;
@@ -464,6 +740,22 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     _job = job;
   }
 
+  void _persistJobRunningIfNeeded() {
+    final obx = ObjectBox.I;
+    final job = _getLatestJob();
+    if (job == null) return;
+
+    if (job.status == 'RUNNING' || job.status == 'PENDING') {
+      _job = job;
+      return;
+    }
+
+    job.status = 'RUNNING';
+    job.error = null;
+    obx.jobs.put(job);
+    _job = job;
+  }
+
   // ============================================================
   // Data loading
   // ============================================================
@@ -490,45 +782,38 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
       if (job?.status == 'ERROR') {
         _processingFailed = true;
-        _processingError =
-            job?.error ?? 'Transcription failed. Please try again.';
+        _processingError = job?.error ?? 'Transcription failed. Please try again.';
       } else {
-        if (!_processingFailed) {
-          _processingError = null;
-        }
+        if (!_processingFailed) _processingError = null;
       }
     });
 
-    // ✅ log + enforce "no playback while transcribing"
     _debugPrintAudioPaths();
     _stopPlaybackIfNeeded();
   }
 
-  void _refreshTick() {
+  // ============================================================
+  // ✅ Core refresh loop
+  // ============================================================
+
+  Future<void> _refreshTick() async {
     _loadOnce();
-    _pullProgressFromFgStorage();
-    _syncPoller();
-    _syncWatchdog();
+    await _pullProgressFromFgStorage();
 
-    if (_turns.isNotEmpty && _job?.status != 'DONE') {
-      _processingWatchdog?.cancel();
-      _processingWatchdog = null;
+    final newBusy = await _readBusyFlag();
+    final busyChanged = newBusy != _busyFlag;
+    _busyFlag = newBusy;
 
-      _persistJobDone();
-      _updateTranscriptSearchCacheInDb();
-
-      FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
-
-      if (!mounted) return;
-      setState(() {
-        _processingFailed = false;
-        _processingError = null;
-      });
-
-      _syncPoller();
-      _syncWatchdog();
-      return;
+    if (_busyFlag && !_processingFailed) {
+      _persistJobRunningIfNeeded();
     }
+
+    if (!_busyFlag && !_processingFailed) {
+      if (_job != null && _job!.status != 'DONE') _persistJobDone();
+      _updateTranscriptSearchCacheInDb();
+    }
+
+    await _maybeStartAutoSummaryOnce();
 
     if (_job?.status == 'ERROR') {
       _poll?.cancel();
@@ -539,35 +824,31 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       if (!mounted) return;
       setState(() {
         _processingFailed = true;
-        _processingError =
-            _job?.error ?? 'Transcription failed. Please try again.';
+        _processingError = _job?.error ?? 'Transcription failed. Please try again.';
       });
       return;
     }
+
+    _syncPoller();
+    _syncWatchdog();
+
+    if (busyChanged && mounted) setState(() {});
   }
 
-  // ============================================================
-  // Poller: only while PENDING/RUNNING
-  // ============================================================
-
   void _syncPoller() {
-    final active = _isJobActive(_job);
+    final active = _busyFlag && !_processingFailed;
 
     if (active) {
       if (_poll != null) return;
-      _poll = Timer.periodic(const Duration(seconds: 1), (_) {
+      _poll = Timer.periodic(const Duration(seconds: 1), (_) async {
         if (!mounted) return;
-        _refreshTick();
+        await _refreshTick();
       });
     } else {
       _poll?.cancel();
       _poll = null;
     }
   }
-
-  // ============================================================
-  // Watchdog
-  // ============================================================
 
   Future<bool> _isFgServiceRunningSafe() async {
     if (Platform.isIOS) {
@@ -584,8 +865,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   void _syncWatchdog() {
-    final shouldArm =
-        _isJobActive(_job) && _turns.isEmpty && !_processingFailed;
+    final shouldArm = _busyFlag && _turns.isEmpty && !_processingFailed;
 
     if (!shouldArm) {
       _processingWatchdog?.cancel();
@@ -595,14 +875,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     if (_processingWatchdog != null) return;
 
-    _processingWatchdog = Timer(const Duration(seconds: 3), () async {
+    _processingWatchdog = Timer(const Duration(seconds: 5), () async {
       _processingWatchdog?.cancel();
       _processingWatchdog = null;
 
       if (!mounted) return;
-
       if (_turns.isNotEmpty) return;
-      if (_job?.status == 'ERROR') return;
 
       final running = await _isFgServiceRunningSafe();
       if (running) {
@@ -610,18 +888,16 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         return;
       }
 
-      const msg =
-          'Transcription stopped (app may have been closed). Please try again.';
-
+      const msg = 'Transcription stopped (app may have been closed). Please try again.';
       _persistJobError(msg);
 
-      await FlutterForegroundTask.saveData(
-        key: _kBusyTranscribing,
-        value: false,
-      );
+      try {
+        await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      } catch (_) {}
 
       if (!mounted) return;
       setState(() {
+        _busyFlag = false;
         _processingFailed = true;
         _processingError = msg;
       });
@@ -632,7 +908,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   // ============================================================
-  // BG events
+  // ✅ BG events
   // ============================================================
 
   Future<void> _onBgData(dynamic data) async {
@@ -640,10 +916,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final type = data['type'];
 
     if (type == 'transcribe_error') {
-      await FlutterForegroundTask.saveData(
-        key: _kBusyTranscribing,
-        value: false,
-      );
+      try {
+        await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      } catch (_) {}
 
       _processingWatchdog?.cancel();
       _processingWatchdog = null;
@@ -652,6 +927,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
       if (!mounted) return;
       setState(() {
+        _busyFlag = false;
         _processingFailed = true;
         _processingError = _job?.error ?? 'Transcription failed.';
       });
@@ -668,30 +944,50 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final existingId = data['existingId'] as int?;
     if (existingId != widget.transcriptId) return;
 
-    await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+    final payloadRaw = data['payload'];
+    final wavPath = (data['wavPath'] ?? '').toString();
+
+    if (payloadRaw is Map) {
+      final payload = payloadRaw.cast<String, dynamic>();
+
+      // ✅ THIS IS THE FIX: persist result turns into ObjectBox
+      _applyBgResultToDb(
+        transcriptId: widget.transcriptId,
+        wavPath: wavPath,
+        payload: payload,
+      );
+    }
+
+    try {
+      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+    } catch (_) {}
 
     _processingWatchdog?.cancel();
     _processingWatchdog = null;
 
     _persistJobDone();
 
+    // reload turns and update caches
+    await _refreshTick();
+
     if (mounted) {
       setState(() {
+        _busyFlag = false;
         _processingFailed = false;
         _processingError = null;
       });
     }
-
-    _refreshTick();
 
     _poll?.cancel();
     _poll = null;
   }
 
   // ============================================================
-  // Edit title
+  // Edit title / rename speaker / copy / share / edit transcript
+  // (UNCHANGED from your file below this point)
   // ============================================================
 
+  // ---------- Edit title ----------
   Future<void> _editTitle() async {
     final t = _t;
     if (t == null) return;
@@ -701,23 +997,20 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final newTitle = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        const accent = Colors.white; // 👈 change if you want
+        const accent = Colors.white;
 
         return Theme(
           data: Theme.of(ctx).copyWith(
             textSelectionTheme: const TextSelectionThemeData(
-              selectionHandleColor: Colors.white, // ✅ droplet = white
-              cursorColor: accent, // cursor color
-              selectionColor: Color.fromARGB(
-                128,
-                255,
-                130,
-                67,
-              ), // selection highlight
+              selectionHandleColor: Colors.white,
+              cursorColor: accent,
+              selectionColor: Color.fromARGB(128, 255, 130, 67),
             ),
           ),
           child: AlertDialog(
-            title: const Text('Edit title'),
+            backgroundColor: Colors.black87,
+            surfaceTintColor: Colors.transparent,
+            title: const Text('Edit title', style: TextStyle(color: Colors.white)),
             content: TextField(
               controller: ctrl,
               autofocus: true,
@@ -728,13 +1021,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                 labelStyle: TextStyle(color: Colors.white),
                 hintText: 'e.g. Team meeting',
                 hintStyle: TextStyle(color: Colors.white54),
-
-                // ✅ underline when not focused
                 enabledBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: accent, width: 1.5),
                 ),
-
-                // ✅ underline when focused
                 focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: accent, width: 2),
                 ),
@@ -743,18 +1032,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.white),
-                ),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white)),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
                 style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
-                child: const Text(
-                  'Save',
-                  style: TextStyle(color: Colors.black),
-                ),
+                child: const Text('Save', style: TextStyle(color: Colors.black)),
               ),
             ],
           ),
@@ -771,33 +1054,29 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     latest.title = newTitle.isEmpty ? null : newTitle;
     obx.transcripts.put(latest);
 
-    _refreshTick();
+    await _refreshTick();
   }
 
-  // ============================================================
-  // Rename speaker within transcript
-  // ============================================================
-
+  // ---------- Rename speaker ----------
   Future<void> _renameSpeaker(String oldLabel) async {
     final ctrl = TextEditingController(text: oldLabel);
     final newLabel = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        const accent = Colors.white; // 👈 same as newTitle
+        const accent = Colors.white;
 
         return Theme(
           data: Theme.of(ctx).copyWith(
             textSelectionTheme: const TextSelectionThemeData(
-              selectionHandleColor: Colors.white, // ✅ droplet
+              selectionHandleColor: Colors.white,
               cursorColor: accent,
               selectionColor: Color.fromARGB(128, 255, 130, 67),
             ),
           ),
           child: AlertDialog(
-            title: const Text(
-              'Rename speaker',
-              style: TextStyle(color: Colors.white),
-            ),
+            backgroundColor: Colors.black87,
+            surfaceTintColor: Colors.transparent,
+            title: const Text('Rename speaker', style: TextStyle(color: Colors.white)),
             content: TextField(
               controller: ctrl,
               autofocus: true,
@@ -808,13 +1087,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                 labelStyle: TextStyle(color: Colors.white),
                 hintText: 'e.g. Alex',
                 hintStyle: TextStyle(color: Colors.white54),
-
-                // ✅ underline when not focused
                 enabledBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: accent, width: 1.5),
                 ),
-
-                // ✅ underline when focused
                 focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: accent, width: 2),
                 ),
@@ -823,24 +1098,19 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.white),
-                ),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white)),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
                 style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
-                child: const Text(
-                  'Save',
-                  style: TextStyle(color: Colors.black),
-                ),
+                child: const Text('Save', style: TextStyle(color: Colors.black)),
               ),
             ],
           ),
         );
       },
     );
+
     if (newLabel == null || newLabel.isEmpty || newLabel == oldLabel) return;
 
     final obx = ObjectBox.I;
@@ -864,13 +1134,11 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         )..transcript.targetId = widget.transcriptId,
       );
     }
-    _refreshTick();
+
+    await _refreshTick();
   }
 
-  // ============================================================
-  // Edited transcript: edit/save + copy + display turns
-  // ============================================================
-
+  // ---------- Build transcript text ----------
   String _buildTranscriptText({bool preferEdited = true}) {
     final t = _t;
     if (preferEdited && (t?.editedText?.trim().isNotEmpty ?? false)) {
@@ -897,9 +1165,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         if (trimmed.isEmpty) continue;
 
         final idx = trimmed.indexOf(':');
-        final speaker = (idx > 0)
-            ? trimmed.substring(0, idx).trim()
-            : 'Speaker';
+        final speaker = (idx > 0) ? trimmed.substring(0, idx).trim() : 'Speaker';
         final text = (idx > 0) ? trimmed.substring(idx + 1).trim() : trimmed;
 
         final ts = (i < _turns.length) ? _turns[i] : null;
@@ -953,9 +1219,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       final dir = await getTemporaryDirectory();
 
       final safeTitle =
-          ((_t?.title ?? 'transcript').trim().isEmpty
-                  ? 'transcript'
-                  : _t!.title!)
+          ((_t?.title ?? 'transcript').trim().isEmpty ? 'transcript' : _t!.title!)
               .trim()
               .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '_')
               .replaceAll(RegExp(r'\s+'), ' ')
@@ -979,7 +1243,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
           text: 'Transcript attached.',
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Could not share file.');
     }
@@ -994,30 +1258,38 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     final newText = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit transcript'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: ctrl,
-            autofocus: true,
-            minLines: 10,
-            maxLines: 20,
-            decoration: const InputDecoration(
-              hintText: 'Format: Speaker: text (one per line)',
+      builder: (ctx) => Theme(
+        data: Theme.of(ctx),
+        child: AlertDialog(
+          backgroundColor: Colors.black87,
+          surfaceTintColor: Colors.transparent,
+          title: const Text('Edit transcript', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: TextField(
+              controller: ctrl,
+              autofocus: true,
+              minLines: 10,
+              maxLines: 20,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Format: Speaker: text (one per line)',
+                hintStyle: TextStyle(color: Colors.white54),
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
+              child: const Text('Save', style: TextStyle(color: Colors.black)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
@@ -1041,14 +1313,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     obx.transcripts.put(latest);
 
-    _refreshTick();
+    await _refreshTick();
     if (!mounted) return;
     await AppFlushbar.success(context, message: 'Transcript saved.');
   }
-
-  // ============================================================
-  // ✅ Turn long-press actions (discoverable editing)
-  // ============================================================
 
   Future<void> _showTurnActions(int turnId) async {
     final t = _t;
@@ -1059,8 +1327,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       if (!mounted) return;
       await AppFlushbar.info(
         context,
-        message:
-            'You are viewing the edited transcript. Use “Edit & save transcript” to edit.',
+        message: 'You are viewing the edited transcript. Use “Edit transcript” to edit.',
       );
       return;
     }
@@ -1074,88 +1341,77 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final isDark = GlassTokens.isDark(ctx);
+        final fg = Colors.white.withValues(alpha: 0.92);
+
         return SafeArea(
           child: Container(
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101018),
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
-                    borderRadius: BorderRadius.circular(999),
+              child: Stack(
+                children: [
+                  LiquidGlass(
+                    borderRadius: BorderRadius.circular(18),
+                    padding: EdgeInsets.zero,
+                    shadow: false,
+                    blurX: isDark ? 22 : 18,
+                    blurY: isDark ? 22 : 18,
+                    tintOpacityDark: 0.040,
+                    tintOpacityLight: 0.032,
+                    borderOpacityDark: 0.14,
+                    borderOpacityLight: 0.18,
+                    child: const SizedBox.expand(),
                   ),
-                ),
-                const SizedBox(height: 10),
-                ListTile(
-                  leading: const Icon(Icons.edit_outlined, color: Colors.white),
-                  title: const Text(
-                    'Edit segment',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ListTile(
+                          leading: Icon(Icons.edit_outlined, color: fg),
+                          title: Text(
+                            'Edit segment',
+                            style: TextStyle(color: fg, fontWeight: FontWeight.w800),
+                          ),
+                          subtitle: const Text(
+                            'Fix wording for this segment only',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            await _editSingleTurn(turn);
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(Icons.copy_rounded, color: fg),
+                          title: Text(
+                            'Copy segment',
+                            style: TextStyle(color: fg, fontWeight: FontWeight.w800),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            await Clipboard.setData(
+                              ClipboardData(text: '${turn.speakerLabel}: ${turn.text}'),
+                            );
+                            if (!mounted) return;
+                            await AppFlushbar.success(context, message: 'Segment copied.');
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  subtitle: const Text(
-                    'Fix wording for this segment only',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _editSingleTurn(turn);
-                  },
-                ),
-                // ListTile(
-                //   leading: const Icon(
-                //     Icons.person_outline,
-                //     color: Colors.white,
-                //   ),
-                //   title: const Text(
-                //     'Rename speaker',
-                //     style: TextStyle(
-                //       color: Colors.white,
-                //       fontWeight: FontWeight.w800,
-                //     ),
-                //   ),
-                //   subtitle: Text(
-                //     turn.speakerLabel,
-                //     style: const TextStyle(color: Colors.white70),
-                //   ),
-                //   onTap: () {
-                //     Navigator.pop(ctx);
-                //     _renameSpeaker(turn.speakerLabel);
-                //   },
-                // ),
-                ListTile(
-                  leading: const Icon(Icons.copy_rounded, color: Colors.white),
-                  title: const Text(
-                    'Copy segment',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await Clipboard.setData(
-                      ClipboardData(text: '${turn.speakerLabel}: ${turn.text}'),
-                    );
-                    if (!mounted) return;
-                    await AppFlushbar.success(
-                      context,
-                      message: 'Segment copied.',
-                    );
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1168,25 +1424,35 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     final newText = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit segment'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          minLines: 3,
-          maxLines: 8,
-          decoration: const InputDecoration(hintText: 'Edit what was said…'),
+      builder: (ctx) => Theme(
+        data: Theme.of(ctx),
+        child: AlertDialog(
+          backgroundColor: Colors.black87,
+          surfaceTintColor: Colors.transparent,
+          title: const Text('Edit segment', style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 8,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'Edit what was said…',
+              hintStyle: TextStyle(color: Colors.white54),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
+              child: const Text('Save', style: TextStyle(color: Colors.black)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
@@ -1199,54 +1465,17 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     latest.text = newText;
     obx.turns.put(latest);
 
-    _refreshTick();
+    await _refreshTick();
     _updateTranscriptSearchCacheInDb();
 
     if (!mounted) return;
     await AppFlushbar.success(context, message: 'Segment updated.');
   }
 
-  // ============================================================
-  // Formatting helpers
-  // ============================================================
-
-  String _fmtMeta(TranscriptEntity t) {
-    final when = t.createdAt.toLocal();
-    final y = when.year.toString().padLeft(4, '0');
-    final m = when.month.toString().padLeft(2, '0');
-    final d = when.day.toString().padLeft(2, '0');
-    final hh = when.hour.toString().padLeft(2, '0');
-    final mm = when.minute.toString().padLeft(2, '0');
-    final dur = _fmtDuration(t.durationSec);
-    return '$y-$m-$d $hh:$mm • $dur';
-  }
-
   String _fmtMetaShort(TranscriptEntity t) {
     final d = t.createdAt.toLocal();
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
-  }
-
-  String _fmtDuration(double seconds) {
-    final safe = seconds.isFinite && seconds >= 0 ? seconds : 0.0;
-    final total = safe.round();
-    final m = (total ~/ 60).toString();
-    final ss = (total % 60).toString().padLeft(2, '0');
-    return '${m}m${ss}s';
   }
 
   String _fmtClock(Duration d) {
@@ -1261,125 +1490,46 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  // ============================================================
-  // UI
-  // ============================================================
-
-  Widget _buildProcessingPanel() {
-    final startedAt = _job?.createdAt.toLocal(); // if you have createdAt
-    final elapsed = startedAt == null
-        ? null
-        : DateTime.now().difference(startedAt);
-
-    final elapsedText = elapsed == null
-        ? 'Elapsed • …'
-        : 'Elapsed • ${elapsed.inMinutes}:${(elapsed.inSeconds % 60).toString().padLeft(2, '0')}';
-
-    final status = _job?.status ?? '…';
-    final segments = _turns.length;
-
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  backgroundColor: Colors.white12,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Processing audio…',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const LinearProgressIndicator(
-            minHeight: 4,
-            backgroundColor: Colors.white12,
-            color: Colors.white,
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MetaPill(text: 'Status • $status'),
-              _MetaPill(text: elapsedText),
-              _MetaPill(text: 'Segments • $segments'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Keep the app open to finish faster.',
-            style: TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
+    final fg = Colors.white.withValues(alpha: 0.92);
 
     final t = _t;
     if (t == null) {
       return const Scaffold(body: Center(child: Text('Not found')));
     }
 
-    final title = (t.title?.trim().isNotEmpty ?? false)
-        ? t.title!.trim()
-        : 'Transcript';
+    final title = (t.title?.trim().isNotEmpty ?? false) ? t.title!.trim() : 'Transcript';
 
-    // speaker counts
     final counts = <String, int>{};
     for (final u in _turns) {
       counts[u.speakerLabel] = (counts[u.speakerLabel] ?? 0) + 1;
     }
     final labels = counts.keys.toList()..sort();
 
-    final isProcessing =
-        (_turns.isEmpty &&
-        !_processingFailed &&
-        (_job?.status == 'PENDING' || _job?.status == 'RUNNING'));
+    final isProcessing = _isProcessingNow;
 
     final origPath = _getOriginalPath();
     final enhPath = _getEnhancedPath();
     final origExists = _fileExists(origPath);
     final enhExists = _fileExists(enhPath);
 
-    // gently fall back (same behavior)
-    if (_audioVariant == _AudioVariant.enhanced && !enhExists && origExists) {
-      _audioVariant = _AudioVariant.original;
-    }
+    final effectiveV = _effectiveVariant(origExists: origExists, enhExists: enhExists);
 
     final hasAnyAudio = origExists || enhExists;
     final canPlayAudio = hasAnyAudio && !_isTranscribingNow;
 
     final displayTurns = _buildDisplayTurns();
-    final showingEdited =
-        (t.editedText != null && t.editedText!.trim().isNotEmpty);
+    final showingEdited = (t.editedText != null && t.editedText!.trim().isNotEmpty);
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
           children: [
-            // ================= HEADER =================
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1400,6 +1550,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w900,
                           letterSpacing: -0.2,
+                          color: fg,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -1414,10 +1565,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                         const SizedBox(height: 6),
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: _MetaPill(
-                            text: 'Edited',
-                            accent: Colors.orangeAccent,
-                          ),
+                          child: _MetaPill(text: 'Edited', accent: Colors.orangeAccent),
                         ),
                       ],
                     ],
@@ -1427,7 +1575,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                 _IconPillButton(
                   tooltip: 'Edit title',
                   icon: Icons.edit_note,
-                  onTap: _editTitle,
+                  onTap: _isTranscribingNow ? null : _editTitle,
                 ),
                 const SizedBox(width: 8),
                 _IconPillButton(
@@ -1440,159 +1588,91 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
             const SizedBox(height: 14),
 
-            // ================= AUDIO + ACTIONS (COMPACT) =================
-            _Panel(
+            _GlassPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _CompactAudioBar(
                     isDark: isDark,
+                    fg: fg,
                     isTranscribingNow: _isTranscribingNow,
                     hasAnyAudio: hasAnyAudio,
                     canPlayAudio: canPlayAudio,
                     isPlaying: _isPlaying,
-                    audioVariant: _audioVariant,
+                    audioVariant: effectiveV,
                     origExists: origExists,
                     enhExists: enhExists,
-                    onToggle: _togglePlayPause,
+                    onToggle: () => _togglePlayPause(effectiveV),
                     onSwitch: _switchVariant,
                   ),
                   if (canPlayAudio) ...[
                     const SizedBox(height: 8),
-                    _CompactSeekRow(
-                      pos: _pos,
-                      dur: _dur,
-                      fmt: _fmtClock,
-                      onSeek: _seekTo,
-                    ),
+                    _CompactSeekRow(pos: _pos, dur: _dur, fmt: _fmtClock, onSeek: _seekTo),
                   ],
-                  const SizedBox(height: 10),
-                  Column(
+                  const SizedBox(height: 12),
+                  const GlassDivider(),
+                  const SizedBox(height: 12),
+
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              icon: const Icon(
-                                Icons.summarize_outlined,
-                                color: Colors.black,
-                              ),
-                              label: const Text(
-                                'Summary',
-                                style: TextStyle(color: Colors.black),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                backgroundColor: Colors.white,
-                              ),
-                              onPressed: _isTranscribingNow
-                                  ? null
-                                  : () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => TranscriptSummaryPage(
-                                            transcriptId: widget.transcriptId,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FilledButton.icon(
-                              icon: const Icon(
-                                Icons.chat_bubble_outline,
-                                color: Colors.black,
-                              ),
-                              label: const Text(
-                                'Ask AI',
-                                style: TextStyle(color: Colors.black),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                backgroundColor: Colors.white,
-                              ),
-                              onPressed: _isTranscribingNow
-                                  ? null
-                                  : () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => TranscriptChatPage(
-                                            transcriptId: widget.transcriptId,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                            ),
-                          ),
-                        ],
+                      Expanded(
+                        child: GlassButton(
+                          kind: GlassButtonKind.primary,
+                          label: 'Summary',
+                          icon: Icons.summarize_outlined,
+                          onPressed: _isTranscribingNow
+                              ? null
+                              : () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => TranscriptSummaryPage(
+                                        transcriptId: widget.transcriptId,
+                                      ),
+                                    ),
+                                  );
+                                },
+                        ),
                       ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(
-                                Icons.copy_rounded,
-                                color: Colors.white,
-                              ),
-                              label: const Text(
-                                'Copy',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              onPressed: _isTranscribingNow
-                                  ? null
-                                  : _copyWholeTranscript,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(
-                                Icons.ios_share_rounded,
-                                color: Colors.white,
-                              ),
-                              label: const Text(
-                                'Share',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              onPressed: _isTranscribingNow
-                                  ? null
-                                  : _shareWholeTranscript,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GlassButton(
+                          kind: GlassButtonKind.primary,
+                          label: 'Ask AI',
+                          icon: Icons.chat_bubble_outline,
+                          onPressed: _isTranscribingNow
+                              ? null
+                              : () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => TranscriptChatPage(
+                                        transcriptId: widget.transcriptId,
+                                      ),
+                                    ),
+                                  );
+                                },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GlassButton(
+                          kind: GlassButtonKind.secondary,
+                          label: 'Copy',
+                          icon: Icons.copy_rounded,
+                          onPressed: _isTranscribingNow ? null : _copyWholeTranscript,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GlassButton(
+                          kind: GlassButtonKind.secondary,
+                          label: 'Share',
+                          icon: Icons.ios_share_rounded,
+                          onPressed: _isTranscribingNow ? null : _shareWholeTranscript,
+                        ),
                       ),
                     ],
                   ),
@@ -1602,15 +1682,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
             const SizedBox(height: 12),
 
-            // ================= STATUS (PROCESSING / ERROR) =================
             if (isProcessing)
-              _Panel(
+              _GlassPanel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      children: const [
-                        SizedBox(
+                      children: [
+                        const SizedBox(
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
@@ -1619,32 +1698,25 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                             color: Colors.white,
                           ),
                         ),
-                        SizedBox(width: 12),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             'Processing audio… Do not close the app.',
-                            style: TextStyle(fontWeight: FontWeight.w800),
+                            style: TextStyle(fontWeight: FontWeight.w800, color: fg),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
-
-                    // ✅ determinate when total known, else indeterminate
-                    LinearProgressIndicator(
-                      value: (_progressTotalSec > 0)
-                          ? (_progressProcessedSec / _progressTotalSec).clamp(
-                              0.0,
-                              0.98,
-                            )
-                          : null,
-                      minHeight: 4,
-                      backgroundColor: Colors.white12,
-                      color: Colors.white,
-                    ),
-
+                    // LinearProgressIndicator(
+                    //   value: (_progressTotalSec > 0)
+                    //       ? (_progressProcessedSec / _progressTotalSec).clamp(0.0, 0.98)
+                    //       : null,
+                    //   minHeight: 4,
+                    //   backgroundColor: Colors.white12,
+                    //   color: Colors.white,
+                    // ),
                     const SizedBox(height: 10),
-
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -1653,24 +1725,29 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                         _MetaPill(
                           text:
                               'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
-                              ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (_t?.durationSec ?? 0)) * 1000).round()))}',
+                              ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (t.durationSec)) * 1000).round()))}',
                         ),
+                        // _MetaPill(text: 'Segments • ${_turns.length}'),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Keep the app open to finish faster.',
+                      style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
               ),
 
             if (_processingFailed)
-              _Panel(
+              _GlassPanel(
                 child: Row(
                   children: [
                     const Icon(Icons.error_outline, color: Colors.redAccent),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        _processingError ??
-                            'Transcription failed. Please try again.',
+                        _processingError ?? 'Transcription failed. Please try again.',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontWeight: FontWeight.w700,
@@ -1683,7 +1760,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
             if (isProcessing || _processingFailed) const SizedBox(height: 12),
 
-            // ================= PEOPLE =================
             if (!isProcessing && !_processingFailed && labels.isNotEmpty) ...[
               Row(
                 children: [
@@ -1691,36 +1767,37 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                     'People',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w900,
+                      color: fg,
                     ),
                   ),
                   const Spacer(),
                   _MetaPill(text: '${labels.length}'),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 10,
+                runSpacing: 10,
                 children: labels.map((name) {
                   final count = counts[name]!;
-                  return InputChip(
-                    label: Text('$name  •  $count'),
-                    avatar: const Icon(Icons.person, size: 18),
-                    onDeleted: () => _renameSpeaker(name),
-                    deleteIcon: const Icon(Icons.edit, size: 18),
+                  return _GlassPersonChip(
+                    label: name,
+                    count: count,
+                    enabled: !_isTranscribingNow,
+                    onEdit: () => _renameSpeaker(name),
                   );
                 }).toList(),
               ),
               const SizedBox(height: 14),
             ],
 
-            // ================= TURNS =================
             Row(
               children: [
                 Text(
                   'Turns',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
+                    color: fg,
                   ),
                 ),
                 if (!isProcessing) ...[
@@ -1728,7 +1805,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                   Text(
                     'Long-press for options',
                     style: TextStyle(
-                      color: Colors.white54,
+                      color: Colors.white.withValues(alpha: 0.55),
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1740,23 +1817,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             ),
             const SizedBox(height: 8),
 
-            // if (!isProcessing && !_processingFailed && showingEdited)
-            //   const Padding(
-            //     padding: EdgeInsets.only(bottom: 8),
-            //     child: Text(
-            //       'Showing edited transcript',
-            //       style: TextStyle(
-            //         color: Colors.orangeAccent,
-            //         fontSize: 12,
-            //         fontWeight: FontWeight.w800,
-            //       ),
-            //     ),
-            //   ),
-            if (isProcessing)
-              const _InlineHint(
-                text: 'No segments yet. We’ll list them here when ready.',
-              ),
-            if (_processingFailed)
+            if (isProcessing && displayTurns.isEmpty)
+              const _InlineHint(text: 'No segments yet. We’ll list them here when ready.'),
+            if (_processingFailed && displayTurns.isEmpty)
               const _InlineHint(text: 'No segments were generated.'),
 
             if (!isProcessing && !_processingFailed)
@@ -1767,17 +1830,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                     ? '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s'
                     : null;
 
-                // real turn id when NOT showing edited
-                final turnId = (!showingEdited && i < _turns.length)
-                    ? _turns[i].id
-                    : null;
+                final turnId = (!showingEdited && i < _turns.length) ? _turns[i].id : null;
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: GestureDetector(
-                    onLongPress: turnId == null
-                        ? null
-                        : () => _showTurnActions(turnId),
+                    onLongPress: turnId == null ? null : () => _showTurnActions(turnId),
                     child: _TurnCard(
                       speaker: u.speaker,
                       text: u.text,
@@ -1793,33 +1851,16 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 }
 
-class _Panel extends StatelessWidget {
-  const _Panel({required this.child});
+// ===================== GLASS PANELS =====================
+
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({required this.child});
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 18,
-            color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+    return GlassCard(
+      variant: GlassCardVariant.panel,
       padding: const EdgeInsets.all(14),
       child: child,
     );
@@ -1841,8 +1882,8 @@ class _MetaPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: (c ?? Colors.white).withOpacity(0.06),
-        border: Border.all(color: (c ?? Colors.white).withOpacity(0.12)),
+        color: (c ?? Colors.white).withValues(alpha: 0.06),
+        border: Border.all(color: (c ?? Colors.white).withValues(alpha: 0.12)),
       ),
       child: Text(
         text,
@@ -1851,7 +1892,7 @@ class _MetaPill extends StatelessWidget {
         softWrap: false,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: c != null ? c.withOpacity(0.95) : Colors.white70,
+          color: c != null ? c.withValues(alpha: 0.95) : Colors.white70,
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
@@ -1873,8 +1914,7 @@ class _IconPillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
 
     return Tooltip(
       message: tooltip,
@@ -1885,12 +1925,12 @@ class _IconPillButton extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
             border: Border.all(
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
+              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.10),
             ),
           ),
-          child: Icon(icon, size: 20),
+          child: Icon(icon, size: 20, color: Colors.white.withValues(alpha: 0.92)),
         ),
       ),
     );
@@ -1916,9 +1956,6 @@ class _InlineHint extends StatelessWidget {
   }
 }
 
-// ✅ Professional turn card:
-// top row: timestamp • speaker
-// bottom: text
 class _TurnCard extends StatelessWidget {
   const _TurnCard({required this.speaker, required this.text, this.subtitle});
 
@@ -1928,7 +1965,9 @@ class _TurnCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
+    return GlassCard(
+      variant: GlassCardVariant.panel,
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1948,7 +1987,7 @@ class _TurnCard extends StatelessWidget {
                 Text(
                   '•',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.25),
+                    color: Colors.white.withValues(alpha: 0.25),
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1962,6 +2001,7 @@ class _TurnCard extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.1,
+                    color: Colors.white,
                   ),
                 ),
               ),
@@ -1971,10 +2011,14 @@ class _TurnCard extends StatelessWidget {
                 height: 28,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  color: Colors.white.withOpacity(0.06),
-                  border: Border.all(color: Colors.white.withOpacity(0.10)),
+                  color: Colors.white.withValues(alpha: 0.06),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
                 ),
-                child: const Icon(Icons.record_voice_over_outlined, size: 16),
+                child: const Icon(
+                  Icons.record_voice_over_outlined,
+                  size: 16,
+                  color: Colors.white70,
+                ),
               ),
             ],
           ),
@@ -1988,7 +2032,6 @@ class _TurnCard extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 6),
         ],
       ),
     );
@@ -2000,6 +2043,7 @@ class _TurnCard extends StatelessWidget {
 class _CompactAudioBar extends StatelessWidget {
   const _CompactAudioBar({
     required this.isDark,
+    required this.fg,
     required this.isTranscribingNow,
     required this.hasAnyAudio,
     required this.canPlayAudio,
@@ -2012,6 +2056,7 @@ class _CompactAudioBar extends StatelessWidget {
   });
 
   final bool isDark;
+  final Color fg;
   final bool isTranscribingNow;
   final bool hasAnyAudio;
   final bool canPlayAudio;
@@ -2024,17 +2069,12 @@ class _CompactAudioBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = isTranscribingNow
-        ? 'Processing…'
-        : (hasAnyAudio ? 'Audio' : 'No audio');
-
+    final title = isTranscribingNow ? 'Processing…' : (hasAnyAudio ? 'Audio' : 'No audio');
     final subtitle = isTranscribingNow
         ? 'Playback disabled'
         : (hasAnyAudio
-              ? (audioVariant == _AudioVariant.enhanced
-                    ? 'Enhanced'
-                    : 'Original')
-              : 'Missing file');
+            ? (audioVariant == _AudioVariant.enhanced ? 'Enhanced' : 'Original')
+            : 'Missing file');
 
     return Row(
       children: [
@@ -2045,14 +2085,15 @@ class _CompactAudioBar extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
               border: Border.all(
-                color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
+                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.10),
               ),
             ),
             child: Icon(
               isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
               size: 22,
+              color: fg,
             ),
           ),
         ),
@@ -2061,12 +2102,9 @@ class _CompactAudioBar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+              Text(title, style: TextStyle(fontWeight: FontWeight.w900, color: fg)),
               const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
+              Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),
         ),
@@ -2102,8 +2140,8 @@ class _VariantDropdown extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withOpacity(0.06),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
+        color: Colors.white.withValues(alpha: 0.06),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<_AudioVariant>(
@@ -2157,19 +2195,16 @@ class _CompactSeekRow extends StatelessWidget {
       children: [
         SizedBox(
           width: 44,
-          child: Text(
-            fmt(pos),
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
+          child: Text(fmt(pos), style: const TextStyle(color: Colors.white70, fontSize: 12)),
         ),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              activeTrackColor: Colors.white, // left / played
-              inactiveTrackColor: Colors.white12, // right / remaining
-              thumbColor: Colors.white, // knob
-              overlayColor: Colors.white12, // press glow (optional)
-              trackHeight: 3, // thickness (optional)
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white12,
+              thumbColor: Colors.white,
+              overlayColor: Colors.white12,
+              trackHeight: 3,
             ),
             child: Slider(
               value: v,
@@ -2192,31 +2227,73 @@ class _CompactSeekRow extends StatelessWidget {
   }
 }
 
+class _GlassPersonChip extends StatelessWidget {
+  const _GlassPersonChip({
+    required this.label,
+    required this.count,
+    required this.onEdit,
+    required this.enabled,
+  });
 
-//  PopupMenuButton<String>(
-//                   tooltip: 'More',
-//                   onSelected: (v) {
-//                     if (v == 'edit_transcript') _editWholeTranscript();
-//                     if (v == 'copy_transcript') _copyWholeTranscript();
-//                     if (v == 'report_transcript') _reportTranscript();
-//                   },
-//                   itemBuilder: (_) => const [
-//                     // PopupMenuItem(
-//                     //   value: 'edit_transcript',
-//                     //   child: Text('Edit & save transcript'),
-//                     // ),
-//                     // PopupMenuItem(
-//                     //   value: 'copy_transcript',
-//                     //   child: Text('Copy transcript as text'),
-//                     // ),
-//                     PopupMenuItem(
-//                       value: 'report_transcript',
-//                       child: Text('Report transcript'),
-//                     ),
-//                   ],
-//                   child: const _IconPillButton(
-//                     tooltip: 'More',
-//                     icon: Icons.more_horiz,
-//                     onTap: null,
-//                   ),
-//                 ),
+  final String label;
+  final int count;
+  final VoidCallback onEdit;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = Colors.white.withValues(alpha: 0.92);
+
+    Widget chip = LiquidGlass(
+      borderRadius: BorderRadius.circular(999),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      shadow: false,
+      blurX: isDark ? 14 : 12,
+      blurY: isDark ? 14 : 12,
+      tintOpacityDark: 0.045,
+      tintOpacityLight: 0.036,
+      borderOpacityDark: 0.14,
+      borderOpacityLight: 0.18,
+      onTap: enabled ? onEdit : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.person, size: 16, color: fg.withValues(alpha: 0.85)),
+          const SizedBox(width: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: fg, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: Colors.white.withValues(alpha: 0.06),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(Icons.edit, size: 16, color: Colors.white.withValues(alpha: 0.70)),
+        ],
+      ),
+    );
+
+    if (!enabled) chip = Opacity(opacity: 0.55, child: chip);
+    return chip;
+  }
+}

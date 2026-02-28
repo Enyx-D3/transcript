@@ -8,6 +8,12 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'transcription_models.dart';
 import 'transcription_compute.dart' show transcribeToResult;
 
+// ✅ Typo-fix LLM runner
+import '../llm_service.dart' show LLMService;
+
+// ✅ Qwen model path provider
+import '../qwen_model_service.dart';
+
 @pragma('vm:entry-point')
 void transcribeStartCallback() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +34,7 @@ class BackgroundTranscriber {
   // ✅ target speakers stored int where 0 == null/auto
   static const _kTargetSpeakers = 'bg_target_speakers';
 
-  // ✅ NEW: language (always stored as non-null String; default 'auto')
+  // ✅ language (always stored as non-null String; default 'auto')
   static const _kLang = 'bg_lang';
 
   static const _kProgressProcessedSec = 'progress_processed_sec';
@@ -63,7 +69,10 @@ class BackgroundTranscriber {
     bool translateToEnglish = false,
     String? titleHint,
     int? existingTranscriptId,
+    // ✅ diarization
     int? targetSpeakers,
+
+    // ✅ language code ('auto','en','bn','hi','es')
     String lang = 'auto',
   }) async {
     if (Platform.isIOS) {
@@ -95,21 +104,12 @@ class BackgroundTranscriber {
     required String lang,
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
-    await FlutterForegroundTask.saveData(
-      key: _kTranslate,
-      value: translateToEnglish,
-    );
+    await FlutterForegroundTask.saveData(key: _kTranslate, value: translateToEnglish);
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
 
-    await FlutterForegroundTask.saveData(
-      key: _kProgressProcessedSec,
-      value: 0.0,
-    );
+    await FlutterForegroundTask.saveData(key: _kProgressProcessedSec, value: 0.0);
     await FlutterForegroundTask.saveData(key: _kProgressTotalSec, value: 0.0);
-    await FlutterForegroundTask.saveData(
-      key: _kProgressStage,
-      value: 'Preparing',
-    );
+    await FlutterForegroundTask.saveData(key: _kProgressStage, value: 'Preparing');
 
     // ✅ store int (0 means null/auto)
     await FlutterForegroundTask.saveData(
@@ -127,10 +127,7 @@ class BackgroundTranscriber {
       await FlutterForegroundTask.saveData(key: _kTitleHint, value: titleHint);
     }
     if (existingTranscriptId != null) {
-      await FlutterForegroundTask.saveData(
-        key: _kExistingId,
-        value: existingTranscriptId,
-      );
+      await FlutterForegroundTask.saveData(key: _kExistingId, value: existingTranscriptId);
     }
 
     await FlutterForegroundTask.startService(
@@ -219,17 +216,56 @@ class BackgroundTranscriber {
     return v;
   }
 
-  static StreamSubscription<dynamic> onData(
-    void Function(dynamic data) handler,
-  ) {
+  /// ✅ FIXED: returns a cancelable subscription that *actually* removes callback.
+  static StreamSubscription<dynamic> onData(void Function(dynamic data) handler) {
     FlutterForegroundTask.addTaskDataCallback(handler);
-    final ctrl = StreamController<dynamic>();
-    ctrl.onCancel = () => FlutterForegroundTask.removeTaskDataCallback(handler);
-    return ctrl.stream.listen((_) {});
+    return _TaskDataSubscription(onCancel: () {
+      FlutterForegroundTask.removeTaskDataCallback(handler);
+    });
   }
 }
 
+/// Minimal StreamSubscription that only supports cancel()
+class _TaskDataSubscription implements StreamSubscription<dynamic> {
+  _TaskDataSubscription({required this.onCancel});
+
+  final VoidCallback onCancel;
+  bool _canceled = false;
+
+  @override
+  Future<void> cancel() async {
+    if (_canceled) return;
+    _canceled = true;
+    onCancel();
+  }
+
+  // The rest are no-ops (not used by your code)
+  @override
+  void onData(void Function(dynamic data)? handleData) {}
+
+  @override
+  void onError(Function? handleError) {}
+
+  @override
+  void onDone(void Function()? handleDone) {}
+
+  @override
+  void pause([Future<void>? resumeSignal]) {}
+
+  @override
+  void resume() {}
+
+  @override
+  bool get isPaused => false;
+
+  @override
+  Future<E> asFuture<E>([E? futureValue]) => Future<E>.value(futureValue as E);
+}
+
 class _TranscribeTaskHandler extends TaskHandler {
+  // ✅ create inside task isolate (no shared prefs, no UI state)
+  final QwenModelService _qwenService = QwenModelService();
+
   String _fmtMmSs(double sec) {
     final s = (sec.isFinite && sec > 0) ? sec : 0.0;
     final total = s.round();
@@ -238,16 +274,189 @@ class _TranscribeTaskHandler extends TaskHandler {
     return '$m:$ss';
   }
 
+  // -------------------------
+  // ✅ Typo-fix helpers
+  // -------------------------
+
+  String _escapeTurnText(String s) {
+    // Keep TSV single-line per turn; avoid breaking format.
+    return s
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n')
+        .replaceAll('\n', r'\n')
+        .replaceAll('\t', r'\t');
+  }
+
+  Future<String> _runTypoFixModel({
+    required String modelPath,
+    required String prompt,
+  }) async {
+    final buf = StringBuffer();
+
+    await for (final r in LLMService.generateText(
+      prompt: prompt,
+      modelPath: modelPath,
+      maxTokens: 4096,
+      temperature: 0.0,
+      contextSize: 32768,
+      conversationHistory: const [],
+    )) {
+      final newText = r['new_text'] as String?;
+      if (newText != null && newText.isNotEmpty) buf.write(newText);
+      if (r['done'] == true) break;
+    }
+
+    final out = buf.toString().trim();
+    return out.isEmpty ? prompt : out;
+  }
+
+  Future<List<LiteTurn>> _typoFixChunkTurnsIfPossible({
+    required String? modelPath,
+    required bool modelReady,
+    required List<LiteTurn> turns,
+  }) async {
+    if (!modelReady) return turns;
+    final mp = (modelPath ?? '').trim();
+    if (mp.isEmpty) return turns;
+    if (turns.isEmpty) return turns;
+
+    final b = StringBuffer();
+    b.writeln('You will receive transcript turns in TSV format:');
+    b.writeln('SPEAKER<TAB>START_SEC<TAB>END_SEC<TAB>TEXT');
+    b.writeln('');
+    b.writeln('Task: Fix ONLY obvious typos in the TEXT field.');
+    b.writeln('- Do NOT change SPEAKER, START_SEC, END_SEC.');
+    b.writeln('- Do NOT rewrite, paraphrase, summarize, or change grammar/structure.');
+    b.writeln('- Keep punctuation/casing as-is as much as possible.');
+    b.writeln('- Output ONLY TSV lines, same count, same first 3 columns.');
+    b.writeln('- if no ovious typos return the text as it is');
+    b.writeln('');
+    b.writeln('TSV:');
+    for (final t in turns) {
+      b.writeln(
+        '${t.speaker}\t${t.startSec.toStringAsFixed(2)}\t${t.endSec.toStringAsFixed(2)}\t${_escapeTurnText(t.text)}',
+      );
+    }
+
+    final fixedRaw = await _runTypoFixModel(
+      modelPath: mp,
+      prompt: b.toString(),
+    );
+
+    final lines = fixedRaw
+        .split('\n')
+        .map((e) => e.trimRight())
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+
+    int firstTsv = -1;
+    for (int i = 0; i < lines.length; i++) {
+      if (!lines[i].contains('\t')) continue;
+      final parts = lines[i].split('\t');
+      if (parts.length >= 4) {
+        firstTsv = i;
+        break;
+      }
+    }
+    if (firstTsv < 0) return turns;
+
+    final tsvLines = lines.sublist(firstTsv);
+    if (tsvLines.length < turns.length) return turns;
+
+    final out = <LiteTurn>[];
+    for (int i = 0; i < turns.length; i++) {
+      final raw = tsvLines[i];
+      final parts = raw.split('\t');
+      if (parts.length < 4) return turns;
+
+      final spk = parts[0].trim();
+      final startStr = parts[1].trim();
+      final endStr = parts[2].trim();
+      final text = parts.sublist(3).join('\t').trim();
+
+      final orig = turns[i];
+      final origStart = orig.startSec.toStringAsFixed(2);
+      final origEnd = orig.endSec.toStringAsFixed(2);
+
+      if (spk != orig.speaker || startStr != origStart || endStr != origEnd) {
+        return turns;
+      }
+
+      out.add(LiteTurn(spk, orig.startSec, orig.endSec, text));
+    }
+
+    return out;
+  }
+
+  List<LiteTurn> _turnsFromResultJson(Map<String, dynamic> j) {
+    final raw = j['turns'];
+    if (raw is! List) return const <LiteTurn>[];
+    final out = <LiteTurn>[];
+    for (final it in raw) {
+      if (it is! Map) continue;
+      final m = it.cast<String, dynamic>();
+      final spk = (m['speaker'] ?? m['spk'] ?? '').toString();
+      final s0 = m['startSec'] ?? m['start_sec'] ?? m['start'] ?? 0.0;
+      final s1 = m['endSec'] ?? m['end_sec'] ?? m['end'] ?? 0.0;
+      final txt = (m['text'] ?? '').toString();
+      final start = (s0 is num) ? s0.toDouble() : double.tryParse('$s0') ?? 0.0;
+      final end = (s1 is num) ? s1.toDouble() : double.tryParse('$s1') ?? 0.0;
+      if (spk.isEmpty) continue;
+      out.add(LiteTurn(spk, start, end, txt));
+    }
+    return out;
+  }
+
+  List<Map<String, dynamic>> _turnsToJson(List<LiteTurn> turns) {
+    return turns
+        .map(
+          (t) => <String, dynamic>{
+            'speaker': t.speaker,
+            'startSec': t.startSec,
+            'endSec': t.endSec,
+            'text': t.text,
+          },
+        )
+        .toList();
+  }
+
+  Future<void> _setStageNotification(String stage, {String? text}) async {
+    await FlutterForegroundTask.saveData(
+      key: BackgroundTranscriber._kProgressStage,
+      value: stage,
+    );
+    await FlutterForegroundTask.updateService(
+      notificationTitle: '$stage…',
+      notificationText: text ?? stage,
+    );
+  }
+
+  // ✅ resolve typo-fix model path INSIDE background task
+  Future<String?> _resolveTypoFixModelPath() async {
+    try {
+      final ok = await _qwenService.isModelDownloaded();
+      if (!ok) return null;
+      final path = await _qwenService.modelFilePath();
+      final p = (path).trim();
+      if (p.isEmpty) return null;
+      return p;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     final wavPath = await FlutterForegroundTask.getData<String>(
       key: BackgroundTranscriber._kWavPath,
     );
+
     final translate =
         await FlutterForegroundTask.getData<bool>(
           key: BackgroundTranscriber._kTranslate,
         ) ??
         false;
+
     final titleHint = await FlutterForegroundTask.getData<String>(
       key: BackgroundTranscriber._kTitleHint,
     );
@@ -255,20 +464,17 @@ class _TranscribeTaskHandler extends TaskHandler {
       key: BackgroundTranscriber._kExistingId,
     );
 
-    // ✅ read stored int (0 => null)
     final tsRaw = await FlutterForegroundTask.getData(
       key: BackgroundTranscriber._kTargetSpeakers,
     );
     final tsInt = (tsRaw is int) ? tsRaw : 0;
     final int? targetSpeakers = (tsInt <= 0) ? null : tsInt;
 
-    // ✅ read language (default auto)
     final langRaw = await FlutterForegroundTask.getData(
       key: BackgroundTranscriber._kLang,
     );
-    final String lang = (langRaw is String && langRaw.trim().isNotEmpty)
-        ? langRaw.trim()
-        : 'auto';
+    final String lang =
+        (langRaw is String && langRaw.trim().isNotEmpty) ? langRaw.trim() : 'auto';
 
     if (wavPath == null || wavPath.isEmpty) {
       await FlutterForegroundTask.updateService(
@@ -296,7 +502,6 @@ class _TranscribeTaskHandler extends TaskHandler {
               required double processedSec,
               required double totalSec,
             }) async {
-              // Throttle: update at most every 2 seconds of audio progress
               final pct = (totalSec > 0)
                   ? (processedSec / totalSec * 100).round()
                   : 0;
@@ -322,11 +527,32 @@ class _TranscribeTaskHandler extends TaskHandler {
             },
       );
 
+      // ✅ typo fix before send
+      Map<String, dynamic> payload = result.toJson();
+
+      final typoFixModelPath = await _resolveTypoFixModelPath();
+      if (typoFixModelPath != null) {
+        final turns = _turnsFromResultJson(payload);
+        if (turns.isNotEmpty) {
+          await _setStageNotification('Fixing typos', text: 'Fixing obvious typos…');
+
+          final fixedTurns = await _typoFixChunkTurnsIfPossible(
+            modelPath: typoFixModelPath,
+            modelReady: true,
+            turns: turns,
+          );
+
+          payload['turns'] = _turnsToJson(fixedTurns);
+
+          await _setStageNotification('Finalizing', text: 'Preparing result…');
+        }
+      }
+
       FlutterForegroundTask.sendDataToMain({
         'type': 'transcribe_result',
         'existingId': existingId,
         'wavPath': wavPath,
-        'payload': result.toJson(),
+        'payload': payload,
       });
 
       if (existingId != null) {
@@ -346,8 +572,7 @@ class _TranscribeTaskHandler extends TaskHandler {
         'error': e.toString(),
       });
       await FlutterForegroundTask.updateService(
-        // notificationTitle: 'Transcription failed',
-        notificationTitle: e.toString(),
+        notificationTitle: 'Error!',
         notificationText: 'See app',
       );
     } finally {

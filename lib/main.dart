@@ -1,4 +1,3 @@
-
 import 'dart:io';
 import 'dart:ui' show DartPluginRegistrant;
 
@@ -10,6 +9,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:transcript/send_transcript/auto_email_service.dart';
 import 'package:transcript/send_transcript/send_transcript_healper.dart';
 import 'package:transcript/transcript/audio_cleanup.dart';
+import 'package:transcript/ui/glass/glass_background.dart';
+import 'package:transcript/ui/glass/glass_button.dart';
+import 'package:transcript/ui/glass/glass_card.dart';
+import 'package:transcript/ui/glass/glass_tokens.dart';
+import 'package:transcript/widgets/brand_logo.dart';
+import 'package:transcript/widgets/status_pill.dart';
 
 import 'objectbox/objectbox_store.dart';
 import 'record/recording_service.dart';
@@ -24,6 +29,7 @@ import 'auth/eligibility_gate.dart';
 // If you still need the global Whisper for ModelPickerPage, keep this:
 import 'whisper_service.dart';
 import 'package:background_downloader/background_downloader.dart';
+
 
 final whisper = WhisperService(); // UI-only: downloads & selection
 
@@ -59,13 +65,17 @@ Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async 
 
   debugPrint('[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)');
 }
+
+
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
 
   await Supabase.initialize(
     url: 'https://ncpxlqykawquordwnxmw.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcHhscXlrYXdxdW9yZHdueG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNzQwMjAsImV4cCI6MjA3OTc1MDAyMH0.eDYqntQBhp_AxfhFw1PdR6gIFp50zDKzhqYKUzSs0EU',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcHhscXlrYXdxdW9yZHdueG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNzQwMjAsImV4cCI6MjA3OTc1MDAyMH0.eDYqntQBhp_AxfhFw1PdR6gIFp50zDKzhqYKUzSs0EU',
   );
 
   await ObjectBox.init();
@@ -104,6 +114,7 @@ Future<void> main() async {
                 result: result,
               );
               transcriptId = existingId;
+              // await _normalizeImportAudioPaths(transcriptId, wavPath);
               await _normalizeImportAudioPaths(transcriptId, wavPath);
               await deleteTranscriptAudioIfUserEnabled(existingId);
             } else {
@@ -111,6 +122,7 @@ Future<void> main() async {
                 wavPath: wavPath,
                 result: result,
               );
+              // await _normalizeImportAudioPaths(transcriptId, wavPath);
               await _normalizeImportAudioPaths(transcriptId, wavPath);
               await deleteTranscriptAudioIfUserEnabled(transcriptId);
             }
@@ -142,7 +154,6 @@ Future<void> main() async {
   });
 }
 
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -151,14 +162,45 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Transcript',
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0B0B0F),
+
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+
+        // ✅ IMPORTANT: let your GlassBackground show through
+        scaffoldBackgroundColor: Colors.transparent,
+
+        // Black/white only
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF8E7CFF),
-          secondary: Color(0xFF8E7CFF),
+          primary: Colors.white,
+          secondary: Colors.white,
+          surface: Color(0x0FFFFFFF), // translucent surfaces
+          onSurface: Colors.white,
+          onPrimary: Colors.black,
         ),
-        cardColor: const Color(0xFF13131A),
+
+        // Remove weird tints
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+
+        // Text: iOS-ish
+        textTheme: ThemeData.dark().textTheme.apply(
+          bodyColor: Colors.white.withValues(alpha: 0.92),
+          displayColor: Colors.white.withValues(alpha: 0.92),
+        ),
+
+        // Default cards should not paint solid blocks
+        cardColor: Colors.transparent,
+
+        dividerColor: Colors.white.withValues(alpha: 0.10),
       ),
+
+      // ✅ Global wallpaper behind EVERYTHING
+      builder: (context, child) {
+        return GlassBackground(child: child ?? const SizedBox.shrink());
+      },
+
       home: const SplashGate(),
     );
   }
@@ -241,138 +283,120 @@ class _SplashGateState extends State<SplashGate> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context, alpha: 0.78);
+    final isDark = GlassTokens.isDark(context);
 
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {},
       child: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Padding(
-                padding: const EdgeInsets.all(22),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // ---- Brand header ----
-                    Container(
-                      width: 86,
-                      height: 86,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF12131A),
-                        borderRadius: BorderRadius.circular(26),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.35),
-                        ),
-                        // boxShadow: [
-                        //   BoxShadow(
-                        //     blurRadius: 26,
-                        //     offset: const Offset(0, 14),
-                        //     color: const Color(0xFF8E7CFF).withOpacity(0.18),
-                        //   ),
-                        // ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: Image.asset(
-                          'assets/logo/transcript-transparent.png',
-                          fit: BoxFit.contain,
+        backgroundColor: Colors.transparent,
+        body: GlassBackground(
+          child: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Padding(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // ---- Brand header ----
+                      BrandLogo(),
+                      const SizedBox(height: 16),
+
+                      Text(
+                        'Starting up',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: fg,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Starting up',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
 
-                    // ---- Status pill ----
-                    _StatusPill(text: _status, isError: _failed),
+                      const SizedBox(height: 8),
 
-                    const SizedBox(height: 14),
+                      // ---- Status pill ----
+                      StatusPill(text: _status,isError: _failed),
+                      
+                      const SizedBox(height: 14),
 
-                    // ---- Progress / error card ----
-                    Card(
-                      elevation: 0.6,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Padding(
+                      // ---- Progress / error card ----
+                      GlassCard(
+                        variant: GlassCardVariant.panel,
                         padding: const EdgeInsets.all(16),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (!_failed) ...[
-                              const LinearProgressIndicator(minHeight: 3,color: Colors.white,backgroundColor: Colors.black,),
+                              // keep same simple progress look
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: LinearProgressIndicator(
+                                  minHeight: 3,
+                                  backgroundColor:
+                                      Colors.white.withValues(alpha: 0.10),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    GlassTokens.fg(context, alpha: 0.92),
+                                  ),
+                                ),
+                              ),
                               const SizedBox(height: 12),
-                              // Row(
-                              //   children: const [
-                              //     Icon(Icons.bolt, size: 18, color: Colors.white70),
-                              //     SizedBox(width: 8),
-                              //     Expanded(
-                              //       child: Text(
-                              //         'Please keep the app open.',
-                              //         style: TextStyle(color: Colors.white70),
-                              //       ),
-                              //     ),
-                              //   ],
-                              // ),
+                              Text(
+                                'Setting things up…',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: muted,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ] else ...[
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
-                                  Icon(
+                                children: [
+                                  const Icon(
                                     Icons.error_outline,
                                     color: Colors.redAccent,
                                   ),
-                                  SizedBox(width: 10),
+                                  const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
                                       'We couldn’t finish setup. Please try again.',
                                       style: TextStyle(
-                                        color: Colors.white70,
+                                        color: GlassTokens.muted(
+                                          context,
+                                          alpha: 0.80,
+                                        ),
                                         height: 1.2,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 14),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      _failed = false;
-                                      _status = 'Retrying…';
-                                    });
-                                    _boot();
-                                  },
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('Retry'),
-                                ),
+                              GlassButton(
+                                kind: GlassButtonKind.primary,
+                                label: 'Retry',
+                                icon: Icons.refresh,
+                                onPressed: () {
+                                  setState(() {
+                                    _failed = false;
+                                    _status = 'Retrying…';
+                                  });
+                                  _boot();
+                                },
+                                innerChrome: false,
                               ),
                             ],
                           ],
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
 
-                    // subtle footer
-                    // Text(
-                    //   'Tip: Allow microphone + notifications for best results.',
-                    //   textAlign: TextAlign.center,
-                    //   style: theme.textTheme.bodySmall?.copyWith(
-                    //     color: Colors.white54,
-                    //   ),
-                    // ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -382,46 +406,3 @@ class _SplashGateState extends State<SplashGate> {
     );
   }
 }
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.text, required this.isError});
-  final String text;
-  final bool isError;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isError ? Colors.redAccent : Colors.white;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.25)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isError
-                ? Icons.warning_amber_rounded
-                : Icons.hourglass_bottom_rounded,
-            size: 16,
-            color: color,
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, height: 1.15),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-

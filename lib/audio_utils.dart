@@ -29,8 +29,8 @@ Future<WavInfo> parseWavInfo(String path) async {
   final bytes = await f.readAsBytes();
   final bd = ByteData.sublistView(bytes);
 
-  String _tag(int off) => String.fromCharCodes(bytes.sublist(off, off + 4));
-  if (_tag(0) != 'RIFF' || _tag(8) != 'WAVE') {
+  String tag(int off) => String.fromCharCodes(bytes.sublist(off, off + 4));
+  if (tag(0) != 'RIFF' || tag(8) != 'WAVE') {
     throw FormatException('Not a RIFF/WAVE file: $path');
   }
 
@@ -42,7 +42,7 @@ Future<WavInfo> parseWavInfo(String path) async {
 
   int p = 12;
   while (p + 8 <= bytes.length) {
-    final id = _tag(p);
+    final id = tag(p);
     final size = bd.getUint32(p + 4, Endian.little);
     final chunkStart = p + 8;
     if (id == 'fmt ') {
@@ -125,31 +125,31 @@ Future<void> writePcm16MonoWav(String path,
   final riffChunkSize = 4 + (8 + fmtChunkSize) + (8 + dataChunkSize);
 
   final out = BytesBuilder();
-  void _putStr(String s) => out.add(s.codeUnits);
-  void _putU32(int v) {
+  void putStr(String s) => out.add(s.codeUnits);
+  void putU32(int v) {
     final bd = ByteData(4)..setUint32(0, v, Endian.little);
     out.add(bd.buffer.asUint8List());
   }
-  void _putU16(int v) {
+  void putU16(int v) {
     final bd = ByteData(2)..setUint16(0, v, Endian.little);
     out.add(bd.buffer.asUint8List());
   }
 
-  _putStr('RIFF');
-  _putU32(riffChunkSize);
-  _putStr('WAVE');
+  putStr('RIFF');
+  putU32(riffChunkSize);
+  putStr('WAVE');
 
-  _putStr('fmt ');
-  _putU32(fmtChunkSize);
-  _putU16(audioFormat);
-  _putU16(channels);
-  _putU32(sampleRate);
-  _putU32(byteRate);
-  _putU16(blockAlign);
-  _putU16(bitsPerSample);
+  putStr('fmt ');
+  putU32(fmtChunkSize);
+  putU16(audioFormat);
+  putU16(channels);
+  putU32(sampleRate);
+  putU32(byteRate);
+  putU16(blockAlign);
+  putU16(bitsPerSample);
 
-  _putStr('data');
-  _putU32(dataChunkSize);
+  putStr('data');
+  putU32(dataChunkSize);
   out.add(dataBytes);
 
   await File(path).writeAsBytes(out.toBytes(), flush: true);

@@ -1,6 +1,5 @@
 // lib/transcript/isolated_embedding_diarization.dart
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart';
@@ -104,6 +103,7 @@ class DiarizationParams {
   final bool matchSpeakers;
   final double matchThreshold;
 
+  // ignore: unintended_html_in_doc_comment
   /// enrolled speaker embeddings: name -> list of embeddings (each embedding is List<double>)
   final Map<String, List<List<double>>> speakerMemoryData;
 
@@ -929,10 +929,14 @@ List<_IsolatedTurn> _mergeGapAwareTurnsIsolate(
 
 Float32List _l2normIsolate(Float32List v) {
   double s = 0.0;
-  for (final x in v) s += x * x;
+  for (final x in v) {
+    s += x * x;
+  }
   final r = math.sqrt(math.max(s, 1e-12));
   final out = Float32List(v.length);
-  for (int i = 0; i < v.length; i++) out[i] = v[i] / r;
+  for (int i = 0; i < v.length; i++) {
+    out[i] = v[i] / r;
+  }
   return out;
 }
 
@@ -951,7 +955,9 @@ Float32List _meanAndNorm(List<Float32List> embs) {
     n++;
   }
   if (n <= 0) return Float32List(0);
-  for (int i = 0; i < dim; i++) acc[i] /= n;
+  for (int i = 0; i < dim; i++) {
+    acc[i] /= n;
+  }
   return _l2normIsolate(acc);
 }
 

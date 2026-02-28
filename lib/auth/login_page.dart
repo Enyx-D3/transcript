@@ -4,12 +4,23 @@ import 'dart:math';
 import 'dart:io' show Platform;
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+// ✅ Reuse shared glass widgets
+import '../widgets/brand_logo.dart';
+import '../widgets/status_pill.dart';
+
+// ✅ Glass primitives
+import '../ui/glass/glass_background.dart';
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, this.onLoggedIn});
@@ -24,7 +35,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _busy = false;
   String? _error;
 
-  // Email/password controllers
+  // Email/password controllers (kept for later)
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _pwObscured = true;
@@ -54,14 +65,12 @@ class _LoginPageState extends State<LoginPage> {
     final now = DateTime.now().toUtc();
     final trial = now.add(const Duration(days: 1));
 
-    // Try to load existing profile
     final existing = await _sb
         .from('profiles')
         .select('id,email,date_joined,is_upgraded,trial_expires_at')
         .eq('id', user.id)
         .maybeSingle();
 
-    // First time: create profile + start trial
     if (existing == null) {
       await _sb.from('profiles').insert({
         'id': user.id,
@@ -73,15 +82,12 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    // Existing user: do NOT reset trial / upgrade. Only sync missing or safe fields.
     final updates = <String, dynamic>{};
 
     final existingEmail = existing['email'] as String?;
     if (user.email != null && user.email != existingEmail) {
       updates['email'] = user.email;
     }
-
-    // Backfill only if null (optional)
     if (existing['date_joined'] == null) {
       updates['date_joined'] = now.toIso8601String();
     }
@@ -272,7 +278,7 @@ class _LoginPageState extends State<LoginPage> {
         _busy = false;
         _error = e.message;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -281,79 +287,80 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _openTerms() async {
+    final uri = Uri.parse(
+      'https://enyx.app/privacy/meeting-transcript-unlimited',
+    );
+
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) {
+      debugPrint('Could not launch: $uri');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+    final muted = GlassTokens.muted(context, alpha: 0.72);
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                // lets the content move above the keyboard
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom,
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 420),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Align(
-                              alignment: Alignment.center,
-                              child: Container(
-                                height: 84,
-                                width: 84,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1A1A22),
-                                  borderRadius: BorderRadius.circular(22),
-                                  border: Border.all(color: Colors.white),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(18),
-                                  child: Image.asset(
-                                    'assets/logo/transcript-transparent.png',
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
+      body: GlassBackground(
+        child: SafeArea(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Align(
+                                alignment: Alignment.center,
+                                child: BrandLogo(),
                               ),
-                            ),
-                            const SizedBox(height: 22),
-                            Text(
-                              'Welcome back',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            // const Text(
-                            //   'Sign in to sync your transcripts and unlock AI features.',
-                            //   textAlign: TextAlign.center,
-                            //   style: TextStyle(color: Colors.white70),
-                            // ),
-                            const SizedBox(height: 24),
+                              const SizedBox(height: 22),
 
-                            Card(
-                              elevation: 0.6,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                              Text(
+                                'Welcome back',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: fg,
+                                ),
                               ),
-                              child: Padding(
+                              const SizedBox(height: 8),
+                              Text(
+                                'Sign in to sync your transcripts and unlock AI features.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: muted,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.25,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+
+                              GlassCard(
+                                variant: GlassCardVariant.panel,
                                 padding: const EdgeInsets.all(16),
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
                                     // GOOGLE
                                     if (Platform.isAndroid) ...[
@@ -492,40 +499,24 @@ class _LoginPageState extends State<LoginPage> {
                                     RichText(
                                       textAlign: TextAlign.center,
                                       text: TextSpan(
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.white54,
+                                          color: muted.withValues(alpha: 0.9),
+                                          fontWeight: FontWeight.w600,
                                         ),
                                         children: [
                                           const TextSpan(
-                                            text:
-                                                'By continuing you agree to our ',
+                                            text: 'By continuing you agree to our ',
                                           ),
                                           TextSpan(
                                             text: 'Terms and Privacy Policy',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              decoration:
-                                                  TextDecoration.underline,
+                                            style: TextStyle(
+                                              color: fg,
+                                              decoration: TextDecoration.underline,
+                                              fontWeight: FontWeight.w800,
                                             ),
                                             recognizer: TapGestureRecognizer()
-                                              ..onTap = () async {
-                                                final uri = Uri.parse(
-                                                  'https://enyx.app/privacy/enyx-transcriptor',
-                                                );
-
-                                                final ok = await launchUrl(
-                                                  uri,
-                                                  mode: LaunchMode
-                                                      .externalApplication,
-                                                );
-
-                                                if (!ok) {
-                                                  debugPrint(
-                                                    'Could not launch: $uri',
-                                                  );
-                                                }
-                                              },
+                                              ..onTap = _openTerms,
                                           ),
                                           const TextSpan(text: '.'),
                                         ],
@@ -534,26 +525,28 @@ class _LoginPageState extends State<LoginPage> {
                                   ],
                                 ),
                               ),
-                            ),
 
-                            if (_error != null) ...[
-                              const SizedBox(height: 14),
-                              Text(
-                                _error!,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.redAccent),
-                              ),
+                              if (_error != null) ...[
+                                const SizedBox(height: 14),
+                                Align(
+                                  alignment: Alignment.center,
+                                  child: StatusPill(
+                                    text: _error!,
+                                    isError: true,
+                                  ),
+                                ),
+                              ],
+
+                              const SizedBox(height: 20),
                             ],
-
-                            const SizedBox(height: 20),
-                          ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),

@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 class AppFlushbar {
   AppFlushbar._();
 
+  // Prevent stacking multiple toasts
+  static Flushbar<void>? _active;
+
   static BuildContext _rootOverlayContext(BuildContext context) {
     final nav = Navigator.of(context, rootNavigator: true);
     final overlay = nav.overlay;
@@ -18,16 +21,25 @@ class AppFlushbar {
     IconData? icon,
     Duration duration = const Duration(seconds: 2),
     required Color iconColor,
-    bool showClose = true,
+    bool showClose = false,
     int maxLines = 3,
   }) async {
     final overlayCtx = _rootOverlayContext(context);
+
+    // If the widget tree is already gone, bail safely.
+    if (!overlayCtx.mounted) return;
+
     final theme = Theme.of(overlayCtx);
 
     final safeTop = MediaQuery.of(overlayCtx).padding.top;
     final topMargin = (safeTop > 0 ? safeTop : 0) + 8.0;
 
-    // Create it first so the close button can dismiss THIS flushbar.
+    // ✅ Dismiss any existing flushbar to avoid overlapping + overflow issues
+    try {
+      await _active?.dismiss();
+    } catch (_) {}
+    _active = null;
+
     late final Flushbar<void> flush;
 
     flush = Flushbar<void>(
@@ -44,31 +56,33 @@ class AppFlushbar {
                 letterSpacing: 0.2,
               ),
             ),
-
       messageText: Text(
         message,
         maxLines: maxLines,
         overflow: TextOverflow.ellipsis,
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: Colors.white.withOpacity(0.95),
+          color: Colors.white.withValues(alpha: 0.95),
           height: 1.15,
+          fontWeight: FontWeight.w600,
         ),
       ),
-
       icon: icon == null
           ? null
-          : Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.14),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: iconColor.withOpacity(0.25)),
+          : Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: iconColor.withValues(alpha: 0.25)),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
               ),
-              child: Icon(icon, color: iconColor, size: 20),
-            ),
+          ),
 
-      // ✅ Close button: dismiss flushbar (DON'T pop routes)
+      // ✅ Close button: dismiss THIS flushbar (not routes)
       mainButton: showClose
           ? TextButton(
               onPressed: () => flush.dismiss(),
@@ -87,12 +101,12 @@ class AppFlushbar {
       flushbarPosition: FlushbarPosition.TOP,
       flushbarStyle: FlushbarStyle.FLOATING,
 
-      // --- Look & feel (UNCHANGED) ---
-      margin: EdgeInsets.fromLTRB(14, topMargin, 14, 0),
+      // --- Look & feel ---
+      margin: EdgeInsets.fromLTRB(18, topMargin, 14, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       borderRadius: BorderRadius.circular(16),
-      backgroundColor: const Color(0xFF12131A).withOpacity(0.98),
-      borderColor: Colors.white.withOpacity(0.08),
+      backgroundColor:  const Color.fromARGB(100, 0, 0, 0),
+      borderColor: Colors.white.withValues(alpha: 0.08),
       borderWidth: 1,
 
       // --- Animation / shadow ---
@@ -107,10 +121,24 @@ class AppFlushbar {
           color: Colors.black45,
         ),
       ],
+
+      // ✅ Keep reference clean
+      onStatusChanged: (status) {
+        if (status == FlushbarStatus.DISMISSED ||
+            status == FlushbarStatus.IS_HIDING) {
+          if (identical(_active, flush)) _active = null;
+        }
+      },
     );
 
+    _active = flush;
+
     // ✅ Show using root overlay context so it stays visible regardless of scroll.
-    await flush.show(overlayCtx);
+    try {
+      await flush.show(overlayCtx);
+    } catch (_) {
+      // ignore if overlay is gone mid-show
+    }
   }
 
   static Future<void> success(

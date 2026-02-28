@@ -1,4 +1,8 @@
+// lib/tabs/favourites_tab.dart
 import 'package:flutter/material.dart';
+import 'package:transcript/widgets/empty_state.dart';
+import 'package:transcript/widgets/leading_pill_icon.dart';
+import 'package:transcript/widgets/source_tag.dart';
 
 import '../objectbox/entities.dart';
 import '../objectbox/objectbox_store.dart';
@@ -7,6 +11,11 @@ import '../objectbox.g.dart';
 import '../common/app_flushbar.dart';
 import '../transcript/transcript_detail_page.dart';
 import '../transcript/youtube_saved_detail_page.dart';
+
+// ✅ Glass primitives
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/liquid_glass.dart';
 
 enum _TranscriptSort { dateDesc, dateAsc, titleAsc, titleDesc }
 
@@ -47,7 +56,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
   void _unfocus() => FocusManager.instance.primaryFocus?.unfocus();
 
   // -----------------------
-  // Helpers (same as Timeline)
+  // Helpers
   // -----------------------
 
   String _displayTitle(TranscriptEntity t) {
@@ -99,7 +108,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
   }
 
   // -----------------------
-  // Data load (favorites only)
+  // Data load
   // -----------------------
 
   Future<void> _load() async {
@@ -119,7 +128,6 @@ class _FavouritesTabState extends State<FavouritesTab> {
               .and(TranscriptEntity_.isFavourite.equals(true)),
         );
 
-        // for date sorts, let ObjectBox order by createdAt
         if (_sort == _TranscriptSort.dateAsc) {
           qb.order(TranscriptEntity_.createdAt, flags: 0);
         } else {
@@ -129,7 +137,6 @@ class _FavouritesTabState extends State<FavouritesTab> {
         q = qb.build();
         _items = q.find();
 
-        // for title sorts, do in-memory
         if (_sort == _TranscriptSort.titleAsc ||
             _sort == _TranscriptSort.titleDesc) {
           _applySortInMemory();
@@ -143,7 +150,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
   }
 
   // -----------------------
-  // Sort sheet
+  // Sort sheet (glass)
   // -----------------------
 
   Future<void> _showSortSheet() async {
@@ -151,7 +158,8 @@ class _FavouritesTabState extends State<FavouritesTab> {
 
     final picked = await showModalBottomSheet<_TranscriptSort>(
       context: context,
-      showDragHandle: true,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: false,
       builder: (ctx) {
         Widget tile(
           _TranscriptSort v,
@@ -160,46 +168,73 @@ class _FavouritesTabState extends State<FavouritesTab> {
           IconData ic,
         ) {
           final selected = _sort == v;
+
           return ListTile(
-            leading: Icon(ic),
-            title: Text(title),
-            subtitle: Text(subtitle),
-            trailing: selected ? const Icon(Icons.check) : null,
+            leading: Icon(ic, color: Colors.white.withValues(alpha: 0.86)),
+            title: Text(
+              title,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            subtitle: Text(
+              subtitle,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.65)),
+            ),
+            trailing: selected
+                ? Icon(Icons.check, color: Colors.white.withValues(alpha: 0.85))
+                : null,
             onTap: () => Navigator.of(ctx).pop(v),
           );
         }
 
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 6),
-              tile(
-                _TranscriptSort.dateDesc,
-                'Date',
-                'Newest → Oldest',
-                Icons.schedule,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: GlassCard(
+              variant: GlassCardVariant.tile,
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 5,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(99),
+                      color: Colors.white.withValues(alpha: 0.16),
+                    ),
+                  ),
+                  tile(
+                    _TranscriptSort.dateDesc,
+                    'Date',
+                    'Newest → Oldest',
+                    Icons.schedule,
+                  ),
+                  tile(
+                    _TranscriptSort.dateAsc,
+                    'Date',
+                    'Oldest → Newest',
+                    Icons.schedule,
+                  ),
+                  tile(
+                    _TranscriptSort.titleAsc,
+                    'Title',
+                    'A → Z',
+                    Icons.sort_by_alpha,
+                  ),
+                  tile(
+                    _TranscriptSort.titleDesc,
+                    'Title',
+                    'Z → A',
+                    Icons.sort_by_alpha,
+                  ),
+                  const SizedBox(height: 6),
+                ],
               ),
-              tile(
-                _TranscriptSort.dateAsc,
-                'Date',
-                'Oldest → Newest',
-                Icons.schedule,
-              ),
-              tile(
-                _TranscriptSort.titleAsc,
-                'Title',
-                'A → Z',
-                Icons.sort_by_alpha,
-              ),
-              tile(
-                _TranscriptSort.titleDesc,
-                'Title',
-                'Z → A',
-                Icons.sort_by_alpha,
-              ),
-              const SizedBox(height: 10),
-            ],
+            ),
           ),
         );
       },
@@ -212,7 +247,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
   }
 
   // -----------------------
-  // Favourite toggle (instant remove when unfavourited)
+  // Favourite toggle
   // -----------------------
 
   Future<void> _toggleFavourite(TranscriptEntity t) async {
@@ -231,12 +266,9 @@ class _FavouritesTabState extends State<FavouritesTab> {
 
     if (!mounted || _disposed) return;
 
-    // ✅ If unfavourited inside Favourites, remove immediately from list
     _ss(() {
       t.isFavourite = newVal;
-      if (!newVal) {
-        _items.removeWhere((x) => x.id == t.id);
-      }
+      if (!newVal) _items.removeWhere((x) => x.id == t.id);
     });
   }
 
@@ -275,7 +307,6 @@ class _FavouritesTabState extends State<FavouritesTab> {
     }
 
     _unfocus();
-    // Optional: refresh in case user changed fav in details page
     await _load();
   }
 
@@ -286,16 +317,73 @@ class _FavouritesTabState extends State<FavouritesTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
-    final panelBg = isDark
-        ? const Color(0xFF101018)
-        : theme.colorScheme.surface;
-    final panelBorder = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
+    final titleStyle = theme.textTheme.headlineSmall?.copyWith(
+      fontWeight: FontWeight.w900,
+      letterSpacing: -0.2,
+      color: Colors.white.withValues(alpha: 0.92),
+    );
+
+    final subStyle = theme.textTheme.bodySmall?.copyWith(
+      color: Colors.white.withValues(alpha: 0.70),
+      fontWeight: FontWeight.w600,
+    );
+
+    final showBusy = _loading;
+
+    // ✅ small control pill: tint-only (no blur)
+    Widget headerPill({required IconData icon, required VoidCallback onTap}) {
+      return LiquidGlass(
+        borderRadius: BorderRadius.circular(999),
+        padding: const EdgeInsets.all(8),
+        shadow: false,
+
+        // ✅ PERF: do not blur small controls
+        blurX: 0,
+        blurY: 0,
+        grain: false,
+
+        tintOpacityDark: 0.070,
+        tintOpacityLight: 0.055,
+        borderOpacityDark: 0.16,
+        borderOpacityLight: 0.20,
+
+        onTap: onTap,
+        child: Icon(
+          icon,
+          color: Colors.white.withValues(alpha: 0.90),
+          size: 20,
+        ),
+      );
+    }
+
+    // ✅ heart pill: tint-only (no blur)
+    Widget heartPill(TranscriptEntity t) {
+      return LiquidGlass(
+        borderRadius: BorderRadius.circular(999),
+        padding: const EdgeInsets.all(8),
+        shadow: false,
+
+        blurX: 0,
+        blurY: 0,
+        grain: false,
+
+        tintOpacityDark: 0.065,
+        tintOpacityLight: 0.050,
+        borderOpacityDark: 0.14,
+        borderOpacityLight: 0.18,
+
+        onTap: () => _toggleFavourite(t),
+        child: Icon(
+          Icons.favorite,
+          color: Colors.white.withValues(alpha: 0.92),
+          size: 18,
+        ),
+      );
+    }
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: _unfocus,
@@ -305,65 +393,65 @@ class _FavouritesTabState extends State<FavouritesTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ✅ fixed header
+                // Header
                 Row(
                   children: [
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Favourites',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.2,
-                            ),
+                          Row(
+                            children: [
+                              Text('Favourites', style: titleStyle),
+                              if (showBusy) ...[
+                                const SizedBox(width: 10),
+                                SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white.withValues(alpha: 0.75),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            'Your starred transcripts',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: isDark ? Colors.white70 : Colors.black54,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          Text('Your starred transcripts', style: subStyle),
                         ],
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Sort',
-                      onPressed: _showSortSheet,
-                      icon: const Icon(Icons.sort),
-                    ),
+                    headerPill(icon: Icons.sort, onTap: _showSortSheet),
                   ],
                 ),
 
                 const SizedBox(height: 12),
 
-                // ✅ scrollable list section
+                // List panel (glass)
                 Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: panelBg,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: panelBorder),
-                      boxShadow: [
-                        BoxShadow(
-                          blurRadius: 18,
-                          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: _items.isEmpty
-                        ? _EmptyState(isDark: isDark)
-                        : ListView.separated(
-                            controller: _ctrl, // ✅ now used here
+                  child: _items.isEmpty
+                      ? const EmptyState(
+                          title: 'No favourites yet',
+                          subtitle:
+                              'Tap the heart on any transcript to add it here.',
+                          icon: Icons.favorite_border,
+                        )
+                      : GlassCard(
+                          variant: GlassCardVariant.tile,
+                          padding: EdgeInsets.zero,
+                          child: ListView.separated(
+                            controller: _ctrl,
                             physics: const BouncingScrollPhysics(),
+
+                            // ✅ PERF: stable compositing
+                            addRepaintBoundaries: false,
+                            addAutomaticKeepAlives: false,
+
                             itemCount: _items.length,
-                            separatorBuilder: (_, __) =>
-                                const Divider(height: 1, thickness: 0.6),
+                            separatorBuilder: (_, _) =>
+                                const GlassDivider(height: 1),
                             itemBuilder: (ctx, i) {
                               final t = _items[i];
                               final title = _displayTitle(t);
@@ -371,20 +459,25 @@ class _FavouritesTabState extends State<FavouritesTab> {
                               final isYoutube = (t.sourceType) == 1;
                               final isAudio = (t.sourceType) == 2;
                               final isVideo = (t.sourceType) == 3;
+
                               final sub = (isYoutube || isAudio || isVideo)
-                                  ? '${_fmtDate(t.createdAt)}'
+                                  ? _fmtDate(t.createdAt)
                                   : '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
+
+                              final leadingIcon = isYoutube
+                                  ? Icons.subtitles
+                                  : (isAudio
+                                      ? Icons.audio_file
+                                      : (isVideo
+                                          ? Icons.video_file
+                                          : Icons.article_outlined));
 
                               return ListTile(
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 14,
                                   vertical: 4,
                                 ),
-                                leading: _LeadingPillIcon(
-                                  icon: isYoutube
-                                      ? Icons.subtitles
-                                      : Icons.article_outlined,
-                                ),
+                                leading: LeadingPillIcon(icon: leadingIcon),
                                 title: Row(
                                   children: [
                                     Expanded(
@@ -392,228 +485,45 @@ class _FavouritesTabState extends State<FavouritesTab> {
                                         title,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.92,
+                                          ),
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                     ),
                                     if (isYoutube || isAudio || isVideo) ...[
                                       const SizedBox(width: 8),
                                       if (isYoutube)
-                                        const SourceTag(
-                                          type: 'youtube',
-                                          label: 'YOUTUBE',
-                                        )
+                                        const SourceTag(type: 'youtube')
                                       else if (isAudio)
-                                        const SourceTag(
-                                          type: 'audio',
-                                          label: 'AUDIO',
-                                        )
+                                        const SourceTag(type: 'audio')
                                       else if (isVideo)
-                                        const SourceTag(
-                                          type: 'video',
-                                          label: 'VIDEO',
-                                        ),
+                                        const SourceTag(type: 'video'),
                                     ],
                                   ],
                                 ),
-                                subtitle: Text(sub),
-                                trailing: IconButton(
-                                  tooltip: 'Unfavourite',
-                                  icon: const Icon(
-                                    Icons.favorite,
-                                    color: Color(0xFFff8143),
+                                subtitle: Text(
+                                  sub,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.65),
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  onPressed: () => _toggleFavourite(t),
                                 ),
+                                trailing: heartPill(t),
                                 onTap: () => _openTranscript(t),
                               );
                             },
                           ),
-                  ),
+                        ),
                 ),
 
-                const SizedBox(height: 10), // space for bottom dock
+                const SizedBox(height: 20), // space for bottom dock
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ---------------- UI widgets reused (same look) ----------------
-
-class _SourceTagYoutube extends StatelessWidget {
-  const _SourceTagYoutube();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = Colors.red.withOpacity(isDark ? 0.45 : 0.35);
-    final bg = Colors.red.withOpacity(isDark ? 0.16 : 0.10);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: const Text(
-        'YOUTUBE',
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.3,
-          color: Colors.red,
-          fontSize: 6,
-        ),
-      ),
-    );
-  }
-}
-
-class SourceTag extends StatelessWidget {
-  const SourceTag({
-    super.key,
-    required this.type,
-    this.label,
-    this.color,
-    this.fontSize = 6,
-    this.horizontalPadding = 10,
-    this.verticalPadding = 6,
-  });
-
-  /// e.g. "youtube", "call", "audio", "video"
-  final String type;
-
-  /// Optional custom label (otherwise uses type.toUpperCase()).
-  final String? label;
-
-  /// Optional base color (otherwise auto-picked from type).
-  final Color? color;
-
-  final double fontSize;
-  final double horizontalPadding;
-  final double verticalPadding;
-
-  Color _defaultColorForType(String t) {
-    switch (t.toLowerCase()) {
-      case 'youtube':
-        return Colors.red;
-      case 'call':
-        return Colors.green;
-      case 'audio':
-        return Colors.blue;
-      case 'video':
-        return Colors.purple;
-      case 'file':
-        return Colors.orange;
-      default:
-        return Colors.white; // fallback
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final base = color ?? _defaultColorForType(type);
-    final border = base.withOpacity(isDark ? 0.45 : 0.35);
-    final bg = base.withOpacity(isDark ? 0.16 : 0.10);
-
-    final text = (label ?? type).toUpperCase();
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: verticalPadding,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.3,
-          color: base,
-          fontSize: fontSize,
-        ),
-      ),
-    );
-  }
-}
-
-class _LeadingPillIcon extends StatelessWidget {
-  const _LeadingPillIcon({required this.icon});
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark
-        ? Colors.white.withOpacity(0.12)
-        : Colors.black.withOpacity(0.08);
-    final bg = isDark
-        ? Colors.white.withOpacity(0.06)
-        : Colors.black.withOpacity(0.04);
-
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border),
-      ),
-      child: Icon(icon, size: 20),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.isDark});
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-      child: Column(
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-              border: Border.all(
-                color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
-              ),
-            ),
-            child: const Icon(Icons.favorite_border, size: 26),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'No favourites yet',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Tap the heart on any transcript to add it here.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: isDark ? Colors.white70 : Colors.black54,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -89,7 +89,9 @@ double _ampToDb(double amp) => 20.0 * math.log(amp.clamp(1e-12, 1e12)) / math.ln
 
 double _rms(Float32List x) {
   double s = 0;
-  for (final v in x) s += v * v;
+  for (final v in x) {
+    s += v * v;
+  }
   return math.sqrt(s / x.length.clamp(1, 1 << 30));
 }
 
@@ -209,7 +211,9 @@ void _gateByRun(
       if (runStart >= 0) {
         final runLen = i - runStart;
         if (runLen >= minRun) {
-          for (int k = runStart; k < i; k++) x[k] *= atten;
+          for (int k = runStart; k < i; k++) {
+            x[k] *= atten;
+          }
         }
         runStart = -1;
       }
@@ -220,7 +224,9 @@ void _gateByRun(
   if (runStart >= 0) {
     final runLen = x.length - runStart;
     if (runLen >= minRun) {
-      for (int k = runStart; k < x.length; k++) x[k] *= atten;
+      for (int k = runStart; k < x.length; k++) {
+        x[k] *= atten;
+      }
     }
   }
 }
@@ -292,9 +298,13 @@ Future<String> preprocessWav16kMono(
   // DC removal
   if (opts.removeDc) {
     double mean = 0;
-    for (final v in x) mean += v;
+    for (final v in x) {
+      mean += v;
+    }
     mean /= N;
-    for (int i = 0; i < N; i++) x[i] -= mean;
+    for (int i = 0; i < N; i++) {
+      x[i] -= mean;
+    }
   }
 
   // One-pole HPF (rumble)

@@ -10,13 +10,24 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:transcript/common/app_flushbar.dart';
 import 'package:transcript/main.dart';
 
-import '../mic_recorder.dart';
+import 'mic_recorder.dart';
 import '../audio_preprocess.dart';
 import '../speaker_embedding.dart';
-import '../speaker_memory.dart';
+import '../debug/speaker_memory.dart';
 import '../model_bootstrap.dart';
 import '../audio_utils.dart';
 import 'enroll_prompts.dart';
+
+// ✅ Glass primitives
+import '../ui/glass/glass_background.dart';
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+import '../ui/glass/liquid_glass.dart';
+
+// ✅ Use this for the close (X) button
+import '../widgets/icon_pill_button.dart';
 
 class EnrollmentFlowPage extends StatefulWidget {
   final List<EnrollmentPrompt> prompts;
@@ -58,6 +69,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         _playingUser = false;
       });
     });
+
     _player.onPlayerStateChanged.listen((s) {
       if (!mounted) return;
       if (s == PlayerState.playing) return;
@@ -103,12 +115,13 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         _recording = true;
         _seconds = 0.0;
       });
+
       _ticker?.cancel();
       _ticker = Timer.periodic(const Duration(milliseconds: 100), (_) {
         if (!mounted || !_recording) return;
         setState(() => _seconds += 0.1);
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Error Recording');
     }
@@ -136,7 +149,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       }
 
       await _processClip(wav);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Error Stopping Recording');
     }
@@ -170,12 +183,14 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         final end = (pos + window <= dur) ? pos + window : dur;
         final take = end - pos;
         if (take < 0.5) break;
+
         final v = await embedder.embedFromWav(
           cleaned,
           startSec: pos,
           endSec: end,
         );
         if (v.isNotEmpty) parts.add(v);
+
         pos += window;
         if (parts.length >= 4) break;
       }
@@ -193,8 +208,8 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       _vectors[_index] = centroid;
       _clips[_index] = cleaned;
 
-      setState(() {});
-    } catch (e) {
+      if (mounted) setState(() {});
+    } catch (_) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Processing Failed');
     } finally {
@@ -212,7 +227,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         File(old).deleteSync();
       } catch (_) {}
     }
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   Future<void> _next() async {
@@ -232,25 +247,9 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   Future<void> _askAndSaveName() async {
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Your name'),
-        content: TextField(
-          controller: _nameCtrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Display name (e.g., Alex)',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, _nameCtrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (ctx) => _GlassNameDialog(
+        controller: _nameCtrl,
+        busy: _busy,
       ),
     );
     if (name == null || name.isEmpty) return;
@@ -264,6 +263,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         }
       }
       if (!mounted) return;
+
       await AppFlushbar.success(context, message: 'Voice enrolled for $name');
       await _stopPlayback();
 
@@ -271,7 +271,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
         MaterialPageRoute(builder: (_) => const SplashGate()),
         (route) => false,
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Save failed');
     } finally {
@@ -311,7 +311,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       }
       if (!mounted) return;
       setState(() => _playingGuide = true);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Could not play guide');
     }
@@ -335,328 +335,361 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       await _player.play(DeviceFileSource(clip));
       if (!mounted) return;
       setState(() => _playingUser = true);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Could not play your recording');
     }
   }
 
-  // ---------- UI helpers ----------
-  BoxDecoration _panelDecoration(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.08);
-
-    return BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: border),
-      boxShadow: [
-        BoxShadow(
-          blurRadius: 18,
-          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-          offset: const Offset(0, 10),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     final p = widget.prompts[_index];
     final done = _vectors[_index] != null;
+
     final progress = (widget.prompts.length <= 1)
         ? 1.0
         : (_index / (widget.prompts.length - 1)).clamp(0.0, 1.0);
 
     return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ---------- Header ----------
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Voice setup',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.2,
+      body: GlassBackground(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ---------- App bar ----------
+                Row(
+                  children: [
+                    IconPillButton(
+                      tooltip: 'Close',
+                      icon: Icons.close,
+                      onTap: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Voice setup',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.2,
+                              color: GlassTokens.fg(context),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Step ${_index + 1} of ${widget.prompts.length}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: GlassTokens.muted(context),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconPillButton(
+                      tooltip: 'Stop audio',
+                      icon: Icons.stop_circle_outlined,
+                      onTap: (_playingGuide || _playingUser) ? _stopPlayback : null,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                // ---------- Progress ----------
+                LiquidGlass(
+                  borderRadius: BorderRadius.circular(999),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  // ✅ page already glass: keep crisp (avoid double blur)
+                  blurX: 0,
+                  blurY: 0,
+                  shadow: false,
+                  grain: false,
+                  tintOpacityLight: 0.045,
+                  tintOpacityDark: 0.060,
+                  borderOpacityLight: 0.20,
+                  borderOpacityDark: 0.16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          minHeight: 6,
+                          value: progress,
+                          backgroundColor: Colors.white.withValues(alpha: 0.22),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Text(
+                      //   '${(progress * 100).round()}% • ${_index + 1}/${widget.prompts.length}',
+                      //   style: TextStyle(
+                      //     color: GlassTokens.muted(context, alpha: 0.62),
+                      //     fontWeight: FontWeight.w700,
+                      //     fontSize: 12,
+                      //   ),
+                      // ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // ---------- Prompt panel ----------
+                GlassCard(
+                  variant: GlassCardVariant.panel,
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          _ToneChip(
+                            label: done ? 'Recorded' : 'Not recorded',
+                            tone: done ? _ChipTone.good : _ChipTone.neutral,
+                          ),
+                          const SizedBox(width: 8),
+                          _ToneChip(
+                            label: 'Min ${p.minSec.toStringAsFixed(1)}s',
+                            tone: _ChipTone.neutral,
+                          ),
+                          const Spacer(),
+                          Text(
+                            p.title,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: GlassTokens.fg(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        p.subtitle,
+                        style: TextStyle(
+                          color: GlassTokens.muted(context),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      GlassCard(
+                        variant: GlassCardVariant.tile,
+                        padding: const EdgeInsets.all(14),
+                        child: Text(
+                          p.script,
+                          style: TextStyle(
+                            fontSize: 16,
+                            height: 1.35,
+                            fontWeight: FontWeight.w700,
+                            color: GlassTokens.fg(context),
                           ),
                         ),
-                        const SizedBox(height: 2),
+                      ),
+                      if (p.audioAsset != null) ...[
+                        const SizedBox(height: 10),
                         Text(
-                          'Step ${_index + 1} of ${widget.prompts.length}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: isDark ? Colors.white70 : Colors.black54,
+                          'Tip: use “Play guide” to hear an example.',
+                          style: TextStyle(
+                            color: GlassTokens.muted(context, alpha: 0.55),
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
-                    ),
+                    ],
                   ),
-                  _IconPillButton(
-                    tooltip: 'Stop audio',
-                    icon: Icons.stop_circle_outlined,
-                    onTap: (_playingGuide || _playingUser) ? _stopPlayback : null,
-                  ),
-                  const SizedBox(width: 8),
-                  _IconPillButton(
-                    tooltip: 'Close',
-                    icon: Icons.close,
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 10),
-
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  minHeight: 6,
-                  value: progress,
-                  color: Color(0xFFff8143),
-                  backgroundColor: Colors.white,
                 ),
-              ),
 
-              const SizedBox(height: 12),
+                const SizedBox(height: 12),
 
-              // ---------- Prompt panel ----------
-              Container(
-                decoration: _panelDecoration(context),
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                // ---------- Record panel ----------
+                Expanded(
+                  child: GlassCard(
+                    variant: GlassCardVariant.panel,
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _StatusChip(
-                          label: done ? 'Recorded' : 'Not recorded',
-                          tone: done ? _ChipTone.good : _ChipTone.neutral,
+                        Row(
+                          children: [
+                            const Spacer(),
+                            if (_recording)
+                              _ToneChip(
+                                label: _fmt(_seconds),
+                                tone: _ChipTone.neutral,
+                                icon: Icons.timer_outlined,
+                              ),
+                            if (_busy) ...[
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    GlassTokens.fg(context, alpha: 0.85),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        _StatusChip(
-                          label: 'Min ${p.minSec.toStringAsFixed(1)}s',
-                          tone: _ChipTone.neutral,
-                        ),
+                        const SizedBox(height: 10),
+
+                        if (_recording) _recordingHint(p.minSec),
+
                         const Spacer(),
-                        Text(
-                          p.title,
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+
+                        _recordButton(done),
+
+                        const SizedBox(height: 12),
+
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              GlassButton(
+                                label: 'Re-record',
+                                icon: Icons.replay,
+                                kind: GlassButtonKind.secondary,
+                                expand: false,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                onPressed: (!done || _busy) ? null : _reRecord,
+                                innerChrome: false,
+                              ),
+                              const SizedBox(width: 8),
+                              GlassButton(
+                                label: _playingGuide ? 'Stop guide' : 'Play guide',
+                                icon: _playingGuide
+                                    ? Icons.pause_circle_filled
+                                    : Icons.volume_up,
+                                kind: GlassButtonKind.secondary,
+                                expand: false,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                onPressed: (p.audioAsset == null || _busy)
+                                    ? null
+                                    : _togglePlayGuide,
+                                innerChrome: false,
+                              ),
+                              const SizedBox(width: 8),
+                              GlassButton(
+                                label: _playingUser ? 'Stop my clip' : 'Play my clip',
+                                icon: _playingUser
+                                    ? Icons.pause_circle_filled
+                                    : Icons.graphic_eq,
+                                kind: GlassButtonKind.secondary,
+                                expand: false,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                onPressed:
+                                    (_clips[_index] == null || _busy) ? null : _togglePlayMyRecording,
+                                innerChrome: false,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+                        const GlassDivider(height: 1, thickness: 0.8),
+                        const SizedBox(height: 12),
+
+                        GlassButton(
+                          label: _index + 1 < widget.prompts.length
+                              ? 'Next step'
+                              : 'Finish setup',
+                          icon: _index + 1 < widget.prompts.length
+                              ? Icons.arrow_forward
+                              : Icons.check,
+                          kind: GlassButtonKind.primary,
+                          onPressed: _busy ? null : _next,
+                          innerChrome: false,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      p.subtitle,
-                      style: TextStyle(
-                        color: isDark ? Colors.white70 : Colors.black54,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        color: (isDark ? Colors.white : Colors.black).withOpacity(0.04),
-                        border: Border.all(
-                          color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
-                        ),
-                      ),
-                      child: Text(
-                        p.script,
-                        style: const TextStyle(fontSize: 16, height: 1.35, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    if (p.audioAsset != null) ...[
-                      const SizedBox(height: 10),
-                      const Text(
-                        'Tip: use “Play guide” to hear an example.',
-                        style: TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ---------- Record panel ----------
-              Expanded(
-                child: Container(
-                  decoration: _panelDecoration(context),
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          // const Icon(Icons.mic, color: Color(0xFF8E7CFF)),
-                          // const SizedBox(width: 8),
-                          // const Text(
-                          //   'Recording',
-                          //   style: TextStyle(fontWeight: FontWeight.w900),
-                          // ),
-                          const Spacer(),
-                          if (_recording)
-                            _StatusChip(
-                              label: _fmt(_seconds),
-                              tone: _ChipTone.neutral,
-                            ),
-                          if (_busy) ...[
-                            const SizedBox(width: 10),
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ]
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-
-                      if (_recording) _recordingHint(p.minSec),
-
-                      const Spacer(),
-
-                      _recordButton(done),
-
-                      const SizedBox(height: 12),
-
-                      // Tools row (no overflow)
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _toolButton(
-                              icon: Icons.replay,
-                              label: 'Re-record',
-                              onPressed: (!done || _busy) ? null : _reRecord,
-                            ),
-                            const SizedBox(width: 8),
-                            _toolButton(
-                              icon: _playingGuide ? Icons.pause_circle_filled : Icons.volume_up,
-                              label: _playingGuide ? 'Stop guide' : 'Play guide',
-                              onPressed: (p.audioAsset == null || _busy) ? null : _togglePlayGuide,
-                            ),
-                            const SizedBox(width: 8),
-                            _toolButton(
-                              icon: _playingUser ? Icons.pause_circle_filled : Icons.graphic_eq,
-                              label: _playingUser ? 'Stop my clip' : 'Play my clip',
-                              onPressed: (_clips[_index] == null || _busy) ? null : _togglePlayMyRecording,
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Primary action
-                      SizedBox(
-                        height: 46,
-                        child: FilledButton.icon(
-                          onPressed: _busy ? null : _next,
-                          icon: Icon(
-                            _index + 1 < widget.prompts.length ? Icons.arrow_forward : Icons.check,
-                          ),
-                          label: Text(
-                            _index + 1 < widget.prompts.length ? 'Next step' : 'Finish setup',
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
-              ),
 
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _toolButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onPressed,
-  }) {
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18,color: Colors.white),
-      label: Text(label,style: TextStyle(color: Colors.white),),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        visualDensity: VisualDensity.compact,
       ),
     );
   }
 
   Widget _recordButton(bool done) {
+    final fg = GlassTokens.fg(context);
+    final isDark = GlassTokens.isDark(context);
+
     return GestureDetector(
       onLongPressStart: (_) => _onHoldStart(),
       onLongPressEnd: (_) => _onHoldEnd(),
       onLongPressCancel: _cancelRecording,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        height: 78,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A22),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: _recording
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFFff8143).withOpacity(0.45),
-                    blurRadius: 26,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : [],
-          border: Border.all(
-            color: Colors.white.withOpacity(_recording ? 1 : 0.30),
-            width: 1.4,
-          ),
-        ),
-        child: Center(
+      child: LiquidGlass(
+        borderRadius: BorderRadius.circular(20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        // ✅ keep some blur for the big CTA (readability)
+        blurX: isDark ? 9 : 7,
+        blurY: isDark ? 9 : 7,
+        shadow: _recording,
+        shadowBlur: 26,
+        shadowOffset: const Offset(0, 12),
+        shadowOpacityDark: _recording ? 0.24 : 0.18,
+        shadowOpacityLight: _recording ? 0.10 : 0.06,
+        grain: false,
+        tintOpacityLight: _recording ? 0.09 : 0.06,
+        tintOpacityDark: _recording ? 0.12 : 0.08,
+        borderOpacityLight: _recording ? 0.26 : 0.20,
+        borderOpacityDark: _recording ? 0.22 : 0.18,
+        child: SizedBox(
+          height: 42,
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 _recording ? Icons.mic_rounded : Icons.mic_none_rounded,
                 size: 28,
-                color: Colors.white,
+                color: fg,
               ),
               const SizedBox(width: 12),
-              Flexible(
-                child: Text(
-                  _recording
-                      ? 'Recording… release to finish'
-                      : (done ? 'Recorded — hold to replace' : 'Hold to record'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  overflow: TextOverflow.ellipsis,
+              Expanded(
+                child: Align(
+                  alignment: Alignment.center,
+                  // ✅ never overflow; scales down if needed
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.center,
+                    child: Text(
+                      _recording
+                          ? 'Recording… release to finish'
+                          : (done ? 'Recorded — hold to replace' : 'Hold to record'),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: fg,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -671,76 +704,202 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
     return Align(
       alignment: Alignment.center,
       child: Text(
-        need > 0.05 ? 'Keep holding… ${need.toStringAsFixed(1)}s more' : 'Good! You can release now.',
-        style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}
-
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-          border: Border.all(
-            color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
-          ),
-        ),
-        child: Tooltip(
-          message: tooltip,
-          child: Icon(icon, color: onTap == null ? Colors.white38 : null),
+        need > 0.05
+            ? 'Keep holding… ${need.toStringAsFixed(1)}s more'
+            : 'Good! You can release now.',
+        style: TextStyle(
+          color: GlassTokens.muted(context),
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
 }
+
+// -----------------------------------------------------------------------------
+// Glass helpers
+// -----------------------------------------------------------------------------
 
 enum _ChipTone { neutral, good, bad }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, required this.tone});
+class _ToneChip extends StatelessWidget {
+  const _ToneChip({
+    required this.label,
+    required this.tone,
+    this.icon,
+  });
+
   final String label;
   final _ChipTone tone;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    Color? c;
-    if (tone == _ChipTone.good) c = Colors.black;
-    if (tone == _ChipTone.bad) c = Colors.redAccent;
+    final fg = GlassTokens.fg(context, alpha: 0.92);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: (c ?? Colors.black),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color:Colors.white.withOpacity(0.45)),
+    // slightly stronger than normal (this page is glass)
+    double tl, td, bl, bd;
+    switch (tone) {
+      case _ChipTone.good:
+        tl = 0.060;
+        td = 0.080;
+        bl = 0.22;
+        bd = 0.18;
+        break;
+      case _ChipTone.bad:
+        tl = 0.080;
+        td = 0.105;
+        bl = 0.24;
+        bd = 0.20;
+        break;
+      case _ChipTone.neutral:
+      default:
+        tl = 0.050;
+        td = 0.070;
+        bl = 0.20;
+        bd = 0.16;
+        break;
+    }
+
+    return LiquidGlass(
+      borderRadius: BorderRadius.circular(999),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      shadow: false,
+      // ✅ chips: crisp (no extra blur)
+      blurX: 0,
+      blurY: 0,
+      grain: false,
+      tintOpacityLight: tl,
+      tintOpacityDark: td,
+      borderOpacityLight: bl,
+      borderOpacityDark: bd,
+      onTap: null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon ??
+                (tone == _ChipTone.good
+                    ? Icons.check_circle_outline
+                    : (tone == _ChipTone.bad
+                        ? Icons.error_outline
+                        : Icons.info_outline)),
+            size: 16,
+            color: fg,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: fg,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w800,
-          color: Colors.white70,
+    );
+  }
+}
+
+class _GlassNameDialog extends StatelessWidget {
+  const _GlassNameDialog({
+    required this.controller,
+    required this.busy,
+  });
+
+  final TextEditingController controller;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: LiquidGlass(
+        borderRadius: BorderRadius.circular(22),
+        padding: const EdgeInsets.all(14),
+        blurX: GlassTokens.isDark(context) ? GlassTokens.blurLg : 22,
+        blurY: GlassTokens.isDark(context) ? GlassTokens.blurLg : 22,
+        shadow: true,
+        grain: false,
+        tintOpacityLight: 0.10,
+        tintOpacityDark: 0.12,
+        borderOpacityLight: 0.22,
+        borderOpacityDark: 0.20,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Your name',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+                color: fg,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: TextStyle(color: fg, fontWeight: FontWeight.w700),
+              decoration: InputDecoration(
+                labelText: 'Display name (e.g., Alex)',
+                labelStyle: TextStyle(color: muted, fontWeight: FontWeight.w600),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.04),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide:
+                      BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide:
+                      BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.26),
+                    width: 1.2,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: GlassButton(
+                    label: 'Cancel',
+                    kind: GlassButtonKind.secondary,
+                    onPressed: busy ? null : () => Navigator.pop(context),
+                    innerChrome: false,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GlassButton(
+                    label: 'Save',
+                    icon: Icons.check,
+                    kind: GlassButtonKind.primary,
+                    onPressed: busy
+                        ? null
+                        : () => Navigator.pop(context, controller.text.trim()),
+                    innerChrome: false,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

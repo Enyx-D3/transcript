@@ -1,74 +1,106 @@
 // lib/whats_new/whats_new_page.dart
 import 'package:flutter/material.dart';
+import 'package:transcript/widgets/icon_pill_button.dart';
+
+// ✅ Glass primitives (same family as RecordSheet / TrashPage)
+import '../ui/glass/glass_background.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class WhatsNewPage extends StatelessWidget {
   const WhatsNewPage({super.key});
 
   static const _appName = 'Meeting Transcript Unlimited';
-  static const _version = '1.1.1';
+  static const _version = '2.0.0';
 
   @override
   Widget build(BuildContext context) {
-    const bg = Color(0xFF0B0C10);
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+    final muted = GlassTokens.muted(context, alpha: 0.70);
 
     return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: bg,
-        elevation: 0,
-        title: const Text("What’s new"),
-        leading: Padding(
-          padding: const EdgeInsets.all(7.0),
-          child: _IconPillButton(
-            tooltip: 'Close',
-            icon: Icons.arrow_back,
-            onTap: () => Navigator.of(context).pop(),
-          ),
-        ),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      backgroundColor: Colors.transparent,
+      body: GlassBackground(
+        child: SafeArea(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _HeaderCard(appName: _appName, version: _version),
-              const SizedBox(height: 12),
-
-              // ✅ Scrollable content (sections + numbered list)
-              Expanded(
-                child: ListView(
-                  physics: const BouncingScrollPhysics(),
+              // ✅ Header row (no AppBar)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Row(
                   children: [
-                    const _SectionHeader(
-                      title: 'New Features',
-                      
+                    IconPillButton(
+                      tooltip: 'Back',
+                      icon: Icons.arrow_back,
+                      onTap: () => Navigator.of(context).pop(),
                     ),
-                    const SizedBox(height: 8),
-                    _NumberedList(items: _newFeatures, isDark: isDark),
-
-                    const SizedBox(height: 16),
-
-                    const _SectionHeader(
-                      title: 'Improvements',
-                      
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        "What’s new",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.2,
+                          color: fg,
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    _NumberedList(items: _improvements, isDark: isDark),
-
-                    const SizedBox(height: 16),
-
-                    const _SectionHeader(
-                      title: 'Fixes',
-                    
-                    ),
-                    const SizedBox(height: 8),
-                    _NumberedList(items: _fixes, isDark: isDark),
-
-                    const SizedBox(height: 10),
                   ],
+                ),
+              ),
+
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: GlassDivider(height: 1, thickness: 0.8),
+              ),
+              const SizedBox(height: 10),
+
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _HeaderCard(
+                        appName: _appName,
+                        version: _version,
+                        fg: fg,
+                        muted: muted,
+                      ),
+                      const SizedBox(height: 12),
+
+                      // ✅ One scroll view
+                      Expanded(
+                        child: ListView(
+                          physics: const BouncingScrollPhysics(),
+                          children: const [
+                            _SectionHeader(title: 'New Features'),
+                            SizedBox(height: 8),
+                            _NumberedList(items: _newFeatures),
+
+                            SizedBox(height: 16),
+
+                            _SectionHeader(title: 'Improvements'),
+                            SizedBox(height: 8),
+                            _NumberedList(items: _improvements),
+
+                            SizedBox(height: 16),
+
+                            _SectionHeader(title: 'Fixes'),
+                            SizedBox(height: 8),
+                            _NumberedList(items: _fixes),
+
+                            SizedBox(height: 72),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -80,55 +112,43 @@ class WhatsNewPage extends StatelessWidget {
 }
 
 // ------------------------
-// ✅ 10 total items (for scrolling)
+// ✅ Data
 // ------------------------
 const List<String> _newFeatures = [
-  'Favourites tab to star important transcripts.',
-  'Sort transcripts by date (newest/oldest).',
-  'Sort transcripts by title (A→Z / Z→A).',
-  'Trash system (3-day recovery) for deleted transcripts.',
+  'Auto-generate summary after transcription',
+  'AI-powered typo correction',
+  'Refined glass UI design',
 ];
 
 const List<String> _improvements = [
-  'Cleaner panels and spacing in Timeline and Settings.',
-  'Faster list rendering for large transcript libraries.',
-  'Better empty states and helpful microcopy.',
+  'Faster transcription and summary generation',
+  'Optimized audio and video file processing',
 ];
 
 const List<String> _fixes = [
-  'Fixed occasional UI flicker when returning from details.',
-  'Improved stability during background transcription.',
-  'Minor performance and crash fixes.',
+  'Improved background transcription stability',
+  'Minor performance improvements and bug fixes',
 ];
-
 // ------------------------
 // UI widgets
 // ------------------------
 class _HeaderCard extends StatelessWidget {
-  const _HeaderCard({required this.appName, required this.version});
+  const _HeaderCard({
+    required this.appName,
+    required this.version,
+    required this.fg,
+    required this.muted,
+  });
 
   final String appName;
   final String version;
+  final Color fg;
+  final Color muted;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF101018),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 18,
-            color: Colors.black.withOpacity(0.25),
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+    return GlassCard(
+      variant: GlassCardVariant.tile,
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
@@ -137,10 +157,10 @@ class _HeaderCard extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              color: Colors.white.withOpacity(0.06),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
+              color: Colors.white.withValues(alpha: 0.06),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
             ),
-            child: const Icon(Icons.new_releases_outlined),
+            child: Icon(Icons.new_releases_outlined, color: fg),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -151,21 +171,20 @@ class _HeaderCard extends StatelessWidget {
                   appName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
+                    color: fg,
+                    letterSpacing: -0.1,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _Pill(
-                      text: 'Version $version',
-                      color: Colors.white,
-                    ),
-                    // const _Pill(text: 'Release notes'),
+                    _Pill(text: 'Version $version', color: Colors.white),
+                    _Pill(text: 'Release notes', color: muted),
                   ],
                 ),
               ],
@@ -179,73 +198,58 @@ class _HeaderCard extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
-
   final String title;
-  
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = GlassTokens.fg(context, alpha: 0.92);
     return Padding(
       padding: const EdgeInsets.only(left: 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.2,
-            ),
-          ),
-          const SizedBox(height: 1),
-          
-        ],
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.2,
+          color: fg,
+        ),
       ),
     );
   }
 }
 
 class _NumberedList extends StatelessWidget {
-  const _NumberedList({required this.items, required this.isDark});
-
+  const _NumberedList({required this.items});
   final List<String> items;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
+    final isDark = GlassTokens.isDark(context);
+    final textColor = isDark ? Colors.white70 : Colors.black87;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF101018),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-      ),
+    return GlassCard(
+      variant: GlassCardVariant.tile,
+      padding: EdgeInsets.zero,
       child: ListView.separated(
         itemCount: items.length,
         shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(), // parent scrolls
-        separatorBuilder: (_, __) => Divider(
-          height: 1,
-          thickness: 0.6,
-          color: Colors.white.withOpacity(0.08),
-        ),
+        physics: const NeverScrollableScrollPhysics(),
+        separatorBuilder: (_, _) =>
+            const GlassDivider(height: 1, thickness: 0.8),
         itemBuilder: (ctx, i) {
-          final n = i + 1;
           return Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _IndexPill(symbol: '✦'),
+                _IndexPill(symbol: '${i + 1}'),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     items[i],
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white70 : Colors.black87,
+                      color: textColor,
                       height: 1.25,
                     ),
                   ),
@@ -271,16 +275,16 @@ class _IndexPill extends StatelessWidget {
       height: 28,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: c.withOpacity(0.14),
+        color: c.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: c.withOpacity(0.30)),
+        border: Border.all(color: c.withValues(alpha: 0.30)),
       ),
       child: Text(
         symbol,
         style: const TextStyle(
-          fontSize: 13,
+          fontSize: 12,
           fontWeight: FontWeight.w900,
-          color: Colors.white24,
+          color: Colors.white70,
           height: 1.0,
         ),
       ),
@@ -289,66 +293,28 @@ class _IndexPill extends StatelessWidget {
 }
 
 class _Pill extends StatelessWidget {
-  const _Pill({required this.text, this.color});
-
+  const _Pill({required this.text, required this.color});
   final String text;
-  final Color? color;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? Colors.white70;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: c.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: c.withOpacity(0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Text(
         text,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: c),
-      ),
-    );
-  }
-}
-
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
-    final bg = (isDark ? Colors.white : Colors.black).withOpacity(0.06);
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: bg,
-          border: Border.all(color: border),
-        ),
-        child: Tooltip(
-          message: tooltip,
-          child: Icon(
-            icon,
-            color: onTap == null
-                ? (isDark ? Colors.white38 : Colors.black38)
-                : null,
-          ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          color: color.withValues(alpha: 0.95),
+          height: 1.0,
         ),
       ),
     );

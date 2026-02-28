@@ -1,7 +1,9 @@
+// lib/transcript/transcript_chat_page.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:transcript/widgets/icon_pill_button.dart';
 
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
@@ -17,6 +19,15 @@ import '../common/app_flushbar.dart';
 
 // ✅ NEW (for clickable "Download model" banner)
 import '../model_picker_page.dart';
+
+// ✅ Glass primitives
+import '../ui/glass/glass_background.dart';
+import '../ui/glass/liquid_glass.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_chip.dart';
+import '../ui/glass/glass_dock.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class TranscriptChatPage extends StatefulWidget {
   const TranscriptChatPage({super.key, required this.transcriptId});
@@ -75,7 +86,7 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
   void _scrollToBottom({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollCtrl.hasClients) return;
-      final to = _scrollCtrl.position.maxScrollExtent + 160;
+      final to = _scrollCtrl.position.maxScrollExtent + 220;
       if (!animate) {
         _scrollCtrl.jumpTo(to);
       } else {
@@ -142,6 +153,7 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
       _modelPath = exists ? path : null;
     });
 
+    _qwenSub?.cancel();
     _qwenSub = _qwenService.progress.listen((p) async {
       if (!mounted) return;
       final finishedOk =
@@ -162,9 +174,8 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
   }
 
   Future<void> _openModelPicker() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
     await _initModelState(); // refresh model availability on return
   }
 
@@ -366,52 +377,74 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
       outerContext: context,
       responseText: m.text,
       meta: meta,
-      sendReport:
-          ({
-            required String reason,
-            required String note,
-            required String response,
-            Map<String, dynamic>? meta,
-          }) {
-            return _reportService.sendReport(
-              reason: reason,
-              note: note,
-              response: response,
-              meta: meta,
-            );
-          },
+      sendReport: ({
+        required String reason,
+        required String note,
+        required String response,
+        Map<String, dynamic>? meta,
+      }) {
+        return _reportService.sendReport(
+          reason: reason,
+          note: note,
+          response: response,
+          meta: meta,
+        );
+      },
     );
   }
 
-  Widget _chipAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onTap,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: Colors.white.withOpacity(0.10)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: Colors.white70),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white70,
+  // ✅ NEW: reuse the same “perfect capsule” pill logic everywhere
+  Widget _metaPill(String text, {Color? accent, IconData? icon}) {
+    final c = accent;
+    final tl = c != null ? 0.055 : 0.050;
+    final td = c != null ? 0.075 : 0.070;
+    final bl = c != null ? 0.24 : 0.20;
+    final bd = c != null ? 0.20 : 0.16;
+
+    final radius = BorderRadius.circular(999);
+
+    return ClipRRect(
+      borderRadius: radius,
+      child: LiquidGlass(
+        borderRadius: radius,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        shadow: false,
+        // chips: crisp (avoid double blur)
+        blurX: 0,
+        blurY: 0,
+        grain: false,
+        tintOpacityLight: tl,
+        tintOpacityDark: td,
+        borderOpacityLight: bl,
+        borderOpacityDark: bd,
+        child: SizedBox(
+          height: 32,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 14,
+                  color: (c ?? Colors.white).withValues(alpha: 0.95),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Flexible(
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: (c ?? Colors.white).withValues(alpha: 0.95),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -421,12 +454,27 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
     final isUser = m.isUser;
 
     final align = isUser ? Alignment.centerRight : Alignment.centerLeft;
-    final bubbleColor = isUser
-        ? Colors.white30
-        : const Color(0xFF14141B);
-    final borderColor = isUser
-        ? Colors.transparent
-        : Colors.white.withOpacity(0.10);
+
+    // ✅ Differentiated “glass”
+    final double userTintDark = 0.085;
+    final double userTintLight = 0.070;
+    final double aiTintDark = 0.28;
+    final double aiTintLight = 0.024;
+
+    final double userBorderDark = 0.18;
+    final double userBorderLight = 0.22;
+    final double aiBorderDark = 0.14;
+    final double aiBorderLight = 0.18;
+
+    final isDark = GlassTokens.isDark(context);
+
+    final tint = isUser
+        ? (isDark ? userTintDark : userTintLight)
+        : (isDark ? aiTintDark : aiTintLight);
+
+    final border = isUser
+        ? (isDark ? userBorderDark : userBorderLight)
+        : (isDark ? aiBorderDark : aiBorderLight);
 
     return Align(
       alignment: align,
@@ -435,43 +483,55 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(
-            crossAxisAlignment: isUser
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
+            crossAxisAlignment:
+                isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: bubbleColor,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: borderColor),
-                ),
-                child: Text(
-                  m.text,
-                  style: const TextStyle(color: Colors.white, height: 1.35),
+              // ✅ FIX: ensure bubble corners clip perfectly (prevents “not fully round”)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: LiquidGlass(
+                  borderRadius: BorderRadius.circular(18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  blurX: isUser ? 14 : 22,
+                  blurY: isUser ? 14 : 22,
+                  shadow: false,
+                  tintOpacityDark: tint,
+                  tintOpacityLight: tint,
+                  borderOpacityDark: border,
+                  borderOpacityLight: border,
+                  child: Text(
+                    m.text,
+                    style: TextStyle(
+                      color: GlassTokens.fg(context, alpha: 0.94),
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
 
-              // ✅ Actions for AI only
+              // ✅ Actions for AI only (glass chips)
               if (!isUser)
                 Padding(
-                  padding: const EdgeInsets.only(top: 6, left: 2),
+                  padding: const EdgeInsets.only(top: 8, left: 2),
                   child: Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _chipAction(
+                      GlassChip(
+                        label: 'COPY',
                         icon: Icons.copy,
-                        label: 'Copy',
                         onTap: () => _copyText(m.text),
                       ),
-                      _chipAction(
+                      GlassChip(
+                        label: 'REPORT',
                         icon: Icons.flag_outlined,
-                        label: 'Report',
                         onTap: () => _reportAiMessage(m),
+                        tintDark: 0.055,
+                        tintLight: 0.045,
                       ),
                     ],
                   ),
@@ -486,53 +546,74 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
   Widget _modelBanner() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: _openModelPicker, // ✅ clickable
-        child: Ink(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.06),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withOpacity(0.10)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.smart_toy_outlined, color: Colors.white70),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Model required to ask new questions.\nTap to open Model Download.',
-                  style: TextStyle(color: Colors.white70, height: 1.25),
+      child: GlassCard(
+        variant: GlassCardVariant.panel,
+        onTap: _openModelPicker,
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Icon(
+              Icons.smart_toy_outlined,
+              color: GlassTokens.muted(context, alpha: 0.82),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Model required to ask new questions.\nTap to open Model Download.',
+                style: TextStyle(
+                  color: GlassTokens.muted(context, alpha: 0.78),
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  color:  Colors.white.withOpacity(0.18),
-                  border: Border.all(
-                    color:  Colors.white.withOpacity(0.35),
+            ),
+            const SizedBox(width: 10),
+            GlassButton(
+              label: 'DOWNLOAD',
+              icon: Icons.download,
+              expand: false,
+              kind: GlassButtonKind.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              onPressed: _openModelPicker,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _errorBanner(String msg) {
+    final radius = BorderRadius.circular(18);
+    final isDark = GlassTokens.isDark(context);
+
+    // ✅ UPDATED: use LiquidGlass for the error surface (still matches your glass)
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: LiquidGlass(
+          borderRadius: radius,
+          padding: const EdgeInsets.all(14),
+          shadow: false,
+          blurX: isDark ? 16 : 12,
+          blurY: isDark ? 16 : 12,
+          grain: false,
+          tintOpacityDark: 0.055,
+          tintOpacityLight: 0.045,
+          borderOpacityDark: 0.20,
+          borderOpacityLight: 0.24,
+          child: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.redAccent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  msg,
+                  style: const TextStyle(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
                   ),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.download, size: 16, color: Colors.white),
-                    SizedBox(width: 6),
-                    Text(
-                      'Download',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ],
@@ -543,58 +624,94 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
   }
 
   Widget _composer(bool canSend) {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF14141B),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.10)),
+    return GlassDock(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      innerPadding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _inputCtrl,
+              minLines: 1,
+              maxLines: 4,
+              textInputAction: TextInputAction.newline,
+              cursorColor: GlassTokens.fg(context, alpha: 0.9),
+              style: TextStyle(
+                color: GlassTokens.fg(context, alpha: 0.92),
+                fontWeight: FontWeight.w600,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Ask about this transcript…',
+                hintStyle: TextStyle(
+                  color: GlassTokens.muted(context, alpha: 0.55),
+                  fontWeight: FontWeight.w700,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: (_) {
+                // ensures send button enabling updates when user types
+                if (mounted) setState(() {});
+              },
+            ),
           ),
+          const SizedBox(width: 10),
+          GlassButton(
+            label: _sending ? 'SENDING' : 'SEND',
+            icon: Icons.send,
+            expand: false,
+            kind: GlassButtonKind.primary,
+            loading: _sending,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            onPressed: canSend ? _send : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  PreferredSizeWidget _glassAppBar() {
+    final fg = GlassTokens.fg(context, alpha: 0.92);
+  
+    return AppBar(
+      automaticallyImplyLeading: false,
+      titleSpacing: 12,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      flexibleSpace: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
           child: Row(
             children: [
-              Expanded(
-                child: TextField(
-                  cursorColor: Colors.white,
-                  controller: _inputCtrl,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.newline,
-                  decoration: const InputDecoration(
-                    hintText: 'Ask about this transcript…',
-                    border: InputBorder.none,
-                    isDense: true,
-                  ),
+              IconPillButton(
+                tooltip: 'Back',
+                icon: Icons.arrow_back,
+                onTap: () => Navigator.of(context).maybePop(),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Ask AI',
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.2,
+                  fontSize: 20,
                 ),
               ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: canSend ? _send : null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: _sending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2,color: Colors.white,),
-                      )
-                    : const Icon(Icons.send),
-              ),
+              const Spacer(),
+              if (_sending)
+                // ✅ UPDATED: glass pill instead of plain text
+                _metaPill('thinking…', accent: null, icon: Icons.sync),
+              if (_sending) const SizedBox(width: 2),
+              if (!_sending)
+                const SizedBox(width: 2), // keep right padding stable
             ],
           ),
         ),
       ),
+      toolbarHeight: 68,
     );
   }
 
@@ -604,121 +721,39 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final hasModel = _modelAvailable && _modelPath != null;
+    final hasText = _inputCtrl.text.trim().isNotEmpty;
+    final canSend = hasModel && !_sending && hasText;
+
     if (_initializing) {
       return Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          titleSpacing: 12, // ✅ nice left padding
-          title: Row(
-            children: [
-              _IconPillButton(
-                tooltip: 'Back',
-                icon: Icons.arrow_back,
-                onTap: () => Navigator.of(context).maybePop(),
-              ),
-              const SizedBox(width: 10),
-              const Text('Ask AI'),
-            ],
-          ),
+        extendBodyBehindAppBar: true,
+        appBar: _glassAppBar(),
+        body: const GlassBackground(
+          child: Center(child: CircularProgressIndicator()),
         ),
-        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
-    final canSend = _modelAvailable && _modelPath != null && !_sending;
-
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        titleSpacing: 12, // ✅ nice left padding
-        title: Row(
+      extendBodyBehindAppBar: true,
+      appBar: _glassAppBar(),
+      body: GlassBackground(
+        child: Column(
           children: [
-            _IconPillButton(
-              tooltip: 'Back',
-              icon: Icons.arrow_back,
-              onTap: () => Navigator.of(context).maybePop(),
-            ),
-            const SizedBox(width: 10),
-            const Text('Ask AI'),
-          ],
-        ),
-      ),
-      body: Column(
-        children: [
-          if (!_modelAvailable) _modelBanner(),
-
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.redAccent.withOpacity(0.25)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.redAccent),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: const TextStyle(color: Colors.redAccent),
-                      ),
-                    ),
-                  ],
-                ),
+            const SizedBox(height: 78), // space for glass app bar
+            if (!_modelAvailable) _modelBanner(),
+            if (_error != null) _errorBanner(_error!),
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                itemCount: _messages.length,
+                itemBuilder: (ctx, i) => _buildBubble(_messages[i]),
               ),
             ),
-
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-              itemCount: _messages.length,
-              itemBuilder: (ctx, i) => _buildBubble(_messages[i]),
-            ),
-          ),
-
-          _composer(canSend),
-        ],
-      ),
-    );
-  }
-}
-
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-            border: Border.all(
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.10),
-            ),
-          ),
-          child: Icon(icon, size: 20),
+            _composer(canSend),
+          ],
         ),
       ),
     );

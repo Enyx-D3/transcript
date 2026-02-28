@@ -12,6 +12,13 @@ import '../objectbox/entities.dart';
 import '../objectbox.g.dart';
 import '../common/app_flushbar.dart';
 
+// ✅ Glass primitives
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+import '../ui/glass/liquid_glass.dart';
+
 class YoutubeSavedTranscriptPage extends StatefulWidget {
   const YoutubeSavedTranscriptPage({
     super.key,
@@ -283,7 +290,6 @@ class _YoutubeSavedTranscriptPageState
   }
 
   String _safeFileId(String raw) {
-    // keep filename safe
     return raw.replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
   }
 
@@ -313,7 +319,6 @@ class _YoutubeSavedTranscriptPageState
       sb.writeln();
     }
 
-    // manual first, then auto
     for (final t in _manual) {
       appendBlock(t, isAuto: false);
     }
@@ -321,7 +326,7 @@ class _YoutubeSavedTranscriptPageState
       appendBlock(t, isAuto: true);
     }
 
-    return sb.toString().trimRight() + '\n';
+    return '${sb.toString().trimRight()}\n';
   }
 
   Future<void> _shareAllAsTxt() async {
@@ -362,74 +367,134 @@ class _YoutubeSavedTranscriptPageState
     }
   }
 
+  // ============================================================
+  // UI
+  // ============================================================
+
+  Widget _headerBar({required bool canShare}) {
+    final fg = Colors.white.withValues(alpha: 0.92);
+
+    return Row(
+      children: [
+        _GlassIconPill(
+          tooltip: 'Close',
+          icon: Icons.close,
+          onTap: () => Navigator.of(context).pop(),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'YouTube Transcript',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.2,
+                  color: fg,
+                ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        _GlassIconPill(
+          tooltip: 'Share .txt',
+          icon: Icons.ios_share,
+          onTap: canShare ? _shareAllAsTxt : null,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final fg = Colors.white.withValues(alpha: 0.92);
 
-    final panelBg = isDark
-        ? const Color(0xFF101018)
-        : theme.colorScheme.surface;
-    final panelBorder = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
+    // ✅ Loading state (no AppBar)
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('YouTube Transcript')),
-        body: const Center(child: CircularProgressIndicator()),
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+            child: Column(
+              children: [
+                _headerBar(canShare: false),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Loading…',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: fg,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
+    // ✅ Not found state (no AppBar)
     if (_meta == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('YouTube Transcript')),
-        body: const Center(child: Text('Not found')),
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+            child: Column(
+              children: [
+                _headerBar(canShare: false),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      'Not found',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: fg,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
     final url = _bestUrl(_meta!);
+    final canShare = (_manual.isNotEmpty || _auto.isNotEmpty);
 
     return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: const Text('YouTube Transcript'),
-        actions: [
-
-          // ✅ Share button (pill too)
-          Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: _IconPillButton(
-              tooltip: 'Share .txt',
-              icon: Icons.ios_share,
-              onTap: (_manual.isNotEmpty || _auto.isNotEmpty)
-                  ? _shareAllAsTxt
-                  : null,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: _IconPillButton(
-              tooltip: 'Back',
-              icon: Icons.close,
-              onTap: () => Navigator.of(context).pop(),
-            ),
-          ),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
           children: [
-            // Top meta panel (link + copy + generate again)
-            Container(
-              decoration: BoxDecoration(
-                color: panelBg,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: panelBorder),
-              ),
-              padding: const EdgeInsets.all(12),
+            // ================= Header (in-page, not AppBar) =================
+            _headerBar(canShare: canShare),
+            const SizedBox(height: 14),
+
+            // ================= Top meta panel =================
+            GlassCard(
+              variant: GlassCardVariant.panel,
+              padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -437,21 +502,19 @@ class _YoutubeSavedTranscriptPageState
                     'Video link',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w900,
+                      color: fg,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Container(
+                  const SizedBox(height: 10),
+
+                  // Link box
+                  LiquidGlass(
+                    borderRadius: BorderRadius.circular(14),
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: panelBorder),
-                      color: isDark
-                          ? Colors.white.withOpacity(0.06)
-                          : Colors.black.withOpacity(0.04),
-                    ),
+                    shadow: false,
                     child: Row(
                       children: [
-                        const Icon(Icons.link, size: 18),
+                        const Icon(Icons.link, size: 18, color: Colors.white70),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -460,6 +523,7 @@ class _YoutubeSavedTranscriptPageState
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w700,
+                              color: fg,
                             ),
                           ),
                         ),
@@ -467,81 +531,61 @@ class _YoutubeSavedTranscriptPageState
                           tooltip: 'Copy link',
                           onPressed: () async {
                             await Clipboard.setData(ClipboardData(text: url));
-                            if (mounted) {
-                              await AppFlushbar.success(
-                                context,
-                                message: 'Copied link',
-                              );
-                            }
+                            if (!mounted) return;
+                            await AppFlushbar.success(
+                              context,
+                              message: 'Copied link',
+                            );
                           },
-                          icon: const Icon(Icons.copy),
+                          icon: const Icon(Icons.copy, color: Colors.white70),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+
+                  const SizedBox(height: 12),
+                  const GlassDivider(),
+                  const SizedBox(height: 12),
 
                   // Generate again
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _regenerating ? null : _regenerate,
-                          icon: _regenerating
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.auto_fix_high,color: Colors.white,),
-                          label: Text(
-                            _regenerating ? 'Generating…' : 'Generate again',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
+                  GlassButton(
+                    kind: GlassButtonKind.primary,
+                    label: _regenerating ? 'Generating…' : 'Generate again',
+                    icon: Icons.auto_fix_high,
+                    onPressed: _regenerating ? null : _regenerate,
+          
                   ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
+
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: 10,
+                    runSpacing: 10,
                     children: [
-                      _MiniPill(
-                        label: 'Video ID: ${_meta!.videoId}',
-                        isDark: isDark,
-                      ),
-                      _MiniPill(
-                        label: 'Manual: ${_manual.length}',
-                        isDark: isDark,
-                      ),
-                      _MiniPill(label: 'Auto: ${_auto.length}', isDark: isDark),
+                      _MiniPill(label: 'Video ID: ${_meta!.videoId}'),
+                      _MiniPill(label: 'Manual: ${_manual.length}'),
+                      _MiniPill(label: 'Auto: ${_auto.length}'),
                     ],
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
+            // ================= Manual section =================
             _SectionHeader(
               title: 'Manual transcripts',
-              subtitle: _manual.isEmpty
-                  ? 'None'
-                  : '${_manual.length} available',
+              subtitle: _manual.isEmpty ? 'None' : '${_manual.length} available',
             ),
             const SizedBox(height: 10),
             _manual.isEmpty
-                ? const _EmptySmall(
-                    text: 'No manual transcripts for this video.',
-                  )
+                ? const _EmptySmall(text: 'No manual transcripts for this video.')
                 : _DbTranscriptList(items: _manual),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
 
+            // ================= Auto section =================
             _SectionHeader(
               title: 'Auto-generated transcripts',
               subtitle: _auto.isEmpty ? 'None' : '${_auto.length} available',
@@ -553,7 +597,7 @@ class _YoutubeSavedTranscriptPageState
                   )
                 : _DbTranscriptList(items: _auto),
 
-            const SizedBox(height: 72),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -575,33 +619,25 @@ class _TranscriptItem {
   });
 }
 
+// ===================== LIST =====================
+
 class _DbTranscriptList extends StatelessWidget {
   const _DbTranscriptList({required this.items});
   final List<YoutubeTranscriptTextEntity> items;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final panelBg = isDark
-        ? const Color(0xFF101018)
-        : Theme.of(context).colorScheme.surface;
-    final panelBorder = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: panelBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: panelBorder),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return GlassCard(
+      variant: GlassCardVariant.panel,
+      padding: EdgeInsets.zero,
       child: ListView.separated(
         itemCount: items.length,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        separatorBuilder: (_, __) => const Divider(height: 1, thickness: 0.6),
+        separatorBuilder: (_, _) => const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12),
+          child: GlassDivider(),
+        ),
         itemBuilder: (ctx, i) => _DbTranscriptCard(item: items[i]),
       ),
     );
@@ -615,14 +651,7 @@ class _DbTranscriptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-    final bg = isDark
-        ? Colors.white.withOpacity(0.06)
-        : Colors.black.withOpacity(0.04);
+    final fg = Colors.white.withValues(alpha: 0.92);
 
     final langName = (item.language?.trim().isNotEmpty ?? false)
         ? item.language!.trim()
@@ -637,22 +666,19 @@ class _DbTranscriptCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // header row
           Row(
             children: [
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: border),
-                  ),
+                child: LiquidGlass(
+                  borderRadius: BorderRadius.circular(999),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shadow: false,
                   child: Row(
                     children: [
-                      const Icon(Icons.language, size: 16),
+                      const Icon(Icons.language,
+                          size: 16, color: Colors.white70),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -661,6 +687,7 @@ class _DbTranscriptCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w900,
+                            color: fg,
                           ),
                         ),
                       ),
@@ -671,40 +698,32 @@ class _DbTranscriptCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              IconButton(
+              _GlassIconPill(
                 tooltip: 'Copy',
-                onPressed: () async {
+                icon: Icons.copy,
+                onTap: () async {
                   await Clipboard.setData(ClipboardData(text: item.text));
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied transcript')),
-                    );
-                  }
+                  if (!context.mounted) return;
+                  await AppFlushbar.success(context, message: 'Copied transcript');
                 },
-                icon: const Icon(Icons.copy),
               ),
             ],
           ),
+
           const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
+
+          // transcript box
+          LiquidGlass(
+            borderRadius: BorderRadius.circular(14),
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: border),
-            ),
+            shadow: false,
             child: _ExpandableTranscriptBox(
               text: item.text,
               previewLines: 6,
-              bg: bg,
-              border: border,
               textStyle: theme.textTheme.bodySmall?.copyWith(
                 height: 1.35,
                 fontWeight: FontWeight.w600,
-                color: isDark
-                    ? Colors.white.withOpacity(0.92)
-                    : Colors.black.withOpacity(0.82),
+                color: fg,
               ),
             ),
           ),
@@ -720,12 +739,12 @@ class _GenTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
     final label = isGenerated ? 'AUTO' : 'MANUAL';
 
     final color = Colors.white;
-    final border = color.withOpacity(isDark ? 0.50 : 0.35);
-    final bg = color.withOpacity(isDark ? 0.16 : 0.10);
+    final border = color.withValues(alpha:  isDark ? 0.50 : 0.35);
+    final bg = color.withValues(alpha: isDark ? 0.16 : 0.10);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -737,10 +756,10 @@ class _GenTag extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.2,
-          color: color,
-        ),
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.2,
+              color: color,
+            ),
       ),
     );
   }
@@ -754,7 +773,7 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final fg = Colors.white.withValues(alpha: 0.92);
 
     return Padding(
       padding: const EdgeInsets.only(left: 2),
@@ -764,14 +783,15 @@ class _SectionHeader extends StatelessWidget {
           Text(
             title,
             style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w900,
+              color: fg,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             subtitle,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: isDark ? Colors.white70 : Colors.black54,
+              color: Colors.white70,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -782,31 +802,26 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _MiniPill extends StatelessWidget {
-  const _MiniPill({required this.label, required this.isDark});
+  const _MiniPill({required this.label});
   final String label;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-    final bg = isDark
-        ? Colors.white.withOpacity(0.06)
-        : Colors.black.withOpacity(0.04);
+    final fg = Colors.white.withValues(alpha: 0.92);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
+    return LiquidGlass(
+      borderRadius: BorderRadius.circular(999),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      shadow: false,
       child: Text(
         label,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: fg,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -818,14 +833,12 @@ class _EmptySmall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 6, 2, 4),
       child: Text(
         text,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: isDark ? Colors.white70 : Colors.black54,
+        style: const TextStyle(
+          color: Colors.white70,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -833,60 +846,17 @@ class _EmptySmall extends StatelessWidget {
   }
 }
 
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
-    final bg = (isDark ? Colors.white : Colors.black).withOpacity(0.06);
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: bg,
-          border: Border.all(color: border),
-        ),
-        child: Tooltip(
-          message: tooltip,
-          child: Icon(
-            icon,
-            color: onTap == null
-                ? (isDark ? Colors.white38 : Colors.black38)
-                : null,
-          ),
-        ),
-      ),
-    );
-  }
-}
+// ===================== EXPANDABLE BOX =====================
 
 class _ExpandableTranscriptBox extends StatefulWidget {
   const _ExpandableTranscriptBox({
     required this.text,
-    required this.bg,
-    required this.border,
     required this.textStyle,
     this.previewLines = 6,
     super.key,
   });
 
   final String text;
-  final Color bg;
-  final Color border;
   final TextStyle? textStyle;
   final int previewLines;
 
@@ -901,59 +871,50 @@ class _ExpandableTranscriptBoxState extends State<_ExpandableTranscriptBox>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
+    final isDark = GlassTokens.isDark(context);
     final t = widget.text.trim().isEmpty ? '(empty transcript)' : widget.text;
+
     final controlColor = isDark ? Colors.white70 : Colors.black54;
 
     Widget buildBox({required bool expanded}) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: widget.bg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: widget.border),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              t,
-              maxLines: expanded ? null : widget.previewLines,
-              overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-              style: widget.textStyle,
-            ),
-            const SizedBox(height: 8),
-            InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () => setState(() => _expanded = !_expanded),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      expanded ? Icons.expand_less : Icons.expand_more,
-                      size: 18,
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t,
+            maxLines: expanded ? null : widget.previewLines,
+            overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: widget.textStyle,
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: controlColor,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    expanded ? 'Show less' : 'Show more',
+                    style: TextStyle(
                       color: controlColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      expanded ? 'Show less' : 'Show more',
-                      style: TextStyle(
-                        color: controlColor,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
@@ -969,6 +930,48 @@ class _ExpandableTranscriptBoxState extends State<_ExpandableTranscriptBox>
           child: KeyedSubtree(
             key: ValueKey(_expanded),
             child: buildBox(expanded: _expanded),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ===================== ICON PILL =====================
+
+class _GlassIconPill extends StatelessWidget {
+  const _GlassIconPill({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+            border: Border.all(
+              color: (isDark ? Colors.white : Colors.black).withValues(alpha:  0.10),
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: Colors.white.withValues(alpha: onTap == null ? 0.35 : 0.92),
           ),
         ),
       ),

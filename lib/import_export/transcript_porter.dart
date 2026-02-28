@@ -166,12 +166,17 @@ class TranscriptPorter {
     return zipPath;
   }
 
-  /// Export ZIP then open share sheet (Drive / Gmail / etc).
-  static Future<void> exportZipAndShare({bool includeAudio = true}) async {
-    final path = await exportAllToZipFile(includeAudio: includeAudio);
-    await Share.shareXFiles([XFile(path)], text: 'Transcripts export (ZIP)');
-  }
+/// Export ZIP then open share sheet (Drive / Gmail / etc).
+static Future<void> exportZipAndShare({bool includeAudio = true}) async {
+  final path = await exportAllToZipFile(includeAudio: includeAudio);
 
+  final params = ShareParams(
+    files: [XFile(path)],
+    text: 'Transcripts export (ZIP)',
+  );
+
+  await SharePlus.instance.share(params);
+}
   /// Pick a ZIP file (device or cloud provider) and import everything into DB.
   /// Returns number of imported transcripts.
   static Future<int> pickAndImportZip() async {

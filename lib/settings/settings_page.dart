@@ -2,21 +2,29 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:transcript/model_picker_page.dart';
+import 'package:transcript/ui/glass/glass_button.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'package:transcript/widgets/icon_pill_button.dart';
 
 import '../common/app_flushbar.dart';
 import '../import_export/transcript_porter.dart';
 import '../trash/trash_page.dart';
 import '../tabs/account_tab.dart';
+import '../model_picker_page.dart';
 
-// ✅ in-app review prompt
+// in-app review prompt
 import '../rate/rate_prompt_dialog.dart';
 
-// ✅ placeholder page (create below)
+// pages
 import '../whats_new/whats_new_page.dart';
 import '../hippa/hipaa_friendly_page.dart';
 import '../help/help_page.dart';
+
+// ✅ glass system
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -47,11 +55,12 @@ class _SettingsPageState extends State<SettingsPage> {
   static const _kPrefDeleteAudioAfter = 'pref_delete_audio_after_transcription';
   static const _kPrefMaxRecordingMinutes = 'pref_max_recording_minutes';
   static const _kPrefAutoEmailTranscript = 'pref_auto_email_transcript';
+  static const _kPrefAutoSummaryEnabled = 'pref_auto_summary_enabled';
 
   // =========================
   // Support constants
   // =========================
-  static const String _supportEmail = 'contact@enyx.app'; // ✅ change if needed
+  static const String _supportEmail = 'contact@enyx.app';
   static const String _androidStoreUrl =
       'https://play.google.com/store/apps/details?id=com.enyxd.transcript';
 
@@ -80,6 +89,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _deleteAudioAfterTranscription = false;
   int _maxRecordingMinutes = 60;
   bool _autoEmailTranscript = false;
+  bool _autoSummaryEnabled = true; // ✅ default ON
 
   @override
   void initState() {
@@ -88,9 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (widget.openAccount) {
-        _openAccount();
-      }
+      if (widget.openAccount) _openAccount();
     });
   }
 
@@ -101,15 +109,15 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Scaffold(
-          backgroundColor: const Color(0xFF0B0C10),
+          backgroundColor: Colors.transparent,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF0B0C10),
+            backgroundColor: Colors.transparent,
             elevation: 0,
             title: const Text('Account'),
             leading: Padding(
               padding: const EdgeInsets.all(7.0),
-              child: _IconPillButton(
-                tooltip: 'Close',
+              child: IconPillButton(
+                tooltip: 'Back',
                 icon: Icons.arrow_back,
                 onTap: () => Navigator.of(context).pop(),
               ),
@@ -174,9 +182,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _shareApp() async {
-    await Share.share(
-      'Try Meeting Transcript Unlimited:\n$_androidStoreUrl',
-      subject: 'Unlimited Meeting Trancription app',
+    await SharePlus.instance.share(
+      ShareParams(
+        text: 'Try Meeting Transcript Unlimited:\n$_androidStoreUrl',
+        subject: 'Unlimited Meeting Transcription app',
+      ),
     );
   }
 
@@ -196,6 +206,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final autoEmail = sp.getBool(_kPrefAutoEmailTranscript) ?? false;
 
+    final autoSummary = sp.getBool(_kPrefAutoSummaryEnabled) ?? true;
+
     if (!mounted) return;
     setState(() {
       _defaultLang = _langOptions.containsKey(lang) ? lang : 'en';
@@ -204,6 +216,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _deleteAudioAfterTranscription = del;
       _maxRecordingMinutes = safeMins;
       _autoEmailTranscript = autoEmail;
+      _autoSummaryEnabled = autoSummary;
       _loading = false;
     });
   }
@@ -244,10 +257,6 @@ class _SettingsPageState extends State<SettingsPage> {
     await sp.setInt(_kPrefMaxRecordingMinutes, v);
     if (!mounted) return;
     setState(() => _maxRecordingMinutes = v);
-    // await AppFlushbar.success(
-    //   context,
-    //   message: 'Max recording time set to ${_fmtMaxTime(v)}',
-    // );
   }
 
   Future<void> _setAutoEmailTranscript(bool v) async {
@@ -255,11 +264,13 @@ class _SettingsPageState extends State<SettingsPage> {
     await sp.setBool(_kPrefAutoEmailTranscript, v);
     if (!mounted) return;
     setState(() => _autoEmailTranscript = v);
+  }
 
-    // await AppFlushbar.success(
-    //   context,
-    //   message: v ? 'Auto email enabled.' : 'Auto email disabled.',
-    // );
+  Future<void> _setAutoSummaryEnabled(bool v) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool(_kPrefAutoSummaryEnabled, v);
+    if (!mounted) return;
+    setState(() => _autoSummaryEnabled = v);
   }
 
   // =========================
@@ -271,11 +282,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
     try {
       await TranscriptPorter.exportZipAndShare(includeAudio: true);
-      if (!mounted) return;
-      // await AppFlushbar.success(
-      //   context,
-      //   message: 'Export ready to share (ZIP).',
-      // );
     } catch (e) {
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Export failed: $e');
@@ -290,6 +296,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: const Color.fromARGB(190, 0, 0, 0),
+        surfaceTintColor: Colors.transparent,
         title: const Text('Import transcripts + audio?'),
         content: const Text(
           'This will add transcripts (and their audio if included) from a ZIP export into your database.\n\n'
@@ -298,13 +306,22 @@ class _SettingsPageState extends State<SettingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',style: TextStyle(color: Colors.white),),
+            child: const Text('Cancel'),
           ),
-          FilledButton(
+          GlassButton(
+            label: 'Import',
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Import',style: TextStyle(color: Colors.black),),
-            style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
+            expand: false,
+            kind: GlassButtonKind.secondary,
           ),
+          // FilledButton(
+          //   onPressed: () => Navigator.pop(ctx, true),
+          //   style: FilledButton.styleFrom(
+          //     backgroundColor: Colors.white,
+          //     foregroundColor: Colors.black,
+          //   ),
+          //   child: const Text('Import'),
+          // ),
         ],
       ),
     );
@@ -335,63 +352,51 @@ class _SettingsPageState extends State<SettingsPage> {
         ? const SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(backgroundColor: Colors.black,color: Colors.white,strokeWidth: 2),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+              backgroundColor: Colors.black,
+            ),
           )
-        : const Icon(Icons.chevron_right);
+        : Icon(
+            Icons.chevron_right,
+            color: Colors.white.withValues(alpha: 0.70),
+          );
   }
 
   // =========================
-  // UI helpers
+  // UI helpers (glass style)
   // =========================
-  BoxDecoration _panelDecoration(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
-    final border = isDark
-        ? Colors.white.withOpacity(0.10)
-        : Colors.black.withOpacity(0.08);
-
-    return BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: border),
-      boxShadow: [
-        BoxShadow(
-          blurRadius: 18,
-          color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
-          offset: const Offset(0, 10),
-        ),
-      ],
-    );
-  }
 
   Widget _sectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
-          fontWeight: FontWeight.w800,
-          color: Colors.white70,
+          fontWeight: FontWeight.w900,
+          color: Colors.white.withValues(alpha: 0.70),
           letterSpacing: 0.2,
         ),
       ),
     );
   }
 
+  Widget _rowDivider() => const GlassDivider(height: 1, thickness: 0.8);
+
   Widget _panel({required Widget child}) {
-    return Container(
-      decoration: _panelDecoration(context),
+    return GlassCard(
+      variant: GlassCardVariant.tile,
       padding: const EdgeInsets.all(16),
       child: child,
     );
   }
 
-  Widget _rowDivider() =>
-      Divider(height: 1, thickness: 0.6, color: Colors.white.withOpacity(0.08));
-
+  /// ✅ Dropdown trailing that won’t overflow and keeps glass styling.
+  /// - wraps DropdownButtonHideUnderline
+  /// - uses `value:` (not initialValue)
+  /// - uses `isDense` + smaller contentPadding
   Widget _trailingDropdown<T>({
     required T value,
     required List<DropdownMenuItem<T>> items,
@@ -400,27 +405,24 @@ class _SettingsPageState extends State<SettingsPage> {
   }) {
     return SizedBox(
       width: width,
-      child: DropdownButtonFormField<T>(
-        value: value,
-        isExpanded: true,
-        items: items,
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          enabledBorder:  const OutlineInputBorder(
-            borderSide: BorderSide(color:  Color(0xFFff8143), width: 1),
+      child: GlassCard(
+        variant: GlassCardVariant.tile,
+        borderRadius: BorderRadius.circular(14),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        shadow: false,
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<T>(
+            value: value,
+            isExpanded: true,
+            items: items,
+            onChanged: onChanged,
+            dropdownColor: const Color.fromARGB(170, 0, 0, 0),
+            iconEnabledColor: Colors.white.withValues(alpha: 0.80),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.92),
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          focusedBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color:  Color(0xFFff8143), width: 1),
-          ),
-
-          isDense: true,
-          border: const OutlineInputBorder(borderSide: BorderSide(color:Color(0xFFff8143) )),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 10,
-          ),
-          filled: true,
-          fillColor: Colors.white.withOpacity(0.04),
         ),
       ),
     );
@@ -436,7 +438,7 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white.withOpacity(0.85)),
+          Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -444,18 +446,28 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.70),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 10),
-          trailing,
+          // ✅ ensure trailing can shrink without forcing overflow
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 0),
+            child: trailing,
+          ),
         ],
       ),
     );
@@ -479,7 +491,7 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white.withOpacity(0.85)),
+            Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -487,12 +499,18 @@ class _SettingsPageState extends State<SettingsPage> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -500,17 +518,19 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(width: 10),
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w800,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.70),
+                fontWeight: FontWeight.w900,
               ),
             ),
             const SizedBox(width: 10),
             Switch(
               value: value,
               onChanged: onChanged,
-              activeColor: Colors.black, // thumb
-              activeTrackColor: const Color(0xFFff8143), // track
+              activeThumbColor: Colors.black,
+              activeTrackColor: Colors.white.withValues(alpha: 0.85),
+              inactiveThumbColor: Colors.white.withValues(alpha: 0.55),
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.18),
             ),
           ],
         ),
@@ -532,39 +552,33 @@ class _SettingsPageState extends State<SettingsPage> {
   // =========================
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    const sheetBg = Color(0xFF0B0C10);
+    // Optional: keep consistent with other glass pages
 
     return Scaffold(
-      backgroundColor: sheetBg,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: sheetBg,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text('Settings'),
         leading: Padding(
           padding: const EdgeInsets.all(7.0),
-          child: _IconPillButton(
-            tooltip: 'Close',
+          child: IconPillButton(
+            tooltip: 'Back',
             icon: Icons.arrow_back,
             onTap: () => Navigator.of(context).pop(),
           ),
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(backgroundColor: Colors.black,color: Colors.white,))
+          ? const Center(
+              child: CircularProgressIndicator(
+                backgroundColor: Colors.black,
+                color: Colors.white,
+              ),
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
               children: [
-                const SizedBox(height: 2),
-                // Text(
-                //   'Recording and transcription preferences',
-                //   style: theme.textTheme.bodySmall?.copyWith(
-                //     color: isDark ? Colors.white70 : Colors.black54,
-                //     fontWeight: FontWeight.w600,
-                //   ),
-                // ),
                 const SizedBox(height: 8),
 
                 // -------- Account --------
@@ -578,29 +592,35 @@ class _SettingsPageState extends State<SettingsPage> {
                         children: [
                           Icon(
                             Icons.person_outline,
-                            color: Colors.white.withOpacity(0.85),
+                            color: Colors.white.withValues(alpha: 0.85),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'Account & Billing',
-                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white.withValues(alpha: 0.92),
+                                  ),
                                 ),
-                                SizedBox(height: 3),
+                                const SizedBox(height: 3),
                                 Text(
                                   'Subscription, trial, and purchases',
                                   style: TextStyle(
-                                    color: Colors.white70,
+                                    color: Colors.white.withValues(alpha: 0.70),
                                     fontSize: 12,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const Icon(Icons.chevron_right),
+                          Icon(
+                            Icons.chevron_right,
+                            color: Colors.white.withValues(alpha: 0.70),
+                          ),
                         ],
                       ),
                     ),
@@ -618,29 +638,35 @@ class _SettingsPageState extends State<SettingsPage> {
                         children: [
                           Icon(
                             Icons.smart_toy,
-                            color: Colors.white.withOpacity(0.85),
+                            color: Colors.white.withValues(alpha: 0.85),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'Models',
-                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white.withValues(alpha: 0.92),
+                                  ),
                                 ),
-                                SizedBox(height: 3),
+                                const SizedBox(height: 3),
                                 Text(
                                   'Model for AI features',
                                   style: TextStyle(
-                                    color: Colors.white70,
+                                    color: Colors.white.withValues(alpha: 0.70),
                                     fontSize: 12,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const Icon(Icons.chevron_right),
+                          Icon(
+                            Icons.chevron_right,
+                            color: Colors.white.withValues(alpha: 0.70),
+                          ),
                         ],
                       ),
                     ),
@@ -660,7 +686,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             'Stops recording automatically at the selected limit.',
                         trailing: _trailingDropdown<int>(
                           value: _maxRecordingMinutes,
-                          width: 160,
+                          width: 170,
                           items: _maxMinutesOptions
                               .map(
                                 (m) => DropdownMenuItem<int>(
@@ -685,7 +711,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         subtitle: 'Preselects language in Record.',
                         trailing: _trailingDropdown<String>(
                           value: _defaultLang,
-                          width: 160,
+                          width: 170,
                           items: _langOptions.entries
                               .map(
                                 (e) => DropdownMenuItem<String>(
@@ -733,6 +759,17 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       _rowDivider(),
                       _switchRow(
+                        icon: Icons.auto_awesome,
+                        title: 'Auto-generate summary',
+                        subtitle:
+                            'Starts summary automatically when transcription finishes.',
+                        value: _autoSummaryEnabled,
+                        onChanged: _setAutoSummaryEnabled,
+                        onLabel: 'On',
+                        offLabel: 'Off',
+                      ),
+                      _rowDivider(),
+                      _switchRow(
                         icon: Icons.delete_outline,
                         title: 'Delete audio after transcription',
                         subtitle: 'Frees storage after processing finishes.',
@@ -772,24 +809,29 @@ class _SettingsPageState extends State<SettingsPage> {
                             children: [
                               Icon(
                                 Icons.archive_outlined,
-                                color: Colors.white.withOpacity(0.85),
+                                color: Colors.white.withValues(alpha: 0.85),
                               ),
                               const SizedBox(width: 12),
-                              const Expanded(
+                              Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       'Export transcripts + audio (ZIP)',
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white.withValues(
+                                          alpha: 0.92,
+                                        ),
                                       ),
                                     ),
-                                    SizedBox(height: 3),
+                                    const SizedBox(height: 3),
                                     Text(
                                       'Share to Drive / device / email',
                                       style: TextStyle(
-                                        color: Colors.white70,
+                                        color: Colors.white.withValues(
+                                          alpha: 0.70,
+                                        ),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -813,24 +855,29 @@ class _SettingsPageState extends State<SettingsPage> {
                             children: [
                               Icon(
                                 Icons.unarchive_outlined,
-                                color: Colors.white.withOpacity(0.85),
+                                color: Colors.white.withValues(alpha: 0.85),
                               ),
                               const SizedBox(width: 12),
-                              const Expanded(
+                              Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       'Import transcripts + audio (ZIP)',
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white.withValues(
+                                          alpha: 0.92,
+                                        ),
                                       ),
                                     ),
-                                    SizedBox(height: 3),
+                                    const SizedBox(height: 3),
                                     Text(
                                       'Pick ZIP from device / Drive',
                                       style: TextStyle(
-                                        color: Colors.white70,
+                                        color: Colors.white.withValues(
+                                          alpha: 0.70,
+                                        ),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -846,289 +893,60 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
 
-                // ✅ NEW: Support (after Import/Export)
+                // -------- Help & Feedback --------
                 _sectionHeader('Help & Feedback'),
                 _panel(
                   child: Column(
                     children: [
-                      InkWell(
+                      _navRow(
+                        icon: Icons.privacy_tip_outlined,
+                        title: 'HIPAA-friendly architecture',
+                        subtitle: 'Privacy-first design and risk reduction',
                         onTap: _openHipaaFriendly,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.privacy_tip_outlined,
-                                color: Colors.white.withOpacity(0.85),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'HIPAA-friendly architecture',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 3),
-                                    Text(
-                                      'How we reduce risk with privacy-first design',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
-                        ),
                       ),
                       _rowDivider(),
-                      // ✅ Trash moved here
-                      InkWell(
+                      _navRow(
+                        icon: Icons.delete_outline,
+                        title: 'Trash',
+                        subtitle: 'Deleted transcripts are kept for 3 days',
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => const TrashPage()),
                         ),
-                        borderRadius: BorderRadius.circular(14),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.delete_outline,
-                                color: Colors.white.withOpacity(0.85),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Trash',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 3),
-                                    Text(
-                                      'Deleted transcripts are kept for 3 days',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
-                        ),
                       ),
                       _rowDivider(),
-
-                      InkWell(
+                      _navRow(
+                        icon: Icons.new_releases_outlined,
+                        title: 'What’s new',
+                        subtitle: 'Recent updates and improvements',
                         onTap: _openWhatsNew,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.new_releases_outlined,
-                                color: Colors.white.withOpacity(0.85),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'What’s new',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 3),
-                                    Text(
-                                      'See recent updates and improvements',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
-                        ),
                       ),
                       _rowDivider(),
-
-                      InkWell(
+                      _navRow(
+                        icon: Icons.support_agent_outlined,
+                        title: 'Contact support',
+                        subtitle: _supportEmail,
                         onTap: _contactSupport,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.support_agent_outlined,
-                                color: Colors.white.withOpacity(0.85),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Contact support',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      _supportEmail,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
-                        ),
                       ),
                       _rowDivider(),
-
-                      InkWell(
+                      _navRow(
+                        icon: Icons.star_rate_rounded,
+                        title: 'Rate the app',
+                        subtitle: 'A quick review helps a lot',
                         onTap: _rateApp,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.star_rate_rounded,
-                                color: Colors.white.withOpacity(0.85),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Rate the app',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 3),
-                                    Text(
-                                      'Help us grow with a quick review',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
-                        ),
                       ),
                       _rowDivider(),
-
-                      InkWell(
+                      _navRow(
+                        icon: Icons.ios_share_outlined,
+                        title: 'Share the app',
+                        subtitle: 'Send the Play Store link',
                         onTap: _shareApp,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.ios_share_outlined,
-                                color: Colors.white.withOpacity(0.85),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Share the app',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 3),
-                                    Text(
-                                      'Send the Play Store link to friends',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
-                        ),
                       ),
                       _rowDivider(),
-                      InkWell(
+                      _navRow(
+                        icon: Icons.help_outline,
+                        title: 'Help',
+                        subtitle: 'FAQs and contact',
                         onTap: _openHelp,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.help_outline,
-                                color: Colors.white.withOpacity(0.85),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Help',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 3),
-                                    Text(
-                                      'FAQs and contact',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
-                        ),
                       ),
                     ],
                   ),
@@ -1137,45 +955,49 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
     );
   }
-}
 
-class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
-    final bg = (isDark ? Colors.white : Colors.black).withOpacity(0.06);
-
+  Widget _navRow({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
     return InkWell(
-      borderRadius: BorderRadius.circular(999),
       onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: bg,
-          border: Border.all(color: border),
-        ),
-        child: Tooltip(
-          message: tooltip,
-          child: Icon(
-            icon,
-            color: onTap == null
-                ? (isDark ? Colors.white38 : Colors.black38)
-                : null,
-          ),
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: Colors.white.withValues(alpha: 0.70),
+            ),
+          ],
         ),
       ),
     );

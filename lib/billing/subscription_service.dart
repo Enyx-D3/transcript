@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -336,13 +337,11 @@ class SubscriptionService {
 
       final ok = data is Map && (data['ok'] == true || data['success'] == true);
       if (!ok) {
-        // ignore: avoid_print
-        print('$fnName failed: $data');
+        debugPrint('$fnName failed: $data');
       }
       return ok;
     } catch (e) {
-      // ignore: avoid_print
-      print('verify exception: $e');
+      debugPrint('verify exception: $e');
       lastVerifyCode = null;
       lastVerifyError = e.toString();
       return false;
