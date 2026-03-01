@@ -1,7 +1,6 @@
 // lib/record/record_sheet.dart
 import 'dart:io';
 
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -253,9 +252,7 @@ class _RecordSheetState extends State<RecordSheet> {
     try {
       _handledStop = false;
 
-      final int? targetSpeakers = _diarizationEnabled
-          ? _parseTargetSpeakers()
-          : null;
+      final int? targetSpeakers = _diarizationEnabled ? _parseTargetSpeakers() : null;
 
       await _ensureMic();
 
@@ -364,9 +361,7 @@ class _RecordSheetState extends State<RecordSheet> {
     int? targetSpeakers,
     required String lang,
   }) async {
-    final placeholderDuration = (_seconds.isFinite && _seconds >= 0)
-        ? _seconds
-        : 0.0;
+    final placeholderDuration = (_seconds.isFinite && _seconds >= 0) ? _seconds : 0.0;
 
     final obx = ObjectBox.I;
 
@@ -404,7 +399,8 @@ class _RecordSheetState extends State<RecordSheet> {
     );
 
     try {
-      await BackgroundTranscriber.start(
+      // ✅ IMPORTANT: always start using prefs so typo-fix toggle is respected
+      await BackgroundTranscriber.startFromPrefs(
         wavPath: wavPath,
         translateToEnglish: false,
         titleHint: null,
@@ -460,22 +456,6 @@ class _RecordSheetState extends State<RecordSheet> {
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            // Positioned.fill(
-            //   child: IgnorePointer(
-            //     child: Container(
-            //       decoration: BoxDecoration(
-            //         gradient: LinearGradient(
-            //           begin: Alignment.topCenter,
-            //           end: Alignment.bottomCenter,
-            //           colors: [
-            //             const Color(0xFFCD66FD).withOpacity(0.12),
-            //             Colors.transparent,
-            //           ],
-            //         ),
-            //       ),
-            //     ),
-            //   ),
-            // ),
             Column(
               children: [
                 Padding(
@@ -486,17 +466,6 @@ class _RecordSheetState extends State<RecordSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Center(
-                            //   child: Container(
-                            //     width: 44,
-                            //     height: 5,
-                            //     margin: const EdgeInsets.only(bottom: 10),
-                            //     decoration: BoxDecoration(
-                            //       borderRadius: BorderRadius.circular(99),
-                            //       color: Colors.white.withOpacity(0.14),
-                            //     ),
-                            //   ),
-                            // ),
                             Row(
                               children: [
                                 const Icon(Icons.mic, color: Colors.white),
@@ -568,13 +537,9 @@ class _RecordSheetState extends State<RecordSheet> {
                                         style: TextStyle(color: Colors.white),
                                       ),
                                       style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
-                                        ),
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
+                                          borderRadius: BorderRadius.circular(14),
                                         ),
                                       ),
                                     ),
@@ -586,23 +551,17 @@ class _RecordSheetState extends State<RecordSheet> {
                                           ? null
                                           : (_paused ? _resume : _pause),
                                       icon: Icon(
-                                        _paused
-                                            ? Icons.play_arrow_rounded
-                                            : Icons.pause_rounded,
+                                        _paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
                                         color: Colors.white,
                                       ),
                                       label: Text(
                                         _paused ? 'Resume' : 'Pause',
-                                        style: TextStyle(color: Colors.white),
+                                        style: const TextStyle(color: Colors.white),
                                       ),
                                       style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
-                                        ),
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
+                                          borderRadius: BorderRadius.circular(14),
                                         ),
                                       ),
                                     ),
@@ -615,20 +574,14 @@ class _RecordSheetState extends State<RecordSheet> {
                                 child: FilledButton.icon(
                                   onPressed: _recording ? _stop : _start,
                                   icon: Icon(
-                                    _recording
-                                        ? Icons.stop_rounded
-                                        : Icons.fiber_manual_record,
+                                    _recording ? Icons.stop_rounded : Icons.fiber_manual_record,
                                   ),
                                   label: Text(
-                                    _recording
-                                        ? 'Stop & transcribe'
-                                        : 'Start recording',
+                                    _recording ? 'Stop & transcribe' : 'Start recording',
                                   ),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14),
                                     ),
@@ -707,13 +660,9 @@ class _RecordSheetState extends State<RecordSheet> {
                                   ),
                                   Switch(
                                     value: _diarizationEnabled,
-                                    onChanged: (_recording || _starting)
-                                        ? null
-                                        : _setDiarizationEnabledLocal,
-                                    activeThumbColor: Colors.black, // thumb
-                                    activeTrackColor: const Color(
-                                      0xFFff8143,
-                                    ), // track
+                                    onChanged: (_recording || _starting) ? null : _setDiarizationEnabledLocal,
+                                    activeThumbColor: Colors.black,
+                                    activeTrackColor: const Color(0xFFff8143),
                                   ),
                                 ],
                               ),
@@ -734,18 +683,11 @@ class _RecordSheetState extends State<RecordSheet> {
                                       width: 120,
                                       child: Theme(
                                         data: Theme.of(context).copyWith(
-                                          textSelectionTheme:
-                                              const TextSelectionThemeData(
-                                                selectionHandleColor: Colors
-                                                    .white, // ✅ bubble color
-                                                cursorColor: Colors.white,
-                                                selectionColor: Color.fromARGB(
-                                                  128,
-                                                  255,
-                                                  130,
-                                                  67,
-                                                ),
-                                              ),
+                                          textSelectionTheme: const TextSelectionThemeData(
+                                            selectionHandleColor: Colors.white,
+                                            cursorColor: Colors.white,
+                                            selectionColor: Color.fromARGB(128, 255, 130, 67),
+                                          ),
                                         ),
                                         child: TextField(
                                           cursorColor: Colors.white,
@@ -753,8 +695,7 @@ class _RecordSheetState extends State<RecordSheet> {
                                           enabled: !_recording && !_starting,
                                           keyboardType: TextInputType.number,
                                           inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly,
+                                            FilteringTextInputFormatter.digitsOnly,
                                           ],
                                           decoration: const InputDecoration(
                                             hintText: '0',
@@ -818,6 +759,7 @@ class _RecordSheetState extends State<RecordSheet> {
   }
 }
 
+// --- rest unchanged ---
 class _Panel extends StatelessWidget {
   const _Panel({required this.child, this.title, this.subtitle});
 
@@ -939,10 +881,7 @@ class LevelBars extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: List.generate(barCount, (i) {
-              final barH = (height * weights[i] * (0.2 + 0.8 * v)).clamp(
-                2.0,
-                height,
-              );
+              final barH = (height * weights[i] * (0.2 + 0.8 * v)).clamp(2.0, height);
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 1.5),

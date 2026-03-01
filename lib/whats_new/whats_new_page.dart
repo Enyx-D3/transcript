@@ -12,7 +12,7 @@ class WhatsNewPage extends StatelessWidget {
   const WhatsNewPage({super.key});
 
   static const _appName = 'Meeting Transcript Unlimited';
-  static const _version = '2.0.0';
+  static const _version = '2.0.1';
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +121,6 @@ const List<String> _newFeatures = [
 ];
 
 const List<String> _improvements = [
-  'Faster transcription and summary generation',
   'Optimized audio and video file processing',
 ];
 
