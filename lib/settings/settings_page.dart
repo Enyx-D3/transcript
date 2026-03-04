@@ -2,12 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:transcript/ui/glass/glass_button.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:transcript/widgets/icon_pill_button.dart';
 
 import '../common/app_flushbar.dart';
+import '../auth/login_page.dart';
 import '../import_export/transcript_porter.dart';
 import '../trash/trash_page.dart';
 import '../tabs/account_tab.dart';
@@ -106,6 +108,25 @@ class _SettingsPageState extends State<SettingsPage> {
   // Account
   // =========================
   void _openAccount() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => LoginPage(
+            onLoggedIn: () {
+              // Close login and reopen account page after successful sign-in.
+              Navigator.of(context).pop();
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                _openAccount();
+              });
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Scaffold(

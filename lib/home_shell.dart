@@ -9,6 +9,7 @@ import 'tabs/search_tab.dart';
 import 'tabs/favourites_tab.dart';
 import 'settings/settings_page.dart';
 import 'auth/eligibility_gate.dart';
+import 'auth/login_page.dart';
 
 // ✅ glass primitives
 import 'ui/glass/glass_dock.dart';
@@ -89,6 +90,17 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  Future<void> _openLoginAndRetry() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const LoginPage(),
+      ),
+    );
+    if (!mounted) return;
+    await _retryEligibility();
+  }
+
   Future<void> _retryEligibility() async {
     if (_retrying) return;
     setState(() => _retrying = true);
@@ -146,6 +158,7 @@ class _HomeShellState extends State<HomeShell> {
               retrying: _retrying,
               onUpgrade: _openSettingsToAccount,
               onRetry: _retryEligibility,
+              onLogin: _openLoginAndRetry,
             ),
         ],
       ),
@@ -314,12 +327,14 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
   const _AccessLockedOverlaySheet({
     required this.onUpgrade,
     required this.onRetry,
+    required this.onLogin,
     this.error,
     this.retrying = false,
   });
 
   final VoidCallback onUpgrade;
   final VoidCallback onRetry;
+  final VoidCallback onLogin;
   final String? error;
   final bool retrying;
 
@@ -328,6 +343,14 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
     final isDark = GlassTokens.isDark(context);
     final titleColor = Colors.white.withValues(alpha: 0.92);
     final subColor = Colors.white.withValues(alpha: 0.70);
+    final trimmedError = error?.trim();
+    final isAuthError =
+        (trimmedError ?? '').toLowerCase().contains('sign in') ||
+        (trimmedError ?? '').toLowerCase().contains('login') ||
+        (trimmedError ?? '').toLowerCase().contains('subscription access');
+    final errorMessage = isAuthError
+        ? (trimmedError ?? '')
+        : 'Internet is required to verify access.\nDetails: ${trimmedError ?? ''}';
 
     return Stack(
       children: [
@@ -399,17 +422,37 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
                   blurX: isDark ? 16 : 12,
                   blurY: isDark ? 16 : 12,
                   shadow: false,
-                  tintOpacityDark: 0.040,
-                  tintOpacityLight: 0.035,
-                  borderOpacityDark: 0.14,
-                  borderOpacityLight: 0.18,
-                  child: Text(
-                    'Internet is required to verify access.\nDetails: $error',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.82),
-                      height: 1.25,
+                  tintOpacityDark: 0.080,
+                  tintOpacityLight: 0.070,
+                  borderOpacityDark: 0.30,
+                  borderOpacityLight: 0.34,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFB44040).withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 16,
+                          color: const Color(0xFFFFB3B3).withValues(alpha: 0.95),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            errorMessage,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFFFFD6D6).withValues(alpha: 0.95),
+                              height: 1.25,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -417,27 +460,38 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
 
               const SizedBox(height: 12),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: GlassButton(
-                      label: retrying ? 'Checking…' : 'Retry',
-                      kind: GlassButtonKind.secondary,
-                      onPressed: retrying ? null : onRetry,
-                      loading: retrying,
-                    ),
+              if (isAuthError)
+                SizedBox(
+                  width: double.infinity,
+                  child: GlassButton(
+                    label: 'Login',
+                    kind: GlassButtonKind.primary,
+                    icon: Icons.login,
+                    onPressed: onLogin,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GlassButton(
-                      label: 'Upgrade',
-                      kind: GlassButtonKind.primary,
-                      icon: Icons.workspace_premium_outlined,
-                      onPressed: onUpgrade,
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: GlassButton(
+                        label: retrying ? 'Checking…' : 'Retry',
+                        kind: GlassButtonKind.secondary,
+                        onPressed: retrying ? null : onRetry,
+                        loading: retrying,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GlassButton(
+                        label: 'Upgrade',
+                        kind: GlassButtonKind.primary,
+                        icon: Icons.workspace_premium_outlined,
+                        onPressed: onUpgrade,
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),

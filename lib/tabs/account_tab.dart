@@ -488,7 +488,16 @@ class _AccountTabState extends State<AccountTab> {
       if (product == null) throw Exception('Product not found: $productId');
 
       final ok = await SubscriptionService.I.buy(product);
-      if (!ok) throw Exception('Purchase not completed. Try Restore.');
+
+      if (!ok) {
+        final code = SubscriptionService.I.lastVerifyCode ?? '';
+        final storeErr = SubscriptionService.I.lastStoreError ?? '';
+        final verifyErr = SubscriptionService.I.lastVerifyError ?? '';
+        throw Exception(
+          'Purchase not completed. Try Restore.'
+          ' code=$code store=$storeErr verify=$verifyErr',
+        );
+      }
 
       purchaseStarted = true;
 
@@ -502,6 +511,8 @@ class _AccountTabState extends State<AccountTab> {
       if (mounted) {
         final raw = e.toString();
         final storeErr = SubscriptionService.I.lastStoreError ?? '';
+        final verifyErr = SubscriptionService.I.lastVerifyError ?? '';
+        final verifyCode = SubscriptionService.I.lastVerifyCode ?? '';
         String message = 'Purchase failed';
 
         if (Platform.isIOS &&
@@ -511,10 +522,15 @@ class _AccountTabState extends State<AccountTab> {
               'Products are not available yet. Please check App Store setup and try again.';
         } else if (Platform.isIOS && storeErr.contains('STORE_UNAVAILABLE')) {
           message = 'App Store is unavailable on this device right now.';
+        } else if (Platform.isIOS && verifyErr.isNotEmpty) {
+          message = 'Purchase received but verification failed. Try Restore.';
         }
 
         setState(() => _error = 'Purchase failed: $e');
         await AppFlushbar.error(context, message: message);
+        debugPrint(
+          'Purchase error: $e | store=$storeErr | verifyCode=$verifyCode | verifyError=$verifyErr',
+        );
       }
     } finally {
       if (!mounted) return;
@@ -657,6 +673,7 @@ class _AccountTabState extends State<AccountTab> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: GlassCard(
+              blur: 10,
               variant: GlassCardVariant.tile,
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
               child: Column(

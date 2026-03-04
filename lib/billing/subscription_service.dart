@@ -111,8 +111,10 @@ class SubscriptionService {
   /// So we use a shorter timeout to avoid "infinite loading" UX.
   Future<bool> buy(ProductDetails product) async {
     await initialize();
+    debugPrint('[IAP] buy start: ${product.id} (${product.price})');
     if (Platform.isIOS && !_storeAvailable) {
       lastStoreError = 'STORE_UNAVAILABLE';
+      debugPrint('[IAP] store unavailable on iOS');
       return false;
     }
 
@@ -132,8 +134,10 @@ class SubscriptionService {
 
     // For subscriptions + non-consumables, use buyNonConsumable in this plugin.
     final started = await _iap.buyNonConsumable(purchaseParam: param);
+    debugPrint('[IAP] buyNonConsumable started=$started product=${product.id}');
 
     if (!started) {
+      lastStoreError = 'BUY_NOT_STARTED';
       _pending.remove(product.id);
       return false;
     }
@@ -142,6 +146,8 @@ class SubscriptionService {
     return c.future.timeout(
       const Duration(seconds: 40),
       onTimeout: () {
+        lastStoreError = 'PURCHASE_TIMEOUT_NO_UPDATE';
+        debugPrint('[IAP] timeout waiting purchaseStream update for ${product.id}');
         _pending.remove(product.id);
         return false;
       },
@@ -231,10 +237,22 @@ class SubscriptionService {
   Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {
     for (final p in purchases) {
       try {
+        debugPrint(
+          '[IAP] update product=${p.productID} status=${p.status} pendingComplete=${p.pendingCompletePurchase}',
+        );
         if (p.status == PurchaseStatus.pending) continue;
 
         if (p.status == PurchaseStatus.error ||
             p.status == PurchaseStatus.canceled) {
+          if (p.status == PurchaseStatus.error) {
+            final msg = p.error?.message ?? 'unknown';
+            final code = p.error?.code ?? 'unknown';
+            lastStoreError = 'PURCHASE_ERROR:$code:$msg';
+            debugPrint('[IAP] purchase error code=$code message=$msg');
+          } else {
+            lastStoreError = 'PURCHASE_CANCELED';
+            debugPrint('[IAP] purchase canceled by user');
+          }
           _completePending(p.productID, false);
           continue;
         }
@@ -256,6 +274,7 @@ class SubscriptionService {
           }
         }
       } catch (_) {
+        lastStoreError = 'PURCHASE_HANDLER_EXCEPTION';
         _completePending(p.productID, false);
       }
     }

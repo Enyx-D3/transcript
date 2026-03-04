@@ -272,6 +272,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   bool get _isProcessingNow => _busyFlag && !_processingFailed;
   bool get _isTranscribingNow => _isProcessingNow;
 
+  bool _isJobActive(TranscriptionJobEntity? job) {
+    if (job == null) return false;
+    final status = job.status.trim().toUpperCase();
+    return status == 'PENDING' || status == 'RECORDING' || status == 'RUNNING';
+  }
+
   // ============================================================
   // ✅ APPLY BACKGROUND RESULT TO OBJECTBOX  (FIXES YOUR BUG)
   // ============================================================

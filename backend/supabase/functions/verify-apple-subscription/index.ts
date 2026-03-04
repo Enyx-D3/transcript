@@ -9,6 +9,7 @@ type Body = {
 // ✅ Product IDs (must match subscription_products.dart)
 const LIFETIME_PRODUCT_ID = "transcript_pro_lifetime";
 const SUB_MONTHLY_ID = "transcript_pro_monthly";
+const SUB_MONTHLY_APPLE_ID = "transcript_pro_monthly_apple";
 const SUB_YEARLY_ID = "transcript_pro_yearly";
 
 const TOKEN_ALREADY_CLAIMED = "TOKEN_ALREADY_CLAIMED";
@@ -31,7 +32,12 @@ serve(async (req: Request) => {
     }
 
     // ✅ Sanity: only allow known products
-    const allowed = new Set([LIFETIME_PRODUCT_ID, SUB_MONTHLY_ID, SUB_YEARLY_ID]);
+    const allowed = new Set([
+      LIFETIME_PRODUCT_ID,
+      SUB_MONTHLY_ID, // legacy monthly id
+      SUB_MONTHLY_APPLE_ID, // current iOS monthly id
+      SUB_YEARLY_ID,
+    ]);
     if (!allowed.has(productId)) {
       return json(
         {
@@ -78,7 +84,9 @@ serve(async (req: Request) => {
     const sbAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     const isLifetime = productId === LIFETIME_PRODUCT_ID;
-    const isSubscription = productId === SUB_MONTHLY_ID || productId === SUB_YEARLY_ID;
+    const isSubscription = productId === SUB_MONTHLY_ID ||
+      productId === SUB_MONTHLY_APPLE_ID ||
+      productId === SUB_YEARLY_ID;
 
     let proExpiresAt: string | null = null;
     let verifiedTransactionId: string | null = null;

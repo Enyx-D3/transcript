@@ -33,7 +33,9 @@ class _PaywallPageState extends State<PaywallPage> {
 
   // User won’t choose, but we must keep signature
   static const PaywallPlan _defaultPlan = PaywallPlan.lifetime;
-  static const String _policyUrl = 'https://enyx.app/privacy/enyx-transcriptor';
+  static const String _privacyUrl = 'https://enyx.app/privacy/enyx-transcriptor';
+  static const String _termsUrl =
+      'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 
   Future<void> _openExternal(String url) async {
     final ok = await launchUrl(
@@ -310,8 +312,12 @@ class _PaywallPageState extends State<PaywallPage> {
                           spacing: 12,
                           children: [
                             TextButton(
-                              onPressed: () => _openExternal(_policyUrl),
-                              child: const Text('Terms & Privacy'),
+                              onPressed: () => _openExternal(_termsUrl),
+                              child: const Text('Terms of Use'),
+                            ),
+                            TextButton(
+                              onPressed: () => _openExternal(_privacyUrl),
+                              child: const Text('Privacy Policy'),
                             ),
                             TextButton(
                               onPressed: () => _openExternal(

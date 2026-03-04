@@ -1,6 +1,5 @@
 // lib/auth/app_gate.dart
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:transcript/widgets/brand_logo.dart';
@@ -8,7 +7,6 @@ import 'package:transcript/widgets/status_pill.dart';
 
 import '../home_shell.dart';
 import '../billing/subscription_service.dart'; // ✅ ADD
-import 'login_page.dart';
 import 'eligibility_gate.dart';
 
 import '../ui/glass/glass_background.dart';
@@ -73,8 +71,7 @@ class _AppGateState extends State<AppGate> {
       } else {
         // logged out
         setState(() {
-          // iOS review requirement: keep non-account features available in guest mode.
-          _eligibility = EligibilityGateResult(eligible: Platform.isIOS);
+          _eligibility = const EligibilityGateResult(eligible: false);
           _checkingEligibility = false;
         });
       }
@@ -130,6 +127,14 @@ class _AppGateState extends State<AppGate> {
 
   // ✅ Used by HomeShell Retry button
   Future<EligibilityGateResult> _retryEligibility() async {
+    // Guest mode: non-account features stay accessible without login.
+    if (_session == null) {
+      return const EligibilityGateResult(
+        eligible: false,
+        error: 'Please sign in to verify your subscription access.',
+      );
+    }
+
     if (!mounted) return const EligibilityGateResult(eligible: false);
 
     setState(() => _checkingEligibility = true); // show splash-like loader
@@ -144,26 +149,18 @@ class _AppGateState extends State<AppGate> {
     return res;
   }
 
-  Future<EligibilityGateResult> _retryGuestEligibility() async {
-    return EligibilityGateResult(eligible: Platform.isIOS);
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!_ready) {
       return const _GateSplash(status: 'Preparing…');
     }
 
-    // ✅ iOS only: guest mode for non-account features (Guideline 5.1.1(v)).
+    // ✅ Guest mode allowed for non-account-based features.
     if (_session == null) {
-      if (Platform.isIOS) {
-        return HomeShell(
-          initialEligible: true,
-          eligibilityError: null,
-          onRetryEligibility: _retryGuestEligibility,
-        );
-      }
-      return const LoginPage();
+      return HomeShell(
+        initialEligible: false,
+        onRetryEligibility: _retryEligibility,
+      );
     }
 
     // ✅ Logged in -> Splash until eligibility done
