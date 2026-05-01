@@ -14,6 +14,7 @@ import '../transcript/transcript_detail_page.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
 import '../transcript/background_transcriber.dart';
+import '../paywall/transcription_premium_gate.dart';
 
 // ✅ Glass primitives (same language as ImportAudioSheet)
 import '../ui/glass/liquid_glass.dart';
@@ -337,6 +338,12 @@ class _RecordSheetState extends State<RecordSheet> {
     }
   }
 
+  Future<void> _stopWithPremiumGate() async {
+    final allowed = await ensureIosPremiumForTranscription(context);
+    if (!allowed) return;
+    await _stop();
+  }
+
   Future<void> _cancel() async {
     try {
       _handledStop = true;
@@ -596,7 +603,9 @@ class _RecordSheetState extends State<RecordSheet> {
                                 icon: _recording
                                     ? Icons.stop_rounded
                                     : Icons.fiber_manual_record,
-                                onPressed: _starting ? null : (_recording ? _stop : _start),
+                                onPressed: _starting
+                                    ? null
+                                    : (_recording ? _stopWithPremiumGate : _start),
                               ),
                             ],
                           ),

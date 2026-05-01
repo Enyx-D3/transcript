@@ -13,6 +13,7 @@ import '../objectbox/entities.dart';
 import '../objectbox/objectbox_store.dart';
 
 import 'background_transcriber.dart';
+import '../paywall/transcription_premium_gate.dart';
 import 'transcript_detail_page.dart';
 
 // ✅ Glass primitives (same as ImportAudioSheet / RecordSheet)
@@ -225,6 +226,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
       await AppFlushbar.info(context, message: 'Select a video file first.');
       return;
     }
+
+    final allowed = await ensureIosPremiumForTranscription(context);
+    if (!allowed) return;
 
     setState(() => _working = true);
 

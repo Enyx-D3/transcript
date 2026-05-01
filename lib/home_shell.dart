@@ -1,5 +1,6 @@
 // lib/home_shell.dart
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'tabs/timeline_tab.dart';
@@ -9,7 +10,6 @@ import 'tabs/search_tab.dart';
 import 'tabs/favourites_tab.dart';
 import 'settings/settings_page.dart';
 import 'auth/eligibility_gate.dart';
-import 'auth/login_page.dart';
 
 // ✅ glass primitives
 import 'ui/glass/glass_dock.dart';
@@ -50,7 +50,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _openRecordSheet() async {
-    if (!_eligible) return;
+    if (!_eligible && !Platform.isIOS) return;
     await RecordSheet.show(context);
   }
 
@@ -69,7 +69,7 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _index = i);
   }
 
-  bool get _showLockOverlay => !_eligible;
+  bool get _showLockOverlay => !_eligible && !Platform.isIOS;
 
   void _handleUpgradeSuccess() {
     if (_retrying) return;
@@ -88,17 +88,6 @@ class _HomeShellState extends State<HomeShell> {
         ),
       ),
     );
-  }
-
-  Future<void> _openLoginAndRetry() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const LoginPage(),
-      ),
-    );
-    if (!mounted) return;
-    await _retryEligibility();
   }
 
   Future<void> _retryEligibility() async {
@@ -158,7 +147,6 @@ class _HomeShellState extends State<HomeShell> {
               retrying: _retrying,
               onUpgrade: _openSettingsToAccount,
               onRetry: _retryEligibility,
-              onLogin: _openLoginAndRetry,
             ),
         ],
       ),
@@ -169,7 +157,7 @@ class _HomeShellState extends State<HomeShell> {
           eligible: _eligible,
           onSelect: (i) async {
             _unfocus();
-            if (!_eligible) return;
+            if (!_eligible && !Platform.isIOS) return;
             await _goTo(i);
           },
         ),
@@ -327,14 +315,12 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
   const _AccessLockedOverlaySheet({
     required this.onUpgrade,
     required this.onRetry,
-    required this.onLogin,
     this.error,
     this.retrying = false,
   });
 
   final VoidCallback onUpgrade;
   final VoidCallback onRetry;
-  final VoidCallback onLogin;
   final String? error;
   final bool retrying;
 
@@ -344,13 +330,8 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
     final titleColor = Colors.white.withValues(alpha: 0.92);
     final subColor = Colors.white.withValues(alpha: 0.70);
     final trimmedError = error?.trim();
-    final isAuthError =
-        (trimmedError ?? '').toLowerCase().contains('sign in') ||
-        (trimmedError ?? '').toLowerCase().contains('login') ||
-        (trimmedError ?? '').toLowerCase().contains('subscription access');
-    final errorMessage = isAuthError
-        ? (trimmedError ?? '')
-        : 'Internet is required to verify access.\nDetails: ${trimmedError ?? ''}';
+    final errorMessage =
+        'Internet is required to verify access.\nDetails: ${trimmedError ?? ''}';
 
     return Stack(
       children: [
@@ -460,38 +441,27 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
 
               const SizedBox(height: 12),
 
-              if (isAuthError)
-                SizedBox(
-                  width: double.infinity,
-                  child: GlassButton(
-                    label: 'Login',
-                    kind: GlassButtonKind.primary,
-                    icon: Icons.login,
-                    onPressed: onLogin,
+              Row(
+                children: [
+                  Expanded(
+                    child: GlassButton(
+                      label: retrying ? 'Checking…' : 'Retry',
+                      kind: GlassButtonKind.secondary,
+                      onPressed: retrying ? null : onRetry,
+                      loading: retrying,
+                    ),
                   ),
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: GlassButton(
-                        label: retrying ? 'Checking…' : 'Retry',
-                        kind: GlassButtonKind.secondary,
-                        onPressed: retrying ? null : onRetry,
-                        loading: retrying,
-                      ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GlassButton(
+                      label: 'Upgrade',
+                      kind: GlassButtonKind.primary,
+                      icon: Icons.workspace_premium_outlined,
+                      onPressed: onUpgrade,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: GlassButton(
-                        label: 'Upgrade',
-                        kind: GlassButtonKind.primary,
-                        icon: Icons.workspace_premium_outlined,
-                        onPressed: onUpgrade,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

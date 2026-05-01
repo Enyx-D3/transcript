@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:transcript/widgets/icon_pill_button.dart';
 
+import '../billing/subscription_products.dart';
+import '../billing/subscription_service.dart';
+import '../common/app_flushbar.dart';
 // ✅ Glass primitives
 import '../ui/glass/liquid_glass.dart';
 import '../ui/glass/glass_card.dart';
@@ -17,12 +21,12 @@ enum PaywallPlan { lifetime, yearly, monthly }
 class PaywallPage extends StatefulWidget {
   const PaywallPage({
     super.key,
-    required this.onClose,
-    required this.onContinue,
+    this.onClose,
+    this.onPremiumUnlocked,
   });
 
-  final Future<void> Function() onClose;
-  final Future<void> Function(PaywallPlan plan) onContinue;
+  final Future<void> Function()? onClose;
+  final Future<void> Function()? onPremiumUnlocked;
 
   @override
   State<PaywallPage> createState() => _PaywallPageState();
@@ -30,12 +34,21 @@ class PaywallPage extends StatefulWidget {
 
 class _PaywallPageState extends State<PaywallPage> {
   bool _busy = false;
+  bool _loadingProducts = true;
+  bool _restoring = false;
+  String? _error;
+  List<ProductDetails> _products = const [];
+  PaywallPlan _selectedPlan = PaywallPlan.yearly;
 
-  // User won’t choose, but we must keep signature
-  static const PaywallPlan _defaultPlan = PaywallPlan.lifetime;
-  static const String _privacyUrl = 'https://enyx.app/privacy/enyx-transcriptor';
+  static const String _privacyUrl = 'https://enyx.app/privacy/meeting-transcript-unlimited';
   static const String _termsUrl =
       'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
 
   Future<void> _openExternal(String url) async {
     final ok = await launchUrl(
@@ -53,31 +66,140 @@ class _PaywallPageState extends State<PaywallPage> {
 
     // ✅ side effects after
     try {
-      await widget.onClose();
+      await widget.onClose?.call();
     } catch (_) {}
   }
 
-  Future<void> _continue() async {
-    if (_busy) return;
+  ProductDetails? _productForPlan(PaywallPlan plan) {
+    for (final p in _products) {
+      if (plan == PaywallPlan.lifetime && p.id == kProLifetimeId) return p;
+      if (plan == PaywallPlan.yearly && p.id == kProYearlyId) return p;
+      if (plan == PaywallPlan.monthly && p.id == kProMonthlyId) return p;
+    }
+    return null;
+  }
+
+  ProductDetails? get _selectedProduct => _productForPlan(_selectedPlan);
+  bool get _selectedPlanSupportsTrial => _selectedPlan != PaywallPlan.lifetime;
+  bool get _premiumActive => SubscriptionService.I.premiumActive;
+
+  String get _activePlanLabel {
+    final id = SubscriptionService.I.activeProductId;
+    if (id == kProLifetimeId) return 'Lifetime';
+    if (id == kProYearlyId) return 'Yearly';
+    if (id == kProMonthlyId) return 'Monthly';
+    return 'Premium';
+  }
+
+  Future<void> _loadProducts() async {
+    try {
+      await SubscriptionService.I.initializePurchase();
+      final products = await SubscriptionService.I.fetchProducts();
+      if (!mounted) return;
+      setState(() {
+        _products = products;
+        _loadingProducts = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingProducts = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _onPremiumUnlocked() async {
+    try {
+      await widget.onPremiumUnlocked?.call();
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).maybePop(true);
+  }
+
+  Future<void> _purchase(ProductDetails product) async {
     setState(() => _busy = true);
 
     try {
-      await widget.onContinue(_defaultPlan);
-
+      final ok = await SubscriptionService.I.purchaseSubscription(product);
       if (!mounted) return;
+      if (ok && SubscriptionService.I.premiumActive) {
+        await _onPremiumUnlocked();
+        return;
+      }
 
-      // ✅ Close paywall ONLY (Timeline will show)
-      Navigator.of(context, rootNavigator: true).maybePop();
+      final message = SubscriptionService.I.lastStoreError ??
+          SubscriptionService.I.lastVerifyError ??
+          'Purchase could not be completed.';
+      setState(() => _error = message);
+      await AppFlushbar.error(context, message: message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _startFreeTrial() async {
+    if (_busy || _restoring) return;
+    final product = (_selectedPlan == PaywallPlan.lifetime)
+        ? (_productForPlan(PaywallPlan.yearly) ?? _productForPlan(PaywallPlan.monthly))
+        : _selectedProduct;
+    if (product == null) {
+      await AppFlushbar.error(context, message: 'Subscription is unavailable right now.');
+      return;
+    }
+    await _purchase(product);
+  }
+
+  Future<void> _subscribe() async {
+    if (_busy || _restoring) return;
+    final product = _selectedProduct;
+    if (product == null) {
+      await AppFlushbar.error(context, message: 'Subscription is unavailable right now.');
+      return;
+    }
+    await _purchase(product);
+  }
+
+  Future<void> _restorePurchases() async {
+    if (_busy || _restoring) return;
+    setState(() => _restoring = true);
+    try {
+      final ok = await SubscriptionService.I.restorePurchases();
+      if (!mounted) return;
+      if (ok && SubscriptionService.I.premiumActive) {
+        await _onPremiumUnlocked();
+        return;
+      }
+      const message = 'No active purchase was found to restore.';
+      setState(() => _error = message);
+      await AppFlushbar.info(context, message: message);
+    } finally {
+      if (mounted) setState(() => _restoring = false);
+    }
+  }
+
+  Future<void> _openManageSubscription() async {
+    final ok = await launchUrl(
+      Uri.parse('https://apps.apple.com/account/subscriptions'),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok && mounted) {
+      await AppFlushbar.error(
+        context,
+        message: 'Could not open App Store subscription settings.',
+      );
+    }
+  }
+
+  String _priceFor(PaywallPlan plan, {required String fallback}) {
+    final product = _productForPlan(plan);
+    return product?.price ?? fallback;
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
     final fg = Colors.white.withValues(alpha: 0.92);
-
     // // ✅ tint-only close pill (consistent with sheets)
     // Widget closePill() {
     //   return LiquidGlass(
@@ -182,7 +304,7 @@ class _PaywallPageState extends State<PaywallPage> {
                       // Headline
                       Center(
                         child: Text(
-                          'GET PRO ACCESS\nGO UNLIMITED',
+                          'Premium Transcription',
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.w900,
@@ -193,6 +315,37 @@ class _PaywallPageState extends State<PaywallPage> {
                       ),
 
                       const SizedBox(height: 14),
+
+                      _Panel(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Premium Subscription Includes:',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: fg,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '• Unlimited audio transcription\n'
+                              '• Transcribe YouTube videos\n'
+                              '• Transcribe audio files\n'
+                              '• Transcribe video files\n'
+                              '• Voice recording transcription\n'
+                              '• Phone call transcription (coming soon)',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.76),
+                                    height: 1.35,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
 
                       // Features
                       const _Benefit(
@@ -217,11 +370,20 @@ class _PaywallPageState extends State<PaywallPage> {
                       _Panel(
                         child: Row(
                           children: [
-                            const Icon(Icons.check_circle, color: Colors.lightGreenAccent),
+                            Icon(
+                              _premiumActive ? Icons.verified : Icons.check_circle,
+                              color: _premiumActive
+                                  ? Colors.lightBlueAccent
+                                  : Colors.lightGreenAccent,
+                            ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                '1-day trial enabled',
+                                _premiumActive
+                                    ? 'Your $_activePlanLabel premium access is active'
+                                    : (_selectedPlanSupportsTrial
+                                        ? '3-day free trial for eligible new subscribers'
+                                        : 'Lifetime unlock with one-time purchase'),
                                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                       fontWeight: FontWeight.w800,
                                       color: fg,
@@ -229,7 +391,7 @@ class _PaywallPageState extends State<PaywallPage> {
                               ),
                             ),
                             Text(
-                              'FREE',
+                              _premiumActive ? 'ACTIVE' : 'FREE',
                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                     color: Colors.white.withValues(alpha: 0.70),
                                     fontWeight: FontWeight.w900,
@@ -242,31 +404,37 @@ class _PaywallPageState extends State<PaywallPage> {
 
                       const SizedBox(height: 12),
 
-                      // Plans: display-only list (no selection)
+                      // Plans
                       _Panel(
                         padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
                         child: Column(
-                          children: const [
+                          children: [
                             _PlanDisplayRow(
                               title: 'Lifetime',
                               subtitle: 'One-time payment',
-                              price: '\$79.00',
+                              price: _priceFor(PaywallPlan.lifetime, fallback: '\$99.99'),
                               subPrice: 'forever',
                               badge: 'BEST OFFER',
+                              selected: _selectedPlan == PaywallPlan.lifetime,
+                              onTap: () => setState(() => _selectedPlan = PaywallPlan.lifetime),
                             ),
-                            _DividerLineTight(),
+                            const _DividerLineTight(),
                             _PlanDisplayRow(
                               title: 'Yearly',
                               subtitle: 'Billed yearly',
-                              price: '\$50.00',
+                              price: _priceFor(PaywallPlan.yearly, fallback: '\$49.99'),
                               subPrice: 'per year',
+                              selected: _selectedPlan == PaywallPlan.yearly,
+                              onTap: () => setState(() => _selectedPlan = PaywallPlan.yearly),
                             ),
-                            _DividerLineTight(),
+                            const _DividerLineTight(),
                             _PlanDisplayRow(
                               title: 'Monthly',
                               subtitle: 'Billed monthly',
-                              price: '\$9.00',
+                              price: _priceFor(PaywallPlan.monthly, fallback: '\$8.99'),
                               subPrice: 'per month',
+                              selected: _selectedPlan == PaywallPlan.monthly,
+                              onTap: () => setState(() => _selectedPlan = PaywallPlan.monthly),
                             ),
                           ],
                         ),
@@ -274,20 +442,103 @@ class _PaywallPageState extends State<PaywallPage> {
 
                       const SizedBox(height: 14),
 
-                      // Continue (glass button)
-                      GlassButton(
-                        kind: GlassButtonKind.primary,
-                        label: _busy ? 'Please wait…' : 'Continue',
-                        icon: Icons.arrow_forward,
-                        loading: _busy,
-                        onPressed: _busy ? null : _continue,
-                      ),
+                      if (_loadingProducts)
+                        const Center(child: CircularProgressIndicator())
+                      else ...[
+                        if (_error != null && _error!.trim().isNotEmpty) ...[
+                          Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: const Color(0xFFFFB4B4),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ],
 
-                      const SizedBox(height: 10),
+                      if (_premiumActive) ...[
+                        GlassButton(
+                          kind: GlassButtonKind.primary,
+                          label: 'Manage Subscription',
+                          icon: Icons.manage_accounts_outlined,
+                          onPressed: _openManageSubscription,
+                        ),
+                        const SizedBox(height: 10),
+                      ] else ...[
+                        GlassButton(
+                          kind: GlassButtonKind.primary,
+                          label: _busy
+                              ? 'Please wait…'
+                              : (_selectedPlanSupportsTrial
+                                  ? 'Start 3-Day Free Trial'
+                                  : 'Buy Lifetime'),
+                          icon: _selectedPlanSupportsTrial
+                              ? Icons.bolt
+                              : Icons.workspace_premium_outlined,
+                          loading: _busy,
+                          onPressed: (_busy || _loadingProducts || _restoring)
+                              ? null
+                              : (_selectedPlanSupportsTrial
+                                  ? _startFreeTrial
+                                  : _subscribe),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final stacked = constraints.maxWidth < 360;
+                            final subscribeButton = GlassButton(
+                              kind: GlassButtonKind.secondary,
+                              label: _busy
+                                  ? 'Processing…'
+                                  : (_selectedPlan == PaywallPlan.lifetime
+                                      ? 'Buy Lifetime'
+                                      : 'Subscribe'),
+                              icon: Icons.workspace_premium_outlined,
+                              onPressed: (_busy || _loadingProducts || _restoring)
+                                  ? null
+                                  : _subscribe,
+                            );
+                            final restoreButton = GlassButton(
+                              kind: GlassButtonKind.secondary,
+                              label: _restoring ? 'Restoring…' : 'Restore Purchase',
+                              icon: Icons.restore,
+                              loading: _restoring,
+                              onPressed: (_busy || _loadingProducts || _restoring)
+                                  ? null
+                                  : _restorePurchases,
+                            );
+
+                            if (stacked) {
+                              return Column(
+                                children: [
+                                  subscribeButton,
+                                  const SizedBox(height: 10),
+                                  restoreButton,
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              children: [
+                                Expanded(child: subscribeButton),
+                                const SizedBox(width: 10),
+                                Expanded(child: restoreButton),
+                              ],
+                            );
+                          },
+                        ),
+
+                        const SizedBox(height: 10),
+                      ],
 
                       Center(
                         child: Text(
-                          'Cancel anytime',
+                          'Auto-renewable subscription. Cancel anytime in App Store settings before the trial ends to avoid renewal.',
+                          textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.60),
                                 fontWeight: FontWeight.w700,
@@ -387,6 +638,8 @@ class _PlanDisplayRow extends StatelessWidget {
     required this.subtitle,
     required this.price,
     required this.subPrice,
+    required this.selected,
+    required this.onTap,
     this.badge,
   });
 
@@ -394,55 +647,96 @@ class _PlanDisplayRow extends StatelessWidget {
   final String subtitle;
   final String price;
   final String subPrice;
+  final bool selected;
+  final VoidCallback onTap;
   final String? badge;
 
   @override
   Widget build(BuildContext context) {
     final fg = Colors.white.withValues(alpha: 0.92);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14.5,
-                        color: fg,
-                      ),
-                    ),
-                    if (badge != null) ...[
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.20),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.blue.withValues(alpha: 0.45)),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: selected
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.transparent,
+          border: Border.all(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.28)
+                : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14.5,
+                          color: fg,
                         ),
-                        child: Text(
-                          badge!,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 10,
-                            color: Colors.lightBlueAccent,
-                            letterSpacing: 0.2,
+                      ),
+                      if (badge != null) ...[
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.20),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.blue.withValues(alpha: 0.45)),
+                          ),
+                          child: Text(
+                            badge!,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 10,
+                              color: Colors.lightBlueAccent,
+                              letterSpacing: 0.2,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
-                ),
-                const SizedBox(height: 4),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
                 Text(
-                  subtitle,
+                  price,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                    color: fg,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subPrice,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.70),
                     fontWeight: FontWeight.w700,
@@ -451,30 +745,8 @@ class _PlanDisplayRow extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                price,
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 15,
-                  color: fg,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subPrice,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.70),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

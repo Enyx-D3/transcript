@@ -472,6 +472,7 @@ class _TimelineTabState extends State<TimelineTab> {
   }
 
   Future<void> _maybeShowPaywallOnce() async {
+    if (Platform.isIOS) return;
     if (_paywallCheckedThisOpen) return;
     _paywallCheckedThisOpen = true;
 
@@ -493,19 +494,9 @@ class _TimelineTabState extends State<TimelineTab> {
           onClose: () async {
             await sp.setBool(_kPaywallSeenOnce, true);
           },
-          onContinue: (_) async {
+          onPremiumUnlocked: () async {
             await sp.setBool(_kPaywallSeenOnce, true);
-
-            // ✅ Now: open Settings -> Account (no Account tab)
-            if (!mounted || _disposed) return;
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => SettingsPage(
-                  openAccount: true,
-                  onUpgradeSuccess: widget.onUpgradeSuccess,
-                ),
-              ),
-            );
+            widget.onUpgradeSuccess?.call();
           },
         ),
       ),
@@ -538,16 +529,8 @@ class _TimelineTabState extends State<TimelineTab> {
         fullscreenDialog: true,
         builder: (_) => PaywallPage(
           onClose: () async {},
-          onContinue: (_) async {
-            if (!mounted || _disposed) return;
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => SettingsPage(
-                  openAccount: true,
-                  onUpgradeSuccess: widget.onUpgradeSuccess,
-                ),
-              ),
-            );
+          onPremiumUnlocked: () async {
+            widget.onUpgradeSuccess?.call();
           },
         ),
       ),

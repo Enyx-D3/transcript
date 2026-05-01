@@ -16,6 +16,7 @@ import '../auth/eligibility_gate.dart';
 import '../billing/subscription_service.dart';
 import '../billing/subscription_products.dart';
 import '../common/confirm_dialog.dart';
+import '../paywall/paywall_page.dart';
 
 // ✅ Glass primitives (same set you used elsewhere)
 import '../ui/glass/glass_card.dart';
@@ -157,9 +158,6 @@ class _AccountTabState extends State<AccountTab> {
           'email': user.email,
           'date_joined': now.toIso8601String(),
           'is_upgraded': false,
-          'trial_expires_at': now
-              .add(const Duration(days: 7))
-              .toIso8601String(),
         });
 
         final row2 = await _sb
@@ -571,221 +569,16 @@ class _AccountTabState extends State<AccountTab> {
 
   Future<void> _showUpgradeOptionsSheet() async {
     if (!mounted) return;
-
-    if (_storeProducts == null) {
-      // ignore: unawaited_futures
-      _prefetchPricing();
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final monthly = _priceLabel(kProMonthlyId);
-        final yearly = _priceLabel(kProYearlyId);
-        final lifetime = _priceLabel(kProLifetimeId);
-
-        String rightMonthly() => monthly == '—' ? 'Loading…' : '$monthly / mo';
-        String rightYearly() => yearly == '—' ? 'Loading…' : '$yearly / yr';
-        String rightLifetime() => lifetime == '—' ? 'Loading…' : lifetime;
-
-        Widget optionTile({
-          required IconData icon,
-          required String title,
-          required String subtitle,
-          required String priceRight,
-          required VoidCallback onTap,
-          Widget? badge,
-        }) {
-          return GlassCard(
-            variant: GlassCardVariant.panel,
-            padding: EdgeInsets.zero,
-            child: ListTile(
-              leading: Icon(icon, color: Colors.white.withValues(alpha: 0.90)),
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white.withValues(alpha: 0.92),
-                      ),
-                    ),
-                  ),
-                  if (badge != null) ...[const SizedBox(width: 8), badge],
-                ],
-              ),
-              subtitle: Text(
-                subtitle,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.70)),
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    priceRight,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white.withValues(alpha: 0.92),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Icon(
-                    Icons.chevron_right,
-                    color: Colors.white.withValues(alpha: 0.70),
-                  ),
-                ],
-              ),
-              onTap: onTap,
-            ),
-          );
-        }
-
-        Widget badgePill(String text) {
-          // ✅ black/white only, no orange (you asked everywhere else)
-          return LiquidGlass(
-            borderRadius: BorderRadius.circular(999),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            shadow: false,
-            blurX: 10,
-            blurY: 10,
-            tintOpacityDark: 0.040,
-            tintOpacityLight: 0.032,
-            borderOpacityDark: 0.14,
-            borderOpacityLight: 0.18,
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.2,
-                color: Colors.white.withValues(alpha: 0.78),
-              ),
-            ),
-          );
-        }
-
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: GlassCard(
-              blur: 10,
-              variant: GlassCardVariant.tile,
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 5,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(99),
-                      color: Colors.white.withValues(alpha: 0.14),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.workspace_premium_outlined,
-                        color: Colors.white.withValues(alpha: 0.90),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Go Pro',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white.withValues(alpha: 0.92),
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.close,
-                          color: Colors.white.withValues(alpha: 0.85),
-                        ),
-                        onPressed: () => Navigator.of(ctx).pop(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-
-                  optionTile(
-                    icon: Icons.calendar_month_outlined,
-                    title: 'Monthly',
-                    subtitle: 'Pay month-to-month. Cancel anytime.',
-                    priceRight: rightMonthly(),
-                    onTap: () async {
-                      Navigator.of(ctx).pop();
-                      await _startMonthlyFlow();
-                    },
-                  ),
-                  const SizedBox(height: 10),
-
-                  optionTile(
-                    icon: Icons.event_available_outlined,
-                    title: 'Yearly',
-                    subtitle: 'Best value for long-term use.',
-                    priceRight: rightYearly(),
-                    badge: badgePill('Best value'),
-                    onTap: () async {
-                      Navigator.of(ctx).pop();
-                      await _startYearlyFlow();
-                    },
-                  ),
-                  const SizedBox(height: 10),
-
-                  optionTile(
-                    icon: Icons.all_inclusive,
-                    title: 'Lifetime',
-                    subtitle: 'One-time purchase. Keep Pro forever.',
-                    priceRight: rightLifetime(),
-                    badge: badgePill('Best offer'),
-                    onTap: () async {
-                      Navigator.of(ctx).pop();
-                      await _startLifetimeFlow();
-                    },
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: (_restoring || _upgrading)
-                          ? null
-                          : () async {
-                              Navigator.of(ctx).pop();
-                              await _restorePurchasesFlow();
-                            },
-                      icon: _restoring
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.restore, color: Colors.white),
-                      label: Text(
-                        _restoring ? 'Restoring…' : 'Restore Purchases',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => PaywallPage(
+          onPremiumUnlocked: () async {
+            widget.onUpgradeSuccess?.call();
+            await _loadProfile(force: true);
+          },
+        ),
+      ),
     );
   }
 

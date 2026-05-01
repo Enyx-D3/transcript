@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../common/app_flushbar.dart';
+import '../paywall/transcription_premium_gate.dart';
 
 // ObjectBox
 import '../objectbox/objectbox_store.dart';
@@ -85,6 +86,9 @@ class _TranscriptYoutubePageState extends State<TranscriptYoutubePage> {
 
   Future<void> _fetchAll() async {
     _unfocus();
+
+    final allowed = await ensureIosPremiumForTranscription(context);
+    if (!allowed) return;
 
     final input = _ctrl.text.trim();
     final vid = _extractVideoId(input);

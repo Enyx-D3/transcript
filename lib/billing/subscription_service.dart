@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'subscription_products.dart';
@@ -19,6 +20,8 @@ class SubscriptionService {
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   bool _initialized = false;
   bool _storeAvailable = false;
+  bool _premiumActive = false;
+  String? _activeProductId;
 
   /// Completers to allow UI to await a specific purchase outcome.
   final Map<String, Completer<bool>> _pending = {};
@@ -26,6 +29,8 @@ class SubscriptionService {
   /// Fires when any entitlement was successfully applied (purchase OR restore).
   final StreamController<void> _entitlementAppliedCtrl =
       StreamController<void>.broadcast();
+  final StreamController<bool> _premiumStateCtrl =
+      StreamController<bool>.broadcast();
 
   SupabaseClient get _sb => Supabase.instance.client;
 
@@ -37,9 +42,27 @@ class SubscriptionService {
   // ✅ IMPORTANT: must match your deployed edge function names
   static const String _fnVerifyAndroid = 'verify-play-subscription';
   static const String _fnVerifyApple = 'verify-apple-subscription';
+  static const String _kPremiumActive = 'premium_active_local';
+  static const String _kActiveProductId = 'premium_active_product_id';
+
+  bool get premiumActive => _premiumActive;
+  String? get activeProductId => _activeProductId;
+  Stream<bool> get premiumState => _premiumStateCtrl.stream;
+
+  Future<void> initializePurchase() => initialize();
+
+  Future<bool> purchaseSubscription(ProductDetails product) => buy(product);
+
+  Future<bool> restorePurchases({
+    Duration timeout = const Duration(seconds: 30),
+  }) => restore(timeout: timeout);
+
+  Future<void> listenToPurchaseUpdates() => initialize();
 
   Future<void> initialize() async {
     if (_initialized) return;
+
+    await _loadLocalPremiumState();
 
     final available = await _iap.isAvailable();
     _storeAvailable = available;
@@ -63,6 +86,29 @@ class SubscriptionService {
     _purchaseSub?.cancel();
     _purchaseSub = null;
     _initialized = false;
+  }
+
+  Future<void> _loadLocalPremiumState() async {
+    final sp = await SharedPreferences.getInstance();
+    _premiumActive = sp.getBool(_kPremiumActive) ?? false;
+    _activeProductId = sp.getString(_kActiveProductId);
+  }
+
+  Future<void> _setPremiumActive(bool value, {String? productId}) async {
+    _premiumActive = value;
+    _activeProductId = value ? productId : null;
+
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool(_kPremiumActive, value);
+    if (value && productId != null) {
+      await sp.setString(_kActiveProductId, productId);
+    } else {
+      await sp.remove(_kActiveProductId);
+    }
+
+    if (!_premiumStateCtrl.isClosed) {
+      _premiumStateCtrl.add(_premiumActive);
+    }
   }
 
   Future<List<ProductDetails>> fetchProducts() async {
@@ -321,14 +367,17 @@ class SubscriptionService {
   }
 
   Future<bool> _applyEntitlementFromPurchase(PurchaseDetails p) async {
-    final user = _sb.auth.currentUser;
-    if (user == null) return false;
-
     // Only verify known products
     if (!kProProductIds.contains(p.productID)) return false;
 
+    // Local entitlement is enough to unlock premium on device.
+    await _setPremiumActive(true, productId: p.productID);
+
+    final user = _sb.auth.currentUser;
+    if (user == null) return true;
+
     final token = extractPurchaseToken(p);
-    if (token == null || token.isEmpty) return false;
+    if (token == null || token.isEmpty) return true;
 
     try {
       // Pick the right edge function based on platform
@@ -358,12 +407,12 @@ class SubscriptionService {
       if (!ok) {
         debugPrint('$fnName failed: $data');
       }
-      return ok;
+      return true;
     } catch (e) {
       debugPrint('verify exception: $e');
       lastVerifyCode = null;
       lastVerifyError = e.toString();
-      return false;
+      return true;
     }
   }
 }

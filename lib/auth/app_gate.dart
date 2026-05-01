@@ -1,5 +1,6 @@
 // lib/auth/app_gate.dart
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:transcript/widgets/brand_logo.dart';
@@ -80,6 +81,8 @@ class _AppGateState extends State<AppGate> {
 
   // ✅ One place that does "reconcile + check" with timeouts
   Future<EligibilityGateResult> _reconcileAndCheck() async {
+    await SubscriptionService.I.initializePurchase();
+
     // Step A: try to reconcile purchases (important after purchase/restart)
     try {
       await SubscriptionService.I
@@ -87,13 +90,31 @@ class _AppGateState extends State<AppGate> {
           .timeout(const Duration(seconds: 5));
     } catch (_) {}
 
+    if (Platform.isIOS && SubscriptionService.I.premiumActive) {
+      return const EligibilityGateResult(eligible: true);
+    }
+
     // Step B: read eligibility (timed)
+    if (_sb.auth.currentUser == null) {
+      return const EligibilityGateResult(eligible: false);
+    }
+
     try {
-      return await checkEligibilityOnce(_sb).timeout(
+      final remote = await checkEligibilityOnce(_sb).timeout(
         const Duration(seconds: 5),
         onTimeout: () => const EligibilityGateResult(eligible: false),
       );
+      if (Platform.isIOS && SubscriptionService.I.premiumActive) {
+        return EligibilityGateResult(
+          eligible: true,
+          error: remote.error,
+        );
+      }
+      return remote;
     } catch (e) {
+      if (Platform.isIOS && SubscriptionService.I.premiumActive) {
+        return const EligibilityGateResult(eligible: true);
+      }
       return EligibilityGateResult(eligible: false, error: e.toString());
     }
   }
@@ -127,8 +148,7 @@ class _AppGateState extends State<AppGate> {
 
   // ✅ Used by HomeShell Retry button
   Future<EligibilityGateResult> _retryEligibility() async {
-    // Guest mode: non-account features stay accessible without login.
-    if (_session == null) {
+    if (_session == null && !Platform.isIOS) {
       return const EligibilityGateResult(
         eligible: false,
         error: 'Please sign in to verify your subscription access.',

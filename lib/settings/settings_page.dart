@@ -1,4 +1,6 @@
 // lib/settings/settings_page.dart
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
@@ -9,8 +11,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:transcript/widgets/icon_pill_button.dart';
 
 import '../common/app_flushbar.dart';
-import '../auth/login_page.dart';
 import '../import_export/transcript_porter.dart';
+import '../paywall/paywall_page.dart';
 import '../trash/trash_page.dart';
 import '../tabs/account_tab.dart';
 import '../model_picker_page.dart';
@@ -26,7 +28,6 @@ import '../help/help_page.dart';
 // ✅ glass system
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_divider.dart';
-import '../ui/glass/glass_tokens.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -108,18 +109,28 @@ class _SettingsPageState extends State<SettingsPage> {
   // Account
   // =========================
   void _openAccount() {
+    if (Platform.isIOS) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => PaywallPage(
+            onPremiumUnlocked: () async {
+              widget.onUpgradeSuccess?.call();
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => LoginPage(
-            onLoggedIn: () {
-              // Close login and reopen account page after successful sign-in.
-              Navigator.of(context).pop();
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
-                _openAccount();
-              });
+          fullscreenDialog: true,
+          builder: (_) => PaywallPage(
+            onPremiumUnlocked: () async {
+              widget.onUpgradeSuccess?.call();
             },
           ),
         ),
@@ -621,7 +632,9 @@ class _SettingsPageState extends State<SettingsPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Account & Billing',
+                                  Platform.isIOS
+                                      ? 'Billing & Purchases'
+                                      : 'Account & Billing',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
                                     color: Colors.white.withValues(alpha: 0.92),
@@ -629,7 +642,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ),
                                 const SizedBox(height: 3),
                                 Text(
-                                  'Subscription, trial, and purchases',
+                                  Platform.isIOS
+                                      ? 'Subscriptions, trial, and restore purchases'
+                                      : 'Subscription, trial, and purchases',
                                   style: TextStyle(
                                     color: Colors.white.withValues(alpha: 0.70),
                                     fontSize: 12,

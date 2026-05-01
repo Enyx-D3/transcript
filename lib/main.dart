@@ -1,10 +1,8 @@
 import 'dart:io';
 import 'dart:ui' show DartPluginRegistrant;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:transcript/send_transcript/auto_email_service.dart';
 import 'package:transcript/send_transcript/send_transcript_healper.dart';
@@ -26,6 +24,8 @@ import 'transcript/transcription_persistence.dart';
 // App gate
 import 'auth/app_gate.dart';
 import 'auth/eligibility_gate.dart';
+import 'auth/guest_user_service.dart';
+import 'billing/subscription_service.dart';
 // If you still need the global Whisper for ModelPickerPage, keep this:
 import 'whisper_service.dart';
 import 'package:background_downloader/background_downloader.dart';
@@ -78,6 +78,8 @@ Future<void> main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcHhscXlrYXdxdW9yZHdueG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNzQwMjAsImV4cCI6MjA3OTc1MDAyMH0.eDYqntQBhp_AxfhFw1PdR6gIFp50zDKzhqYKUzSs0EU',
   );
 
+  await GuestUserService.I.ensureGuestId();
+  await SubscriptionService.I.initializePurchase();
   await ObjectBox.init();
   await RecordingService.ensureInitialized();
 
@@ -146,7 +148,9 @@ Future<void> main() async {
       await BackgroundTranscriber.init();
 
       // ✅ 4) downloader tracking last (optional)
-      FileDownloader().trackTasks().catchError((_) => null);
+      try {
+        await FileDownloader().trackTasks();
+      } catch (_) {}
     } catch (e, st) {
       debugPrint('Post-frame init failed: $e');
       debugPrint('$st');
@@ -237,30 +241,10 @@ class _SplashGateState extends State<SplashGate> {
     try {
       setState(() {
         _failed = false;
-        _status = 'Requesting microphone access…';
+        _status = 'Initializing…';
       });
-
-      final perm = await Permission.microphone.request();
-      
-      // Allow bypassing for development and testing
-      if (!perm.isGranted) {
-        if (kDebugMode && Platform.isIOS) {
-          debugPrint('⚠️ Microphone permission denied - running in debug mode, allowing to continue');
-        } else {
-          throw Exception('Microphone permission is required');
-        }
-      }
-
-      final p = await FlutterForegroundTask.checkNotificationPermission();
-      if (p != NotificationPermission.granted) {
-        await FlutterForegroundTask.requestNotificationPermission();
-      }
-
-      setState(() => _status = 'Initializing…');
-      // await _recoverStaleTranscriptionLock();
-
-      setState(() => _status = 'Checking access…');
-      final eligibility = await checkEligibilityOnce(Supabase.instance.client);
+      await _recoverStaleTranscriptionLock();
+      final eligibility = await _resolveInitialEligibility();
 
       await Future.delayed(const Duration(milliseconds: 120));
 
@@ -285,7 +269,6 @@ class _SplashGateState extends State<SplashGate> {
     final theme = Theme.of(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context, alpha: 0.78);
-    final isDark = GlassTokens.isDark(context);
 
     return PopScope(
       canPop: false,
@@ -404,5 +387,36 @@ class _SplashGateState extends State<SplashGate> {
         ),
       ),
     );
+  }
+
+  Future<EligibilityGateResult> _resolveInitialEligibility() async {
+    try {
+      await SubscriptionService.I.initializePurchase();
+      if (Platform.isIOS && SubscriptionService.I.premiumActive) {
+        return const EligibilityGateResult(eligible: true);
+      }
+
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        return const EligibilityGateResult(eligible: false);
+      }
+
+      final remote = await checkEligibilityOnce(
+        Supabase.instance.client,
+      ).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => const EligibilityGateResult(eligible: false),
+      );
+
+      if (Platform.isIOS && SubscriptionService.I.premiumActive) {
+        return EligibilityGateResult(eligible: true, error: remote.error);
+      }
+      return remote;
+    } catch (e) {
+      if (Platform.isIOS && SubscriptionService.I.premiumActive) {
+        return const EligibilityGateResult(eligible: true);
+      }
+      return EligibilityGateResult(eligible: false, error: e.toString());
+    }
   }
 }
