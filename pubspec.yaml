@@ -64,6 +64,7 @@ dependencies:
   youtube_transcript_api: ^1.0.0
   in_app_review: ^2.0.11
   uuid: ^4.5.2
+  pdf: ^3.11.3
 
   
 dev_dependencies:
@@ -96,6 +97,7 @@ flutter:
     - assets/models/segmentation/model.onnx
     - assets/models/embedding/nemo_en_titanet_small.onnx
     - assets/instruction/
+    - assets/fonts/
     - assets/models/whisper/ggml-tiny.bin
     - assets/logo/
     - assets/wallpapers/

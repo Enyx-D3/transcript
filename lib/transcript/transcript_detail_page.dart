@@ -6,11 +6,11 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../common/app_flushbar.dart';
+import '../export/document_export_service.dart';
+import '../export/document_export_sheet.dart';
 import '../objectbox/entities.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox.g.dart';
@@ -147,7 +147,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final q = qb.build();
     final existing = q.findFirst();
     q.close();
-    return existing != null && (existing.summary ?? '').trim().isNotEmpty;
+    return existing != null && existing.summary.trim().isNotEmpty;
   }
 
   Future<void> _maybeStartAutoSummaryOnce() async {
@@ -1201,46 +1201,45 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     await AppFlushbar.success(context, message: 'Transcript copied.');
   }
 
-  Future<void> _shareWholeTranscript() async {
+  String _exportTitle() {
+    final raw = (_t?.title ?? 'transcript').trim();
+    return raw.isEmpty ? 'transcript' : raw;
+  }
+
+  Future<void> _exportWholeTranscript(DocumentExportFormat format) async {
     final text = _buildTranscriptText(preferEdited: true).trim();
     if (text.isEmpty) {
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Nothing to share yet.');
+      await AppFlushbar.error(context, message: 'Nothing to export yet.');
       return;
     }
 
     try {
-      final dir = await getTemporaryDirectory();
-
-      final safeTitle =
-          ((_t?.title ?? 'transcript').trim().isEmpty ? 'transcript' : _t!.title!)
-              .trim()
-              .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '_')
-              .replaceAll(RegExp(r'\s+'), ' ')
-              .trim();
-
-      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final file = File('${dir.path}/$safeTitle-$stamp.txt');
-
-      await file.writeAsString(text, flush: true);
-
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [
-            XFile(
-              file.path,
-              mimeType: 'text/plain',
-              name: file.uri.pathSegments.last,
-            ),
-          ],
-          subject: safeTitle,
-          text: 'Transcript attached.',
-        ),
+      await DocumentExportService.shareDocument(
+        title: _exportTitle(),
+        content: text,
+        documentLabel: 'Full transcript',
+        format: format,
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Could not share file.');
+      await AppFlushbar.error(context, message: e.toString());
     }
+  }
+
+  Future<void> _openTranscriptExportSheet() async {
+    final text = _buildTranscriptText(preferEdited: true).trim();
+    if (text.isEmpty) {
+      if (!mounted) return;
+      await AppFlushbar.error(context, message: 'Nothing to export yet.');
+      return;
+    }
+
+    await showDocumentExportSheet(
+      context: context,
+      title: 'Export transcript',
+      onExport: _exportWholeTranscript,
+    );
   }
 
   Future<void> _editWholeTranscript() async {
@@ -1665,7 +1664,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           kind: GlassButtonKind.secondary,
                           label: 'Share',
                           icon: Icons.ios_share_rounded,
-                          onPressed: _isTranscribingNow ? null : _shareWholeTranscript,
+                          onPressed: _isTranscribingNow ? null : _openTranscriptExportSheet,
                         ),
                       ),
                     ],
