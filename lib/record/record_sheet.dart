@@ -27,7 +27,7 @@ class RecordSheet extends StatefulWidget {
 
   static Future<void> show(BuildContext context) async {
     const kBusyTranscribing = 'busy_transcribing';
-
+    
     final busyFlag =
         (await FlutterForegroundTask.getData(key: kBusyTranscribing)) == true;
 
@@ -407,6 +407,8 @@ class _RecordSheetState extends State<RecordSheet> {
     );
 
     try {
+      final sp = await SharedPreferences.getInstance();
+      final typoFix = sp.getBool('pref_typo_fix_enabled') ?? true;
       await BackgroundTranscriber.start(
         wavPath: wavPath,
         translateToEnglish: false,
@@ -414,6 +416,7 @@ class _RecordSheetState extends State<RecordSheet> {
         existingTranscriptId: tId,
         targetSpeakers: targetSpeakers,
         lang: lang,
+        typoFixEnabled: typoFix
       );
 
       final job = obx.jobs.get(jobId);

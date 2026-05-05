@@ -68,6 +68,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   bool _busyFlag = false;
 
   static const _kBusyTranscribing = 'busy_transcribing';
+  static const _kActiveTranscriptId = 'bg_active_transcript_id'; // ✅ NEW
   static const _kProgressProcessedSec = 'progress_processed_sec';
   static const _kProgressTotalSec = 'progress_total_sec';
   static const _kProgressStage = 'progress_stage';
@@ -257,13 +258,25 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   // ============================================================
-  // ✅ Busy flag
+  // ✅ Busy flag (FIXED: per-transcript, not global)
   // ============================================================
 
   Future<bool> _readBusyFlag() async {
     try {
-      final v = await FlutterForegroundTask.getData(key: _kBusyTranscribing);
-      return v == true;
+      final busyRaw = await FlutterForegroundTask.getData(key: _kBusyTranscribing);
+      final activeRaw = await FlutterForegroundTask.getData(key: _kActiveTranscriptId);
+
+      final bool busy = (busyRaw == true);
+
+      int activeId = 0;
+      if (activeRaw is int) {
+        activeId = activeRaw;
+      } else {
+        activeId = int.tryParse('$activeRaw') ?? 0;
+      }
+
+      // ✅ Only this transcript page shows loading if it's the active one
+      return busy && activeId == widget.transcriptId;
     } catch (_) {
       return false;
     }
@@ -409,11 +422,17 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   // ============================================================
-  // ✅ Progress
+  // ✅ Progress (FIXED: only update on active transcript page)
   // ============================================================
 
   Future<void> _pullProgressFromFgStorage() async {
     try {
+      final activeRaw = await FlutterForegroundTask.getData(key: _kActiveTranscriptId);
+      final activeId = (activeRaw is int) ? activeRaw : int.tryParse('$activeRaw') ?? 0;
+
+      // ✅ Ignore progress for other transcripts
+      if (activeId != widget.transcriptId) return;
+
       final processedRaw = await FlutterForegroundTask.getData(key: _kProgressProcessedSec);
       final totalRaw = await FlutterForegroundTask.getData(key: _kProgressTotalSec);
       final stageRaw = await FlutterForegroundTask.getData(key: _kProgressStage);
@@ -887,6 +906,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
       try {
         await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+        await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
       } catch (_) {}
 
       if (!mounted) return;
@@ -912,6 +932,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     if (type == 'transcribe_error') {
       try {
         await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+        await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
       } catch (_) {}
 
       _processingWatchdog?.cancel();
@@ -944,7 +965,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     if (payloadRaw is Map) {
       final payload = payloadRaw.cast<String, dynamic>();
 
-      // ✅ THIS IS THE FIX: persist result turns into ObjectBox
+      // ✅ persist result turns into ObjectBox
       _applyBgResultToDb(
         transcriptId: widget.transcriptId,
         wavPath: wavPath,
@@ -954,6 +975,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     try {
       await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
     } catch (_) {}
 
     _processingWatchdog?.cancel();
@@ -1467,7 +1489,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   String _fmtMetaShort(TranscriptEntity t) {
     final d = t.createdAt.toLocal();
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
 
@@ -1701,14 +1723,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    // LinearProgressIndicator(
-                    //   value: (_progressTotalSec > 0)
-                    //       ? (_progressProcessedSec / _progressTotalSec).clamp(0.0, 0.98)
-                    //       : null,
-                    //   minHeight: 4,
-                    //   backgroundColor: Colors.white12,
-                    //   color: Colors.white,
-                    // ),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 8,
@@ -1720,7 +1734,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                               'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
                               ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (t.durationSec)) * 1000).round()))}',
                         ),
-                        // _MetaPill(text: 'Segments • ${_turns.length}'),
                       ],
                     ),
                     const SizedBox(height: 8),

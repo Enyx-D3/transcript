@@ -279,7 +279,8 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
       );
 
       try {
-        await BackgroundTranscriber.start(
+        
+        await BackgroundTranscriber.startFromPrefs(
           wavPath: wavPath,
           translateToEnglish: false,
           titleHint: null,

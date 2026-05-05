@@ -57,6 +57,9 @@ class _SettingsPageState extends State<SettingsPage> {
   static const _kPrefAutoEmailTranscript = 'pref_auto_email_transcript';
   static const _kPrefAutoSummaryEnabled = 'pref_auto_summary_enabled';
 
+  // ✅ NEW: typo fix toggle
+  static const _kPrefTypoFixEnabled = 'pref_typo_fix_enabled';
+
   // =========================
   // Support constants
   // =========================
@@ -90,6 +93,9 @@ class _SettingsPageState extends State<SettingsPage> {
   int _maxRecordingMinutes = 60;
   bool _autoEmailTranscript = false;
   bool _autoSummaryEnabled = true; // ✅ default ON
+
+  // ✅ NEW: default ON
+  bool _typoFixEnabled = true;
 
   @override
   void initState() {
@@ -134,30 +140,30 @@ class _SettingsPageState extends State<SettingsPage> {
   // =========================
   Future<void> _openWhatsNew() async {
     if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const WhatsNewPage()));
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WhatsNewPage()),
+    );
   }
 
   Future<void> _openModelPage() async {
     if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ModelPickerPage()),
+    );
   }
 
   Future<void> _openHipaaFriendly() async {
     if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const HipaaFriendlyPage()));
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const HipaaFriendlyPage()),
+    );
   }
 
   Future<void> _openHelp() async {
     if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const HelpPage()));
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const HelpPage()),
+    );
   }
 
   Future<void> _contactSupport() async {
@@ -205,8 +211,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final safeMins = _maxMinutesOptions.contains(mins) ? mins : 60;
 
     final autoEmail = sp.getBool(_kPrefAutoEmailTranscript) ?? false;
-
     final autoSummary = sp.getBool(_kPrefAutoSummaryEnabled) ?? true;
+
+    // ✅ NEW (default ON)
+    final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? true;
 
     if (!mounted) return;
     setState(() {
@@ -217,6 +225,9 @@ class _SettingsPageState extends State<SettingsPage> {
       _maxRecordingMinutes = safeMins;
       _autoEmailTranscript = autoEmail;
       _autoSummaryEnabled = autoSummary;
+
+      _typoFixEnabled = typoFix;
+
       _loading = false;
     });
   }
@@ -273,6 +284,14 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _autoSummaryEnabled = v);
   }
 
+  // ✅ NEW setter
+  Future<void> _setTypoFixEnabled(bool v) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool(_kPrefTypoFixEnabled, v);
+    if (!mounted) return;
+    setState(() => _typoFixEnabled = v);
+  }
+
   // =========================
   // ZIP Export/Import
   // =========================
@@ -314,14 +333,6 @@ class _SettingsPageState extends State<SettingsPage> {
             expand: false,
             kind: GlassButtonKind.secondary,
           ),
-          // FilledButton(
-          //   onPressed: () => Navigator.pop(ctx, true),
-          //   style: FilledButton.styleFrom(
-          //     backgroundColor: Colors.white,
-          //     foregroundColor: Colors.black,
-          //   ),
-          //   child: const Text('Import'),
-          // ),
         ],
       ),
     );
@@ -393,10 +404,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  /// ✅ Dropdown trailing that won’t overflow and keeps glass styling.
-  /// - wraps DropdownButtonHideUnderline
-  /// - uses `value:` (not initialValue)
-  /// - uses `isDense` + smaller contentPadding
   Widget _trailingDropdown<T>({
     required T value,
     required List<DropdownMenuItem<T>> items,
@@ -463,7 +470,6 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(width: 10),
-          // ✅ ensure trailing can shrink without forcing overflow
           ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 0),
             child: trailing,
@@ -552,8 +558,6 @@ class _SettingsPageState extends State<SettingsPage> {
   // =========================
   @override
   Widget build(BuildContext context) {
-    // Optional: keep consistent with other glass pages
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -581,7 +585,6 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 const SizedBox(height: 8),
 
-                // -------- Account --------
                 _panel(
                   child: InkWell(
                     onTap: _openAccount,
@@ -682,8 +685,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       _kvRow(
                         icon: Icons.timer_outlined,
                         title: 'Max recording time',
-                        subtitle:
-                            'Stops recording automatically at the selected limit.',
+                        subtitle: 'Stops recording automatically at the selected limit.',
                         trailing: _trailingDropdown<int>(
                           value: _maxRecordingMinutes,
                           width: 170,
@@ -758,11 +760,24 @@ class _SettingsPageState extends State<SettingsPage> {
                         offLabel: 'Off',
                       ),
                       _rowDivider(),
+
+                      // ✅ NEW: typo fix switch (default ON)
+                      _switchRow(
+                        icon: Icons.spellcheck,
+                        title: 'Fix obvious typos',
+                        subtitle:
+                            'Runs a lightweight AI pass to correct only obvious typos.',
+                        value: _typoFixEnabled,
+                        onChanged: _setTypoFixEnabled,
+                        onLabel: 'On',
+                        offLabel: 'Off',
+                      ),
+
+                      _rowDivider(),
                       _switchRow(
                         icon: Icons.auto_awesome,
                         title: 'Auto-generate summary',
-                        subtitle:
-                            'Starts summary automatically when transcription finishes.',
+                        subtitle: 'Starts summary automatically when transcription finishes.',
                         value: _autoSummaryEnabled,
                         onChanged: _setAutoSummaryEnabled,
                         onLabel: 'On',
@@ -799,9 +814,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     children: [
                       InkWell(
-                        onTap: (!_busyExport && !_busyImport)
-                            ? _exportZip
-                            : null,
+                        onTap: (!_busyExport && !_busyImport) ? _exportZip : null,
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -820,18 +833,14 @@ class _SettingsPageState extends State<SettingsPage> {
                                       'Export transcripts + audio (ZIP)',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.92,
-                                        ),
+                                        color: Colors.white.withValues(alpha: 0.92),
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'Share to Drive / device / email',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.70,
-                                        ),
+                                        color: Colors.white.withValues(alpha: 0.70),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -845,9 +854,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       _rowDivider(),
                       InkWell(
-                        onTap: (!_busyExport && !_busyImport)
-                            ? _importZip
-                            : null,
+                        onTap: (!_busyExport && !_busyImport) ? _importZip : null,
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -866,18 +873,14 @@ class _SettingsPageState extends State<SettingsPage> {
                                       'Import transcripts + audio (ZIP)',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.92,
-                                        ),
+                                        color: Colors.white.withValues(alpha: 0.92),
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'Pick ZIP from device / Drive',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.70,
-                                        ),
+                                        color: Colors.white.withValues(alpha: 0.70),
                                         fontSize: 12,
                                       ),
                                     ),

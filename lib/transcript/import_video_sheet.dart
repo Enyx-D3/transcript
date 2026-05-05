@@ -281,7 +281,8 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
       );
 
       try {
-        await BackgroundTranscriber.start(
+       
+        await BackgroundTranscriber.startFromPrefs(
           wavPath: wavPath,
           translateToEnglish: false,
           titleHint: null,
