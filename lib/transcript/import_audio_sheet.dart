@@ -66,6 +66,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
   static const String _kPrefDefaultLang = 'pref_default_lang';
   static const String _kPrefDiarizationEnabled = 'pref_diarization_enabled';
   static const String _kBusyTranscribing = 'busy_transcribing';
+  static const String _kActiveTranscriptId = 'bg_active_transcript_id';
 
   static const Map<String, String> _langOptions = {
     'en': 'English',
@@ -270,6 +271,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
       );
 
       await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
+      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: tId);
 
       if (!mounted) return;
 
@@ -302,12 +304,14 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
           obx.jobs.put(job);
         }
         await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+        await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
 
         if (!mounted) return;
         await AppFlushbar.error(context, message: 'Processing failed!');
       }
     } catch (_) {
       await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
       if (mounted) await AppFlushbar.error(context, message: 'Processing failed!');
     } finally {
       if (mounted) setState(() => _working = false);

@@ -12,7 +12,7 @@ plugins {
 android {
     namespace = "com.enyxd.transcript"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    ndkVersion = "28.0.13004108"
 
      signingConfigs {
         create("release") {
@@ -61,10 +61,11 @@ android {
         )
     }
 }
-
-     packaging {
+    packaging {
         jniLibs {
-            useLegacyPackaging = true
+            // Keep native libs uncompressed so AGP can package them
+            // with modern page-size-compatible alignment for Play bundles.
+            useLegacyPackaging = false
         }
     }
 

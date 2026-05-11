@@ -1,0 +1,69 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-Release-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.6.0"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1
+					]
+				}
+			],
+			"name" : "Release",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "whisper_flutter_library",
+					"targetIndexes" : 
+					[
+						0,
+						1
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "whisper::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-whisper-Release-fea623a912bded14a11c.json",
+					"name" : "whisper",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "whisper_flutter::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-whisper_flutter-Release-1c8b03b525de023c5284.json",
+					"name" : "whisper_flutter",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/Users/mac/enyx/transcript/third_party/whisper_flutter_new/android/.cxx/Release/e4r1u6v4/x86_64",
+		"source" : "/Users/mac/enyx/transcript/third_party/whisper_flutter_new/src"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

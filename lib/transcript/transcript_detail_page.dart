@@ -58,6 +58,13 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   Timer? _poll;
   StreamSubscription<dynamic>? _bgSub;
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchCtrl = TextEditingController();
+  final List<GlobalKey> _turnKeys = [];
+  bool _searchOpen = false;
+  String _searchQuery = '';
+  List<int> _searchMatches = const [];
+  int _currentSearchMatch = -1;
 
   final AudioPlayer _player = AudioPlayer()..setReleaseMode(ReleaseMode.stop);
   bool _isPlaying = false;
@@ -252,6 +259,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     _bgSub?.cancel();
     _poll?.cancel();
     _processingWatchdog?.cancel();
+    _searchCtrl.dispose();
+    _scrollController.dispose();
     _player.stop();
     _player.dispose();
     super.dispose();
@@ -275,8 +284,15 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         activeId = int.tryParse('$activeRaw') ?? 0;
       }
 
-      // ✅ Only this transcript page shows loading if it's the active one
-      return busy && activeId == widget.transcriptId;
+      final jobLooksActive = _job != null &&
+          _job!.transcriptId == widget.transcriptId &&
+          (_job!.status == 'PENDING' || _job!.status == 'RUNNING');
+
+      // Prefer the explicit active-transcript id. If the foreground service
+      // hasn't published it yet, fall back to the local job state so the
+      // detail page can still show processing UI immediately after navigation.
+      return busy &&
+          (activeId == widget.transcriptId || (activeId == 0 && jobLooksActive));
     } catch (_) {
       return false;
     }
@@ -792,6 +808,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     q.close();
 
     final job = _getLatestJob();
+    final displayTurns = _buildDisplayTurnsFor(t, rows);
+    _recomputeSearchMatches(displayTurns);
 
     if (!mounted) return;
     setState(() {
@@ -1169,8 +1187,13 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   List<_DisplayTurn> _buildDisplayTurns() {
-    final t = _t;
+    return _buildDisplayTurnsFor(_t, _turns);
+  }
 
+  List<_DisplayTurn> _buildDisplayTurnsFor(
+    TranscriptEntity? t,
+    List<TranscriptTurnEntity> turns,
+  ) {
     if (t?.editedText != null && t!.editedText!.trim().isNotEmpty) {
       final lines = t.editedText!.split('\n');
       final result = <_DisplayTurn>[];
@@ -1184,7 +1207,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         final speaker = (idx > 0) ? trimmed.substring(0, idx).trim() : 'Speaker';
         final text = (idx > 0) ? trimmed.substring(idx + 1).trim() : trimmed;
 
-        final ts = (i < _turns.length) ? _turns[i] : null;
+        final ts = (i < turns.length) ? turns[i] : null;
 
         result.add(
           _DisplayTurn(
@@ -1199,7 +1222,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       return result;
     }
 
-    return _turns
+    return turns
         .map(
           (u) => _DisplayTurn(
             u.speakerLabel,
@@ -1209,6 +1232,177 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
           ),
         )
         .toList();
+  }
+
+  String? _subtitleForTurn(_DisplayTurn u) {
+    if (u.startSec == null || u.endSec == null) return null;
+    return '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s';
+  }
+
+  void _syncTurnKeys(int length) {
+    if (_turnKeys.length == length) return;
+    if (_turnKeys.length < length) {
+      final add = length - _turnKeys.length;
+      for (var i = 0; i < add; i++) {
+        _turnKeys.add(GlobalKey());
+      }
+    } else {
+      _turnKeys.removeRange(length, _turnKeys.length);
+    }
+  }
+
+  void _recomputeSearchMatches(
+    List<_DisplayTurn> displayTurns, {
+    bool notify = false,
+  }) {
+    final query = _searchQuery.trim().toLowerCase();
+    _syncTurnKeys(displayTurns.length);
+
+    if (query.isEmpty) {
+      final changed = _searchMatches.isNotEmpty || _currentSearchMatch != -1;
+      _searchMatches = const [];
+      _currentSearchMatch = -1;
+      if (notify && changed && mounted) setState(() {});
+      return;
+    }
+
+    final matches = <int>[];
+    for (var i = 0; i < displayTurns.length; i++) {
+      final turn = displayTurns[i];
+      final haystack = [
+        turn.speaker,
+        turn.text,
+        _subtitleForTurn(turn) ?? '',
+      ].join('\n').toLowerCase();
+      if (haystack.contains(query)) {
+        matches.add(i);
+      }
+    }
+
+    final oldTurnIndex = (_currentSearchMatch >= 0 &&
+            _currentSearchMatch < _searchMatches.length)
+        ? _searchMatches[_currentSearchMatch]
+        : null;
+
+    _searchMatches = matches;
+
+    if (matches.isEmpty) {
+      _currentSearchMatch = -1;
+    } else if (oldTurnIndex != null && matches.contains(oldTurnIndex)) {
+      _currentSearchMatch = matches.indexOf(oldTurnIndex);
+    } else {
+      _currentSearchMatch = 0;
+    }
+
+    if (notify && mounted) setState(() {});
+  }
+
+  void _handleSearchChanged(String value) {
+    _searchQuery = value.trim();
+    final displayTurns = _buildDisplayTurns();
+    _recomputeSearchMatches(displayTurns, notify: true);
+    if (_searchMatches.isNotEmpty) {
+      _scrollToMatchedTurn(_searchMatches[_currentSearchMatch]);
+    }
+  }
+
+  void _clearSearch() {
+    _searchCtrl.clear();
+    _searchQuery = '';
+    _recomputeSearchMatches(_buildDisplayTurns(), notify: true);
+  }
+
+  void _openSearch() {
+    if (_searchOpen) return;
+    setState(() => _searchOpen = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(FocusNode());
+    });
+  }
+
+  void _closeSearch() {
+    _clearSearch();
+    if (!mounted) return;
+    setState(() => _searchOpen = false);
+  }
+
+  void _goToNextSearchMatch() {
+    if (_searchMatches.isEmpty) return;
+    setState(() {
+      _currentSearchMatch = (_currentSearchMatch + 1) % _searchMatches.length;
+    });
+    _scrollToMatchedTurn(_searchMatches[_currentSearchMatch]);
+  }
+
+  void _goToPreviousSearchMatch() {
+    if (_searchMatches.isEmpty) return;
+    setState(() {
+      _currentSearchMatch =
+          (_currentSearchMatch - 1 + _searchMatches.length) %
+              _searchMatches.length;
+    });
+    _scrollToMatchedTurn(_searchMatches[_currentSearchMatch]);
+  }
+
+  void _scrollToMatchedTurn(int turnIndex) {
+    if (turnIndex < 0 || turnIndex >= _turnKeys.length) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _turnKeys[turnIndex].currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: 0.15,
+        );
+      }
+    });
+  }
+
+  TextSpan _buildHighlightedSpan(
+    String source, {
+    required TextStyle normalStyle,
+    required TextStyle highlightStyle,
+  }) {
+    final query = _searchQuery.trim();
+    if (query.isEmpty) {
+      return TextSpan(text: source, style: normalStyle);
+    }
+
+    final lowerSource = source.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final spans = <TextSpan>[];
+    var start = 0;
+
+    while (true) {
+      final index = lowerSource.indexOf(lowerQuery, start);
+      if (index < 0) break;
+      if (index > start) {
+        spans.add(
+          TextSpan(
+            text: source.substring(start, index),
+            style: normalStyle,
+          ),
+        );
+      }
+      spans.add(
+        TextSpan(
+          text: source.substring(index, index + query.length),
+          style: highlightStyle,
+        ),
+      );
+      start = index + query.length;
+    }
+
+    if (start < source.length) {
+      spans.add(TextSpan(text: source.substring(start), style: normalStyle));
+    }
+
+    if (spans.isEmpty) {
+      return TextSpan(text: source, style: normalStyle);
+    }
+    return TextSpan(children: spans, style: normalStyle);
   }
 
   Future<void> _copyWholeTranscript() async {
@@ -1538,11 +1732,21 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     final displayTurns = _buildDisplayTurns();
     final showingEdited = (t.editedText != null && t.editedText!.trim().isNotEmpty);
+    _syncTurnKeys(displayTurns.length);
+    final hasSearch = _searchQuery.trim().isNotEmpty;
+    final searchCount = _searchMatches.length;
+    final currentMatchDisplay =
+        (searchCount > 0 && _currentSearchMatch >= 0)
+            ? '${_currentSearchMatch + 1}/$searchCount'
+            : (hasSearch ? '0/0' : '');
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: ListView(
+        child: Stack(
+          children: [
+            ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
           children: [
             Row(
@@ -1598,10 +1802,18 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                   icon: Icons.flag,
                   onTap: () async => _reportTranscript(),
                 ),
+                const SizedBox(width: 8),
+                _IconPillButton(
+                  tooltip: 'Search transcript',
+                  icon: Icons.search,
+                  onTap: _searchOpen ? null : _openSearch,
+                ),
               ],
             ),
 
             const SizedBox(height: 14),
+
+            if (_searchOpen) const SizedBox(height: 86),
 
             _GlassPanel(
               child: Column(
@@ -1837,19 +2049,75 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                     : null;
 
                 final turnId = (!showingEdited && i < _turns.length) ? _turns[i].id : null;
+                final isActiveSearchMatch = searchCount > 0 &&
+                    _currentSearchMatch >= 0 &&
+                    _searchMatches[_currentSearchMatch] == i;
+                final baseSpeakerStyle = const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.1,
+                  color: Colors.white,
+                );
+                final baseTextStyle = const TextStyle(
+                  height: 1.35,
+                  fontSize: 14.5,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                );
+                final highlightColor = isActiveSearchMatch
+                    ? const Color(0xFFFFD54F)
+                    : const Color(0xFFFFF176);
+                final speakerSpan = _buildHighlightedSpan(
+                  u.speaker,
+                  normalStyle: baseSpeakerStyle,
+                  highlightStyle: baseSpeakerStyle.copyWith(
+                    backgroundColor: highlightColor,
+                    color: Colors.black,
+                  ),
+                );
+                final textSpan = _buildHighlightedSpan(
+                  u.text,
+                  normalStyle: baseTextStyle,
+                  highlightStyle: baseTextStyle.copyWith(
+                    backgroundColor: highlightColor,
+                    color: Colors.black,
+                  ),
+                );
 
                 return Padding(
+                  key: _turnKeys[i],
                   padding: const EdgeInsets.only(bottom: 10),
                   child: GestureDetector(
                     onLongPress: turnId == null ? null : () => _showTurnActions(turnId),
                     child: _TurnCard(
                       speaker: u.speaker,
                       text: u.text,
+                      speakerSpan: speakerSpan,
+                      textSpan: textSpan,
                       subtitle: subtitle,
+                      isActiveSearchMatch: isActiveSearchMatch,
                     ),
                   ),
                 );
               }),
+          ],
+        ),
+            if (_searchOpen)
+              Positioned(
+                left: 12,
+                right: 12,
+                top: 60,
+                child: _FloatingSearchBar(
+                  controller: _searchCtrl,
+                  hasSearch: hasSearch,
+                  searchCount: searchCount,
+                  currentMatchDisplay: currentMatchDisplay,
+                  onChanged: _handleSearchChanged,
+                  onClear: _clearSearch,
+                  onClose: _closeSearch,
+                  onPrevious: searchCount > 0 ? _goToPreviousSearchMatch : null,
+                  onNext: searchCount > 0 ? _goToNextSearchMatch : null,
+                ),
+              ),
           ],
         ),
       ),
@@ -1962,18 +2230,153 @@ class _InlineHint extends StatelessWidget {
   }
 }
 
+class _FloatingSearchBar extends StatelessWidget {
+  const _FloatingSearchBar({
+    required this.controller,
+    required this.hasSearch,
+    required this.searchCount,
+    required this.currentMatchDisplay,
+    required this.onChanged,
+    required this.onClear,
+    required this.onClose,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final TextEditingController controller;
+  final bool hasSearch;
+  final int searchCount;
+  final String currentMatchDisplay;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+  final VoidCallback onClose;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      variant: GlassCardVariant.panel,
+      padding: const EdgeInsets.all(12),
+      shadow: true,
+      shadowBlur: 28,
+      shadowOpacityDark: 0.26,
+      shadowOpacityLight: 0.12,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.search,
+                size: 18,
+                color: Colors.white.withValues(alpha: 0.76),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  onChanged: onChanged,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search keyword',
+                    hintStyle: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                ),
+              ),
+              if (hasSearch)
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: onClear,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.close,
+                      size: 16,
+                      color: Colors.white.withValues(alpha: 0.72),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  hasSearch
+                      ? (searchCount > 0
+                          ? 'Matches: $currentMatchDisplay'
+                          : 'No matches found')
+                      : 'Type to search within this transcript.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _IconPillButton(
+                tooltip: 'Previous match',
+                icon: Icons.keyboard_arrow_up_rounded,
+                onTap: onPrevious,
+              ),
+              const SizedBox(width: 8),
+              _IconPillButton(
+                tooltip: 'Next match',
+                icon: Icons.keyboard_arrow_down_rounded,
+                onTap: onNext,
+              ),
+              const SizedBox(width: 8),
+              _IconPillButton(
+                tooltip: 'Close search',
+                icon: Icons.close_rounded,
+                onTap: onClose,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TurnCard extends StatelessWidget {
-  const _TurnCard({required this.speaker, required this.text, this.subtitle});
+  const _TurnCard({
+    required this.speaker,
+    required this.text,
+    this.subtitle,
+    this.speakerSpan,
+    this.textSpan,
+    this.isActiveSearchMatch = false,
+  });
 
   final String speaker;
   final String text;
   final String? subtitle;
+  final InlineSpan? speakerSpan;
+  final InlineSpan? textSpan;
+  final bool isActiveSearchMatch;
 
   @override
   Widget build(BuildContext context) {
     return GlassCard(
       variant: GlassCardVariant.panel,
       padding: const EdgeInsets.all(14),
+      tintOpacityDark: isActiveSearchMatch ? 0.075 : null,
+      tintOpacityLight: isActiveSearchMatch ? 0.070 : null,
+      borderOpacityDark: isActiveSearchMatch ? 0.26 : null,
+      borderOpacityLight: isActiveSearchMatch ? 0.30 : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2000,8 +2403,16 @@ class _TurnCard extends StatelessWidget {
                 const SizedBox(width: 8),
               ],
               Expanded(
-                child: Text(
-                  speaker,
+                child: Text.rich(
+                  speakerSpan ??
+                      TextSpan(
+                        text: speaker,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.1,
+                          color: Colors.white,
+                        ),
+                      ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -2029,8 +2440,17 @@ class _TurnCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            text,
+          Text.rich(
+            textSpan ??
+                TextSpan(
+                  text: text,
+                  style: const TextStyle(
+                    height: 1.35,
+                    fontSize: 14.5,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
             style: const TextStyle(
               height: 1.35,
               fontSize: 14.5,

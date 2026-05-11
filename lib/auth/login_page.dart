@@ -137,11 +137,26 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       setState(() => _busy = false);
       widget.onLoggedIn?.call();
-    } catch (_) {
+    } on AuthException catch (e) {
+      debugPrint('Google -> Supabase auth failed: ${e.message}');
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'Login Failed';
+        _error = e.message;
+      });
+    } on PostgrestException catch (e) {
+      debugPrint('Profile sync failed after Google sign-in: ${e.message}');
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message.isEmpty ? 'Profile setup failed.' : e.message;
+      });
+    } catch (e) {
+      debugPrint('Google login failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.toString();
       });
     }
   }

@@ -65,6 +65,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
   static const String _kPrefDefaultLang = 'pref_default_lang';
   static const String _kPrefDiarizationEnabled = 'pref_diarization_enabled';
   static const String _kBusyTranscribing = 'busy_transcribing';
+  static const String _kActiveTranscriptId = 'bg_active_transcript_id';
 
   static const Map<String, String> _langOptions = {
     'en': 'English',
@@ -86,6 +87,52 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
 
   String _selectedLang = 'en';
   bool _diarizationEnabled = true;
+
+  String get _statusTitle {
+    if (_working) return 'Preparing video…';
+    if (_picked != null) return 'File selected';
+    return 'No file selected';
+  }
+
+  String get _statusBody {
+    if (_working) {
+      return 'Reading the selected file and extracting audio. Please keep the app open.';
+    }
+    if (_picked != null) {
+      return 'Ready to transcribe this video with the selected options.';
+    }
+    return 'Choose a video file first, then start transcription.';
+  }
+
+  String get _chooseButtonLabel => _working ? 'Loading…' : 'Choose file';
+  String get _transcribeButtonLabel {
+    if (_working) return 'Starting…';
+    if (_picked == null) return 'Transcribe';
+    return 'Transcribe';
+  }
+
+  String _fileMeta(PlatformFile f) {
+    final ext = (f.extension ?? '').trim().toUpperCase();
+    final size = f.size;
+    final parts = <String>[];
+    if (ext.isNotEmpty) parts.add(ext);
+    if (size > 0) parts.add(_formatBytes(size));
+    return parts.join(' • ');
+  }
+
+  String _formatBytes(int bytes) {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    double value = bytes.toDouble();
+    int unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+    final text = value >= 100 || unitIndex == 0
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
+    return '$text ${units[unitIndex]}';
+  }
 
   @override
   void initState() {
@@ -270,6 +317,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
       );
 
       await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
+      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: tId);
 
       if (!mounted) return;
 
@@ -307,12 +355,14 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
           key: _kBusyTranscribing,
           value: false,
         );
+        await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
 
         if (!mounted) return;
         await AppFlushbar.error(context, message: 'Processing failed!');
       }
     } catch (_) {
       await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
       if (mounted) await AppFlushbar.error(context, message: 'Processing failed!');
     } finally {
       if (mounted) setState(() => _working = false);
@@ -422,21 +472,82 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
-                                selectedName == null
-                                    ? 'No file selected'
-                                    : selectedName,
+                                _statusTitle,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   color: fg,
                                 ),
                               ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _statusBody,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.28,
+                                ),
+                              ),
+                              if (selectedName != null) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.04),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.10),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.video_file_outlined,
+                                        size: 18,
+                                        color: Colors.white.withValues(alpha: 0.78),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              selectedName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: fg,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            if (_picked != null) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                _fileMeta(_picked!),
+                                                style: TextStyle(
+                                                  color: Colors.white.withValues(alpha: 0.58),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 10),
                               Row(
                                 children: [
                                   Expanded(
                                     child: GlassButton(
                                       kind: GlassButtonKind.secondary,
-                                      label: 'Choose file',
+                                      label: _chooseButtonLabel,
                                       icon: Icons.upload_file,
                                       onPressed: _working ? null : _pickFile,
                                     ),
@@ -445,9 +556,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                   Expanded(
                                     child: GlassButton(
                                       kind: GlassButtonKind.primary,
-                                      label: 'Transcribe',
+                                      label: _transcribeButtonLabel,
                                       icon: Icons.play_arrow_rounded,
-                                      loading: false,
+                                      loading: _working,
                                       onPressed:
                                           (_working || _picked == null) ? null : _start,
                                     ),
@@ -456,7 +567,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Do not close this while intial processing',
+                                _working
+                                    ? 'Do not close this while initial processing is running.'
+                                    : 'Large videos may take a little time before transcription starts.',
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.70),
                                   fontSize: 12,

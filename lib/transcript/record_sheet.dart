@@ -67,6 +67,7 @@ class _RecordSheetState extends State<RecordSheet> {
   late final void Function(Object) _fgListener;
 
   static const String _kBusyTranscribing = 'busy_transcribing';
+  static const String _kActiveTranscriptId = 'bg_active_transcript_id';
   bool _handledStop = false;
 
   final TextEditingController _targetSpeakersCtrl = TextEditingController(
@@ -388,6 +389,7 @@ class _RecordSheetState extends State<RecordSheet> {
     );
 
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
+    await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: tId);
 
     if (!mounted) return;
 
@@ -425,6 +427,7 @@ class _RecordSheetState extends State<RecordSheet> {
         key: _kBusyTranscribing,
         value: false,
       );
+      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
 
       if (!mounted) return;
       await AppFlushbar.error(context, message: 'Processing Error: $e');

@@ -1,0 +1,46 @@
+{
+  "buildFiles": [
+    "/Users/mac/.pub-cache/hosted/pub.dev/whisper_flutter_new-1.0.1/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/mac/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/mac/.pub-cache/hosted/pub.dev/whisper_flutter_new-1.0.1/android/.cxx/Release/21664y4m/armeabi-v7a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/mac/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/mac/.pub-cache/hosted/pub.dev/whisper_flutter_new-1.0.1/android/.cxx/Release/21664y4m/armeabi-v7a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "whisper::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "armeabi-v7a",
+      "artifactName": "whisper",
+      "output": "/Users/mac/.pub-cache/hosted/pub.dev/whisper_flutter_new-1.0.1/android/.cxx/Release/21664y4m/armeabi-v7a/libwhisper.a"
+    },
+    "whisper_flutter::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "armeabi-v7a",
+      "artifactName": "whisper_flutter",
+      "output": "/Users/mac/enyx/transcript/build/whisper_flutter_new/intermediates/cxx/Release/21664y4m/obj/armeabi-v7a/libwhisper.so",
+      "runtimeFiles": []
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/mac/Library/Android/sdk/ndk/27.0.11902837/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/mac/Library/Android/sdk/ndk/27.0.11902837/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

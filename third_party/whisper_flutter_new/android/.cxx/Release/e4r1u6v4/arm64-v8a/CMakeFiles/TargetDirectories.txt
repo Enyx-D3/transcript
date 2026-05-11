@@ -1,0 +1,4 @@
+/Users/mac/enyx/transcript/third_party/whisper_flutter_new/android/.cxx/Release/e4r1u6v4/arm64-v8a/CMakeFiles/whisper_flutter.dir
+/Users/mac/enyx/transcript/third_party/whisper_flutter_new/android/.cxx/Release/e4r1u6v4/arm64-v8a/CMakeFiles/whisper.dir
+/Users/mac/enyx/transcript/third_party/whisper_flutter_new/android/.cxx/Release/e4r1u6v4/arm64-v8a/CMakeFiles/edit_cache.dir
+/Users/mac/enyx/transcript/third_party/whisper_flutter_new/android/.cxx/Release/e4r1u6v4/arm64-v8a/CMakeFiles/rebuild_cache.dir

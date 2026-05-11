@@ -1,0 +1,46 @@
+{
+  "buildFiles": [
+    "/Users/mac/enyx/transcript/third_party/whisper_flutter_new/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/mac/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/mac/enyx/transcript/third_party/whisper_flutter_new/android/.cxx/Release/e4r1u6v4/x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/mac/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/mac/enyx/transcript/third_party/whisper_flutter_new/android/.cxx/Release/e4r1u6v4/x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "whisper::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "whisper",
+      "output": "/Users/mac/enyx/transcript/third_party/whisper_flutter_new/android/.cxx/Release/e4r1u6v4/x86_64/libwhisper.a"
+    },
+    "whisper_flutter::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "whisper_flutter",
+      "output": "/Users/mac/enyx/transcript/build/whisper_flutter_new/intermediates/cxx/Release/e4r1u6v4/obj/x86_64/libwhisper.so",
+      "runtimeFiles": []
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/mac/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/mac/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}
