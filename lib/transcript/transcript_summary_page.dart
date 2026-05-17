@@ -3,10 +3,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:transcript/widgets/icon_pill_button.dart';
 
+import '../export/document_export_service.dart';
+import '../export/document_export_sheet.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
 import '../objectbox.g.dart';
@@ -47,6 +48,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
 
   bool _generating = false;
   String? _summaryText;
+  String _transcriptTitle = 'summary';
   String? _error;
   StreamSubscription<Map<String, dynamic>>? _streamSub;
   Timer? _busyWatch;
@@ -131,7 +133,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
       final sp = await SharedPreferences.getInstance();
       final v = sp.getInt(_kSummaryLengthPref);
       if (!mounted) return;
-      setState(() => _summaryLengthIndex = (v ?? 1).clamp(0, 2)); // ✅ default Balanced
+      setState(
+        () => _summaryLengthIndex = (v ?? 1).clamp(0, 2),
+      ); // ✅ default Balanced
     } catch (_) {}
   }
 
@@ -184,6 +188,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
 
   Future<void> _loadExistingSummary() async {
     final obx = ObjectBox.I;
+    final transcript = obx.transcripts.get(widget.transcriptId);
 
     final qb = obx.summaries.query(
       TranscriptSummaryEntity_.transcriptId.equals(widget.transcriptId),
@@ -193,12 +198,14 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     q.close();
 
     if (!mounted) return;
-    if (existing != null) {
-      setState(() {
+    setState(() {
+      final rawTitle = (transcript?.title ?? 'summary').trim();
+      _transcriptTitle = rawTitle.isEmpty ? 'summary' : rawTitle;
+      if (existing != null) {
         _summaryText = existing.summary;
         _error = null;
-      });
-    }
+      }
+    });
   }
 
   Future<void> _initModelState() async {
@@ -246,16 +253,39 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     await AppFlushbar.success(context, message: 'Summary copied.');
   }
 
-  Future<void> _shareSummary() async {
+  Future<void> _exportSummary(DocumentExportFormat format) async {
     final text = (_summaryText ?? '').trim();
     if (text.isEmpty) {
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Nothing to share.');
+      await AppFlushbar.error(context, message: 'Nothing to export.');
       return;
     }
 
-    await SharePlus.instance.share(
-      ShareParams(text: text, subject: 'Transcript summary'),
+    try {
+      await DocumentExportService.shareDocument(
+        title: '$_transcriptTitle summary',
+        content: text,
+        documentLabel: 'Transcript summary',
+        format: format,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await AppFlushbar.error(context, message: e.toString());
+    }
+  }
+
+  Future<void> _openSummaryExportSheet() async {
+    final text = (_summaryText ?? '').trim();
+    if (text.isEmpty) {
+      if (!mounted) return;
+      await AppFlushbar.error(context, message: 'Nothing to export.');
+      return;
+    }
+
+    await showDocumentExportSheet(
+      context: context,
+      title: 'Export summary',
+      onExport: _exportSummary,
     );
   }
 
@@ -270,18 +300,19 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     await showReportDialog(
       outerContext: context,
       responseText: text,
-      sendReport: ({
-        Map<String, dynamic>? meta,
-        required String reason,
-        required String note,
-        required String response,
-      }) async {
-        await _reportService.sendReport(
-          reason: reason,
-          note: note,
-          response: response,
-        );
-      },
+      sendReport:
+          ({
+            Map<String, dynamic>? meta,
+            required String reason,
+            required String note,
+            required String response,
+          }) async {
+            await _reportService.sendReport(
+              reason: reason,
+              note: note,
+              response: response,
+            );
+          },
     );
   }
 
@@ -407,9 +438,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
   }
 
   Future<void> _openModelPicker() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ModelPickerPage()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
     await _initModelState();
   }
 
@@ -690,8 +721,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
             child: Stack(
               children: [
                 LiquidGlass(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(22)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
                   padding: EdgeInsets.zero,
                   shadow: false,
                   blurX: isDark ? 26 : 20,
@@ -756,7 +788,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                                   Text(
                                     'Choose how detailed the summary should be',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.72),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.72,
+                                      ),
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -854,16 +888,16 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                 Text(
                   'Summary',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.2,
-                        color: fg,
-                      ),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.2,
+                    color: fg,
+                  ),
                 ),
                 const Spacer(),
                 IconPillButton(
                   tooltip: 'Share',
                   icon: Icons.ios_share,
-                  onTap: canShare ? _shareSummary : null,
+                  onTap: canShare ? _openSummaryExportSheet : null,
                 ),
                 const SizedBox(width: 10),
                 SizedBox(
@@ -954,10 +988,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                     const SizedBox(height: 10),
                     Text(
                       'Generating summary…',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: fg,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.w900, color: fg),
                     ),
                     const SizedBox(height: 4),
                     Text(
