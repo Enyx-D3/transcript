@@ -1,7 +1,8 @@
 # ninja log v5
-1	4935	1778488011880029558	CMakeFiles/whisper.dir/whisper.cpp/ggml.c.o	e4d5a1086abc7cbd
-1	7545	1778488014473268046	CMakeFiles/whisper_flutter.dir/main.cpp.o	7adcf34172136a58
-1	12313	1778488019250476569	CMakeFiles/whisper.dir/whisper.cpp/whisper.cpp.o	2b3fd1bfd39a2e0d
-12313	12389	1778488019338480000	libwhisper.a	d35b40ef14fe5e87
-12389	19726	1778488026668496013	/Users/mac/enyx/transcript/build/whisper_flutter_new/intermediates/cxx/Release/e4r1u6v4/obj/x86_64/libwhisper.so	c618c38826c3d320
-4	6668	1778501271934239432	/Users/mac/enyx/transcript/build/whisper_flutter_new/intermediates/cxx/Release/e4r1u6v4/obj/x86_64/libwhisper.so	c618c38826c3d320
+0	1772	1779250264723281677	CMakeFiles/whisper.dir/whisper.cpp/ggml.c.o	e4d5a1086abc7cbd
+0	2568	1779250265514373744	CMakeFiles/whisper_flutter.dir/main.cpp.o	7adcf34172136a58
+1	4583	1779250267527986781	CMakeFiles/whisper.dir/whisper.cpp/whisper.cpp.o	2b3fd1bfd39a2e0d
+4583	4627	1779250267581623000	libwhisper.a	d35b40ef14fe5e87
+4627	7912	1779250270861149393	/Users/mac/enyx/transcript/build/whisper_flutter_new/intermediates/cxx/Release/e4r1u6v4/obj/x86_64/libwhisper.so	c618c38826c3d320
+3	5165	1779256534882031526	/Users/mac/enyx/transcript/build/whisper_flutter_new/intermediates/cxx/Release/e4r1u6v4/obj/x86_64/libwhisper.so	c618c38826c3d320
+3	6947	1779437780856523438	/Users/mac/enyx/transcript/build/whisper_flutter_new/intermediates/cxx/Release/e4r1u6v4/obj/x86_64/libwhisper.so	c618c38826c3d320

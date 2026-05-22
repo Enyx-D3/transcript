@@ -23,6 +23,7 @@ import '../qwen_model_service.dart';
 
 import 'background_transcriber.dart';
 import 'transcript_chat_page.dart';
+import 'transcript_editor_page.dart';
 import 'transcript_summary_page.dart';
 
 // ✅ Glass primitives (match ImportAudioSheet)
@@ -272,8 +273,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   Future<bool> _readBusyFlag() async {
     try {
-      final busyRaw = await FlutterForegroundTask.getData(key: _kBusyTranscribing);
-      final activeRaw = await FlutterForegroundTask.getData(key: _kActiveTranscriptId);
+      final busyRaw = await FlutterForegroundTask.getData(
+        key: _kBusyTranscribing,
+      );
+      final activeRaw = await FlutterForegroundTask.getData(
+        key: _kActiveTranscriptId,
+      );
 
       final bool busy = (busyRaw == true);
 
@@ -284,7 +289,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         activeId = int.tryParse('$activeRaw') ?? 0;
       }
 
-      final jobLooksActive = _job != null &&
+      final jobLooksActive =
+          _job != null &&
           _job!.transcriptId == widget.transcriptId &&
           (_job!.status == 'PENDING' || _job!.status == 'RUNNING');
 
@@ -292,7 +298,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       // hasn't published it yet, fall back to the local job state so the
       // detail page can still show processing UI immediately after navigation.
       return busy &&
-          (activeId == widget.transcriptId || (activeId == 0 && jobLooksActive));
+          (activeId == widget.transcriptId ||
+              (activeId == 0 && jobLooksActive));
     } catch (_) {
       return false;
     }
@@ -326,10 +333,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     // 1) Update transcript entity (metadata)
     final t = obx.transcripts.get(transcriptId);
     if (t != null) {
-      final lang = (payload['lang'] ?? payload['language'] ?? t.lang ?? 'auto').toString();
+      final lang = (payload['lang'] ?? payload['language'] ?? t.lang ?? 'auto')
+          .toString();
       t.lang = lang;
 
-      final durRaw = payload['durationSec'] ?? payload['duration_sec'] ?? payload['duration'];
+      final durRaw =
+          payload['durationSec'] ??
+          payload['duration_sec'] ??
+          payload['duration'];
       if (durRaw is num) {
         t.durationSec = durRaw.toDouble();
       } else {
@@ -343,7 +354,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         String seed = '';
 
         // prefer payload full text if exists, else from first non-empty turn
-        final fullText = (payload['text'] ?? payload['fullText'] ?? '').toString().trim();
+        final fullText = (payload['text'] ?? payload['fullText'] ?? '')
+            .toString()
+            .trim();
         if (fullText.isNotEmpty) {
           seed = fullText;
         } else {
@@ -402,7 +415,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         final s0 = m['startSec'] ?? m['start_sec'] ?? m['start'] ?? 0.0;
         final s1 = m['endSec'] ?? m['end_sec'] ?? m['end'] ?? 0.0;
 
-        final start = (s0 is num) ? s0.toDouble() : double.tryParse('$s0') ?? 0.0;
+        final start = (s0 is num)
+            ? s0.toDouble()
+            : double.tryParse('$s0') ?? 0.0;
         final end = (s1 is num) ? s1.toDouble() : double.tryParse('$s1') ?? 0.0;
 
         obx.turns.put(
@@ -443,15 +458,25 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   Future<void> _pullProgressFromFgStorage() async {
     try {
-      final activeRaw = await FlutterForegroundTask.getData(key: _kActiveTranscriptId);
-      final activeId = (activeRaw is int) ? activeRaw : int.tryParse('$activeRaw') ?? 0;
+      final activeRaw = await FlutterForegroundTask.getData(
+        key: _kActiveTranscriptId,
+      );
+      final activeId = (activeRaw is int)
+          ? activeRaw
+          : int.tryParse('$activeRaw') ?? 0;
 
       // ✅ Ignore progress for other transcripts
       if (activeId != widget.transcriptId) return;
 
-      final processedRaw = await FlutterForegroundTask.getData(key: _kProgressProcessedSec);
-      final totalRaw = await FlutterForegroundTask.getData(key: _kProgressTotalSec);
-      final stageRaw = await FlutterForegroundTask.getData(key: _kProgressStage);
+      final processedRaw = await FlutterForegroundTask.getData(
+        key: _kProgressProcessedSec,
+      );
+      final totalRaw = await FlutterForegroundTask.getData(
+        key: _kProgressTotalSec,
+      );
+      final stageRaw = await FlutterForegroundTask.getData(
+        key: _kProgressStage,
+      );
 
       final processed = (processedRaw is num) ? processedRaw.toDouble() : null;
       final total = (totalRaw is num) ? totalRaw.toDouble() : null;
@@ -461,7 +486,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       setState(() {
         if (processed != null) _progressProcessedSec = processed;
         if (total != null) _progressTotalSec = total;
-        if (stage != null && stage.trim().isNotEmpty) _progressStage = stage.trim();
+        if (stage != null && stage.trim().isNotEmpty) {
+          _progressStage = stage.trim();
+        }
       });
     } catch (_) {}
   }
@@ -534,7 +561,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       final reRangeSec = RegExp(r'^\d+(\.\d+)?\s*[-–]\s*\d+(\.\d+)?\s*s$');
       final reClock = RegExp(r'^\[?\d{1,2}:\d{2}(\.\d{1,3})?\]?$');
       final reClockLong = RegExp(r'^\[?\d{1,2}:\d{2}:\d{2}(\.\d{1,3})?\]?$');
-      return reRangeSec.hasMatch(l) || reClock.hasMatch(l) || reClockLong.hasMatch(l);
+      return reRangeSec.hasMatch(l) ||
+          reClock.hasMatch(l) ||
+          reClockLong.hasMatch(l);
     }
 
     if (lines.isNotEmpty && looksLikeTimecode(lines.last)) {
@@ -593,33 +622,34 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     await showReportDialog(
       outerContext: context,
       responseText: responseText,
-      sendReport: ({
-        Map<String, dynamic>? meta,
-        required String reason,
-        required String note,
-        required String response,
-      }) async {
-        final localMeta = <String, dynamic>{
-          'page': 'transcript_detail',
-          'transcriptId': widget.transcriptId,
-          'title': (_t?.title ?? '').trim(),
-          'hasEditedText': (_t?.editedText ?? '').trim().isNotEmpty,
-          'turnCount': _turns.length,
-        };
+      sendReport:
+          ({
+            Map<String, dynamic>? meta,
+            required String reason,
+            required String note,
+            required String response,
+          }) async {
+            final localMeta = <String, dynamic>{
+              'page': 'transcript_detail',
+              'transcriptId': widget.transcriptId,
+              'title': (_t?.title ?? '').trim(),
+              'hasEditedText': (_t?.editedText ?? '').trim().isNotEmpty,
+              'turnCount': _turns.length,
+            };
 
-        final mergedMeta = <String, dynamic>{
-          if (meta != null) ...meta,
-          ...localMeta,
-        };
+            final mergedMeta = <String, dynamic>{
+              if (meta != null) ...meta,
+              ...localMeta,
+            };
 
-        final combinedNote = ('[meta] $mergedMeta\n${note.trim()}').trim();
+            final combinedNote = ('[meta] $mergedMeta\n${note.trim()}').trim();
 
-        await _reportService.sendReport(
-          reason: reason,
-          note: combinedNote,
-          response: response,
-        );
-      },
+            await _reportService.sendReport(
+              reason: reason,
+              note: combinedNote,
+              response: response,
+            );
+          },
     );
   }
 
@@ -696,7 +726,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     if (_isPlaying) {
       await _player.pause();
     } else {
-      if (_dur > Duration.zero && _pos >= _dur - const Duration(milliseconds: 300)) {
+      if (_dur > Duration.zero &&
+          _pos >= _dur - const Duration(milliseconds: 300)) {
         await _player.seek(Duration.zero);
       }
       await _player.resume();
@@ -819,7 +850,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
       if (job?.status == 'ERROR') {
         _processingFailed = true;
-        _processingError = job?.error ?? 'Transcription failed. Please try again.';
+        _processingError =
+            job?.error ?? 'Transcription failed. Please try again.';
       } else {
         if (!_processingFailed) _processingError = null;
       }
@@ -861,7 +893,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       if (!mounted) return;
       setState(() {
         _processingFailed = true;
-        _processingError = _job?.error ?? 'Transcription failed. Please try again.';
+        _processingError =
+            _job?.error ?? 'Transcription failed. Please try again.';
       });
       return;
     }
@@ -919,12 +952,19 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         return;
       }
 
-      const msg = 'Transcription stopped (app may have been closed). Please try again.';
+      const msg =
+          'Transcription stopped (app may have been closed). Please try again.';
       _persistJobError(msg);
 
       try {
-        await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
-        await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
+        await FlutterForegroundTask.saveData(
+          key: _kBusyTranscribing,
+          value: false,
+        );
+        await FlutterForegroundTask.saveData(
+          key: _kActiveTranscriptId,
+          value: 0,
+        );
       } catch (_) {}
 
       if (!mounted) return;
@@ -949,8 +989,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     if (type == 'transcribe_error') {
       try {
-        await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
-        await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
+        await FlutterForegroundTask.saveData(
+          key: _kBusyTranscribing,
+          value: false,
+        );
+        await FlutterForegroundTask.saveData(
+          key: _kActiveTranscriptId,
+          value: 0,
+        );
       } catch (_) {}
 
       _processingWatchdog?.cancel();
@@ -992,7 +1038,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     }
 
     try {
-      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: false,
+      );
       await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
     } catch (_) {}
 
@@ -1044,7 +1093,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
           child: AlertDialog(
             backgroundColor: Colors.black87,
             surfaceTintColor: Colors.transparent,
-            title: const Text('Edit title', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'Edit title',
+              style: TextStyle(color: Colors.white),
+            ),
             content: TextField(
               controller: ctrl,
               autofocus: true,
@@ -1066,12 +1118,18 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
                 style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
-                child: const Text('Save', style: TextStyle(color: Colors.black)),
+                child: const Text(
+                  'Save',
+                  style: TextStyle(color: Colors.black),
+                ),
               ),
             ],
           ),
@@ -1110,7 +1168,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
           child: AlertDialog(
             backgroundColor: Colors.black87,
             surfaceTintColor: Colors.transparent,
-            title: const Text('Rename speaker', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'Rename speaker',
+              style: TextStyle(color: Colors.white),
+            ),
             content: TextField(
               controller: ctrl,
               autofocus: true,
@@ -1132,12 +1193,18 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
                 style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
-                child: const Text('Save', style: TextStyle(color: Colors.black)),
+                child: const Text(
+                  'Save',
+                  style: TextStyle(color: Colors.black),
+                ),
               ),
             ],
           ),
@@ -1204,7 +1271,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         if (trimmed.isEmpty) continue;
 
         final idx = trimmed.indexOf(':');
-        final speaker = (idx > 0) ? trimmed.substring(0, idx).trim() : 'Speaker';
+        final speaker = (idx > 0)
+            ? trimmed.substring(0, idx).trim()
+            : 'Speaker';
         final text = (idx > 0) ? trimmed.substring(idx + 1).trim() : trimmed;
 
         final ts = (i < turns.length) ? turns[i] : null;
@@ -1279,7 +1348,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       }
     }
 
-    final oldTurnIndex = (_currentSearchMatch >= 0 &&
+    final oldTurnIndex =
+        (_currentSearchMatch >= 0 &&
             _currentSearchMatch < _searchMatches.length)
         ? _searchMatches[_currentSearchMatch]
         : null;
@@ -1340,7 +1410,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     setState(() {
       _currentSearchMatch =
           (_currentSearchMatch - 1 + _searchMatches.length) %
-              _searchMatches.length;
+          _searchMatches.length;
     });
     _scrollToMatchedTurn(_searchMatches[_currentSearchMatch]);
   }
@@ -1380,10 +1450,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       if (index < 0) break;
       if (index > start) {
         spans.add(
-          TextSpan(
-            text: source.substring(start, index),
-            style: normalStyle,
-          ),
+          TextSpan(text: source.substring(start, index), style: normalStyle),
         );
       }
       spans.add(
@@ -1462,69 +1529,23 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final t = _t;
     if (t == null) return;
 
-    final initial = _buildTranscriptText(preferEdited: true);
-    final ctrl = TextEditingController(text: initial);
-
-    final newText = await showDialog<String>(
-      context: context,
-      builder: (ctx) => Theme(
-        data: Theme.of(ctx),
-        child: AlertDialog(
-          backgroundColor: Colors.black87,
-          surfaceTintColor: Colors.transparent,
-          title: const Text('Edit transcript', style: TextStyle(color: Colors.white)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: TextField(
-              controller: ctrl,
-              autofocus: true,
-              minLines: 10,
-              maxLines: 20,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'Format: Speaker: text (one per line)',
-                hintStyle: TextStyle(color: Colors.white54),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white)),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
-              child: const Text('Save', style: TextStyle(color: Colors.black)),
-            ),
-          ],
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => TranscriptEditorPage(
+          transcriptId: widget.transcriptId,
+          title: (t.title?.trim().isNotEmpty ?? false)
+              ? t.title!.trim()
+              : 'Transcript',
+          initialText: _buildTranscriptText(preferEdited: true),
+          fallbackFullTextCache: _buildFullTextCacheFromTurns(),
         ),
       ),
     );
 
-    if (newText == null) return;
-
-    final obx = ObjectBox.I;
-    final latest = obx.transcripts.get(t.id);
-    if (latest == null) return;
-
-    latest.editedText = newText.isEmpty ? null : newText;
-
-    final edited = (latest.editedText ?? '').trim();
-    if (edited.isNotEmpty) {
-      latest.searchText = edited;
-    } else {
-      final cached = (latest.fullTextCache ?? '').trim();
-      final full = cached.isNotEmpty ? cached : _buildFullTextCacheFromTurns();
-      latest.fullTextCache = full.isEmpty ? null : full;
-      latest.searchText = full.isEmpty ? null : full;
-    }
-
-    obx.transcripts.put(latest);
-
+    if (changed != true) return;
     await _refreshTick();
     if (!mounted) return;
-    await AppFlushbar.success(context, message: 'Transcript saved.');
+    await AppFlushbar.success(context, message: 'Transcript updated.');
   }
 
   Future<void> _showTurnActions(int turnId) async {
@@ -1536,7 +1557,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       if (!mounted) return;
       await AppFlushbar.info(
         context,
-        message: 'You are viewing the edited transcript. Use “Edit transcript” to edit.',
+        message:
+            'You are viewing the edited transcript. Use “Edit transcript” to edit.',
       );
       return;
     }
@@ -1590,7 +1612,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           leading: Icon(Icons.edit_outlined, color: fg),
                           title: Text(
                             'Edit segment',
-                            style: TextStyle(color: fg, fontWeight: FontWeight.w800),
+                            style: TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                           subtitle: const Text(
                             'Fix wording for this segment only',
@@ -1605,15 +1630,23 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           leading: Icon(Icons.copy_rounded, color: fg),
                           title: Text(
                             'Copy segment',
-                            style: TextStyle(color: fg, fontWeight: FontWeight.w800),
+                            style: TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                           onTap: () async {
                             Navigator.pop(ctx);
                             await Clipboard.setData(
-                              ClipboardData(text: '${turn.speakerLabel}: ${turn.text}'),
+                              ClipboardData(
+                                text: '${turn.speakerLabel}: ${turn.text}',
+                              ),
                             );
                             if (!mounted) return;
-                            await AppFlushbar.success(context, message: 'Segment copied.');
+                            await AppFlushbar.success(
+                              context,
+                              message: 'Segment copied.',
+                            );
                           },
                         ),
                       ],
@@ -1638,7 +1671,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         child: AlertDialog(
           backgroundColor: Colors.black87,
           surfaceTintColor: Colors.transparent,
-          title: const Text('Edit segment', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'Edit segment',
+            style: TextStyle(color: Colors.white),
+          ),
           content: TextField(
             controller: ctrl,
             autofocus: true,
@@ -1653,7 +1689,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
@@ -1683,7 +1722,20 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   String _fmtMetaShort(TranscriptEntity t) {
     final d = t.createdAt.toLocal();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
 
@@ -1710,7 +1762,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       return const Scaffold(body: Center(child: Text('Not found')));
     }
 
-    final title = (t.title?.trim().isNotEmpty ?? false) ? t.title!.trim() : 'Transcript';
+    final title = (t.title?.trim().isNotEmpty ?? false)
+        ? t.title!.trim()
+        : 'Transcript';
 
     final counts = <String, int>{};
     for (final u in _turns) {
@@ -1725,20 +1779,23 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final origExists = _fileExists(origPath);
     final enhExists = _fileExists(enhPath);
 
-    final effectiveV = _effectiveVariant(origExists: origExists, enhExists: enhExists);
+    final effectiveV = _effectiveVariant(
+      origExists: origExists,
+      enhExists: enhExists,
+    );
 
     final hasAnyAudio = origExists || enhExists;
     final canPlayAudio = hasAnyAudio && !_isTranscribingNow;
 
     final displayTurns = _buildDisplayTurns();
-    final showingEdited = (t.editedText != null && t.editedText!.trim().isNotEmpty);
+    final showingEdited =
+        (t.editedText != null && t.editedText!.trim().isNotEmpty);
     _syncTurnKeys(displayTurns.length);
     final hasSearch = _searchQuery.trim().isNotEmpty;
     final searchCount = _searchMatches.length;
-    final currentMatchDisplay =
-        (searchCount > 0 && _currentSearchMatch >= 0)
-            ? '${_currentSearchMatch + 1}/$searchCount'
-            : (hasSearch ? '0/0' : '');
+    final currentMatchDisplay = (searchCount > 0 && _currentSearchMatch >= 0)
+        ? '${_currentSearchMatch + 1}/$searchCount'
+        : (hasSearch ? '0/0' : '');
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1746,361 +1803,403 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         child: Stack(
           children: [
             ListView(
-          controller: _scrollController,
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              controller: _scrollController,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
               children: [
-                _IconPillButton(
-                  tooltip: 'Back',
-                  icon: Icons.arrow_back,
-                  onTap: () => Navigator.of(context).maybePop(),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _IconPillButton(
+                      tooltip: 'Back',
+                      icon: Icons.arrow_back,
+                      onTap: () => Navigator.of(context).maybePop(),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.2,
+                              color: fg,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _MetaPill(text: 'Lang • ${t.lang}'),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _MetaPill(text: _fmtMetaShort(t)),
+                              ),
+                            ],
+                          ),
+                          if (showingEdited) ...[
+                            const SizedBox(height: 6),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: _MetaPill(
+                                text: 'Edited',
+                                accent: Colors.orangeAccent,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _IconPillButton(
+                      tooltip: 'Edit title',
+                      icon: Icons.edit_note,
+                      onTap: _isTranscribingNow ? null : _editTitle,
+                    ),
+                    const SizedBox(width: 8),
+                    _IconPillButton(
+                      tooltip: 'Edit transcript',
+                      icon: Icons.edit_outlined,
+                      onTap: _isTranscribingNow ? null : _editWholeTranscript,
+                    ),
+                    const SizedBox(width: 8),
+                    _IconPillButton(
+                      tooltip: 'Report transcript',
+                      icon: Icons.flag,
+                      onTap: () async => _reportTranscript(),
+                    ),
+                    const SizedBox(width: 8),
+                    _IconPillButton(
+                      tooltip: 'Search transcript',
+                      icon: Icons.search,
+                      onTap: _searchOpen ? null : _openSearch,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
+
+                const SizedBox(height: 14),
+
+                if (_searchOpen) const SizedBox(height: 86),
+
+                _GlassPanel(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.2,
-                          color: fg,
-                        ),
+                      _CompactAudioBar(
+                        isDark: isDark,
+                        fg: fg,
+                        isTranscribingNow: _isTranscribingNow,
+                        hasAnyAudio: hasAnyAudio,
+                        canPlayAudio: canPlayAudio,
+                        isPlaying: _isPlaying,
+                        audioVariant: effectiveV,
+                        origExists: origExists,
+                        enhExists: enhExists,
+                        onToggle: () => _togglePlayPause(effectiveV),
+                        onSwitch: _switchVariant,
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(child: _MetaPill(text: 'Lang • ${t.lang}')),
-                          const SizedBox(width: 8),
-                          Expanded(child: _MetaPill(text: _fmtMetaShort(t))),
-                        ],
-                      ),
-                      if (showingEdited) ...[
-                        const SizedBox(height: 6),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: _MetaPill(text: 'Edited', accent: Colors.orangeAccent),
+                      if (canPlayAudio) ...[
+                        const SizedBox(height: 8),
+                        _CompactSeekRow(
+                          pos: _pos,
+                          dur: _dur,
+                          fmt: _fmtClock,
+                          onSeek: _seekTo,
                         ),
                       ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _IconPillButton(
-                  tooltip: 'Edit title',
-                  icon: Icons.edit_note,
-                  onTap: _isTranscribingNow ? null : _editTitle,
-                ),
-                const SizedBox(width: 8),
-                _IconPillButton(
-                  tooltip: 'Report transcript',
-                  icon: Icons.flag,
-                  onTap: () async => _reportTranscript(),
-                ),
-                const SizedBox(width: 8),
-                _IconPillButton(
-                  tooltip: 'Search transcript',
-                  icon: Icons.search,
-                  onTap: _searchOpen ? null : _openSearch,
-                ),
-              ],
-            ),
+                      const SizedBox(height: 12),
+                      const GlassDivider(),
+                      const SizedBox(height: 12),
 
-            const SizedBox(height: 14),
-
-            if (_searchOpen) const SizedBox(height: 86),
-
-            _GlassPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _CompactAudioBar(
-                    isDark: isDark,
-                    fg: fg,
-                    isTranscribingNow: _isTranscribingNow,
-                    hasAnyAudio: hasAnyAudio,
-                    canPlayAudio: canPlayAudio,
-                    isPlaying: _isPlaying,
-                    audioVariant: effectiveV,
-                    origExists: origExists,
-                    enhExists: enhExists,
-                    onToggle: () => _togglePlayPause(effectiveV),
-                    onSwitch: _switchVariant,
-                  ),
-                  if (canPlayAudio) ...[
-                    const SizedBox(height: 8),
-                    _CompactSeekRow(pos: _pos, dur: _dur, fmt: _fmtClock, onSeek: _seekTo),
-                  ],
-                  const SizedBox(height: 12),
-                  const GlassDivider(),
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: GlassButton(
-                          kind: GlassButtonKind.primary,
-                          label: 'Summary',
-                          icon: Icons.summarize_outlined,
-                          onPressed: _isTranscribingNow
-                              ? null
-                              : () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => TranscriptSummaryPage(
-                                        transcriptId: widget.transcriptId,
-                                      ),
-                                    ),
-                                  );
-                                },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: GlassButton(
-                          kind: GlassButtonKind.primary,
-                          label: 'Ask AI',
-                          icon: Icons.chat_bubble_outline,
-                          onPressed: _isTranscribingNow
-                              ? null
-                              : () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => TranscriptChatPage(
-                                        transcriptId: widget.transcriptId,
-                                      ),
-                                    ),
-                                  );
-                                },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: GlassButton(
-                          kind: GlassButtonKind.secondary,
-                          label: 'Copy',
-                          icon: Icons.copy_rounded,
-                          onPressed: _isTranscribingNow ? null : _copyWholeTranscript,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: GlassButton(
-                          kind: GlassButtonKind.secondary,
-                          label: 'Share',
-                          icon: Icons.ios_share_rounded,
-                          onPressed: _isTranscribingNow ? null : _openTranscriptExportSheet,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            if (isProcessing)
-              _GlassPanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            backgroundColor: Colors.white12,
-                            color: Colors.white,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GlassButton(
+                              kind: GlassButtonKind.primary,
+                              label: 'Summary',
+                              icon: Icons.summarize_outlined,
+                              onPressed: _isTranscribingNow
+                                  ? null
+                                  : () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => TranscriptSummaryPage(
+                                            transcriptId: widget.transcriptId,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                            ),
                           ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: GlassButton(
+                              kind: GlassButtonKind.primary,
+                              label: 'Ask AI',
+                              icon: Icons.chat_bubble_outline,
+                              onPressed: _isTranscribingNow
+                                  ? null
+                                  : () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => TranscriptChatPage(
+                                            transcriptId: widget.transcriptId,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GlassButton(
+                              kind: GlassButtonKind.secondary,
+                              label: 'Copy',
+                              icon: Icons.copy_rounded,
+                              onPressed: _isTranscribingNow
+                                  ? null
+                                  : _copyWholeTranscript,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: GlassButton(
+                              kind: GlassButtonKind.secondary,
+                              label: 'Share',
+                              icon: Icons.ios_share_rounded,
+                              onPressed: _isTranscribingNow
+                                  ? null
+                                  : _openTranscriptExportSheet,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                if (isProcessing)
+                  _GlassPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                backgroundColor: Colors.white12,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Processing audio… Do not close the app.',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: fg,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _MetaPill(text: 'Stage • $_progressStage'),
+                            _MetaPill(
+                              text:
+                                  'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
+                                  ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (t.durationSec)) * 1000).round()))}',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Keep the app open to finish faster.',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                if (_processingFailed)
+                  _GlassPanel(
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.redAccent,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Processing audio… Do not close the app.',
-                            style: TextStyle(fontWeight: FontWeight.w800, color: fg),
+                            _processingError ??
+                                'Transcription failed. Please try again.',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _MetaPill(text: 'Stage • $_progressStage'),
-                        _MetaPill(
-                          text:
-                              'Time • ${_fmtClock(Duration(milliseconds: (_progressProcessedSec * 1000).round()))}'
-                              ' / ${_fmtClock(Duration(milliseconds: ((_progressTotalSec > 0 ? _progressTotalSec : (t.durationSec)) * 1000).round()))}',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Keep the app open to finish faster.',
-                      style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-              ),
+                  ),
 
-            if (_processingFailed)
-              _GlassPanel(
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.redAccent),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _processingError ?? 'Transcription failed. Please try again.',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w700,
+                if (isProcessing || _processingFailed)
+                  const SizedBox(height: 12),
+
+                if (!isProcessing &&
+                    !_processingFailed &&
+                    labels.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Text(
+                        'People',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: fg,
                         ),
                       ),
+                      const Spacer(),
+                      _MetaPill(text: '${labels.length}'),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: labels.map((name) {
+                      final count = counts[name]!;
+                      return _GlassPersonChip(
+                        label: name,
+                        count: count,
+                        enabled: !_isTranscribingNow,
+                        onEdit: () => _renameSpeaker(name),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                Row(
+                  children: [
+                    Text(
+                      'Turns',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: fg,
+                      ),
                     ),
+                    if (!isProcessing) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        'Long-press for options',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
+                    _MetaPill(text: '${displayTurns.length}'),
                   ],
                 ),
-              ),
+                const SizedBox(height: 8),
 
-            if (isProcessing || _processingFailed) const SizedBox(height: 12),
+                if (isProcessing && displayTurns.isEmpty)
+                  const _InlineHint(
+                    text: 'No segments yet. We’ll list them here when ready.',
+                  ),
+                if (_processingFailed && displayTurns.isEmpty)
+                  const _InlineHint(text: 'No segments were generated.'),
 
-            if (!isProcessing && !_processingFailed && labels.isNotEmpty) ...[
-              Row(
-                children: [
-                  Text(
-                    'People',
-                    style: theme.textTheme.titleMedium?.copyWith(
+                if (!isProcessing && !_processingFailed)
+                  ...List.generate(displayTurns.length, (i) {
+                    final u = displayTurns[i];
+
+                    final subtitle = (u.startSec != null && u.endSec != null)
+                        ? '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s'
+                        : null;
+
+                    final turnId = (!showingEdited && i < _turns.length)
+                        ? _turns[i].id
+                        : null;
+                    final isActiveSearchMatch =
+                        searchCount > 0 &&
+                        _currentSearchMatch >= 0 &&
+                        _searchMatches[_currentSearchMatch] == i;
+                    final baseSpeakerStyle = const TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: fg,
-                    ),
-                  ),
-                  const Spacer(),
-                  _MetaPill(text: '${labels.length}'),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: labels.map((name) {
-                  final count = counts[name]!;
-                  return _GlassPersonChip(
-                    label: name,
-                    count: count,
-                    enabled: !_isTranscribingNow,
-                    onEdit: () => _renameSpeaker(name),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 14),
-            ],
+                      letterSpacing: -0.1,
+                      color: Colors.white,
+                    );
+                    final baseTextStyle = const TextStyle(
+                      height: 1.35,
+                      fontSize: 14.5,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    );
+                    final highlightColor = isActiveSearchMatch
+                        ? const Color(0xFFFFD54F)
+                        : const Color(0xFFFFF176);
+                    final speakerSpan = _buildHighlightedSpan(
+                      u.speaker,
+                      normalStyle: baseSpeakerStyle,
+                      highlightStyle: baseSpeakerStyle.copyWith(
+                        backgroundColor: highlightColor,
+                        color: Colors.black,
+                      ),
+                    );
+                    final textSpan = _buildHighlightedSpan(
+                      u.text,
+                      normalStyle: baseTextStyle,
+                      highlightStyle: baseTextStyle.copyWith(
+                        backgroundColor: highlightColor,
+                        color: Colors.black,
+                      ),
+                    );
 
-            Row(
-              children: [
-                Text(
-                  'Turns',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: fg,
-                  ),
-                ),
-                if (!isProcessing) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    'Long-press for options',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.55),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-                const Spacer(),
-                _MetaPill(text: '${displayTurns.length}'),
+                    return Padding(
+                      key: _turnKeys[i],
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: GestureDetector(
+                        onLongPress: turnId == null
+                            ? null
+                            : () => _showTurnActions(turnId),
+                        child: _TurnCard(
+                          speaker: u.speaker,
+                          text: u.text,
+                          speakerSpan: speakerSpan,
+                          textSpan: textSpan,
+                          subtitle: subtitle,
+                          isActiveSearchMatch: isActiveSearchMatch,
+                        ),
+                      ),
+                    );
+                  }),
               ],
             ),
-            const SizedBox(height: 8),
-
-            if (isProcessing && displayTurns.isEmpty)
-              const _InlineHint(text: 'No segments yet. We’ll list them here when ready.'),
-            if (_processingFailed && displayTurns.isEmpty)
-              const _InlineHint(text: 'No segments were generated.'),
-
-            if (!isProcessing && !_processingFailed)
-              ...List.generate(displayTurns.length, (i) {
-                final u = displayTurns[i];
-
-                final subtitle = (u.startSec != null && u.endSec != null)
-                    ? '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s'
-                    : null;
-
-                final turnId = (!showingEdited && i < _turns.length) ? _turns[i].id : null;
-                final isActiveSearchMatch = searchCount > 0 &&
-                    _currentSearchMatch >= 0 &&
-                    _searchMatches[_currentSearchMatch] == i;
-                final baseSpeakerStyle = const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.1,
-                  color: Colors.white,
-                );
-                final baseTextStyle = const TextStyle(
-                  height: 1.35,
-                  fontSize: 14.5,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                );
-                final highlightColor = isActiveSearchMatch
-                    ? const Color(0xFFFFD54F)
-                    : const Color(0xFFFFF176);
-                final speakerSpan = _buildHighlightedSpan(
-                  u.speaker,
-                  normalStyle: baseSpeakerStyle,
-                  highlightStyle: baseSpeakerStyle.copyWith(
-                    backgroundColor: highlightColor,
-                    color: Colors.black,
-                  ),
-                );
-                final textSpan = _buildHighlightedSpan(
-                  u.text,
-                  normalStyle: baseTextStyle,
-                  highlightStyle: baseTextStyle.copyWith(
-                    backgroundColor: highlightColor,
-                    color: Colors.black,
-                  ),
-                );
-
-                return Padding(
-                  key: _turnKeys[i],
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: GestureDetector(
-                    onLongPress: turnId == null ? null : () => _showTurnActions(turnId),
-                    child: _TurnCard(
-                      speaker: u.speaker,
-                      text: u.text,
-                      speakerSpan: speakerSpan,
-                      textSpan: textSpan,
-                      subtitle: subtitle,
-                      isActiveSearchMatch: isActiveSearchMatch,
-                    ),
-                  ),
-                );
-              }),
-          ],
-        ),
             if (_searchOpen)
               Positioned(
                 left: 12,
@@ -2199,12 +2298,20 @@ class _IconPillButton extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+            color: (isDark ? Colors.white : Colors.black).withValues(
+              alpha: 0.06,
+            ),
             border: Border.all(
-              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.10),
+              color: (isDark ? Colors.white : Colors.black).withValues(
+                alpha: 0.10,
+              ),
             ),
           ),
-          child: Icon(icon, size: 20, color: Colors.white.withValues(alpha: 0.92)),
+          child: Icon(
+            icon,
+            size: 20,
+            color: Colors.white.withValues(alpha: 0.92),
+          ),
         ),
       ),
     );
@@ -2315,8 +2422,8 @@ class _FloatingSearchBar extends StatelessWidget {
                 child: Text(
                   hasSearch
                       ? (searchCount > 0
-                          ? 'Matches: $currentMatchDisplay'
-                          : 'No matches found')
+                            ? 'Matches: $currentMatchDisplay'
+                            : 'No matches found')
                       : 'Type to search within this transcript.',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.68),
@@ -2429,7 +2536,9 @@ class _TurnCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
                   color: Colors.white.withValues(alpha: 0.06),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                  ),
                 ),
                 child: const Icon(
                   Icons.record_voice_over_outlined,
@@ -2495,12 +2604,16 @@ class _CompactAudioBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = isTranscribingNow ? 'Processing…' : (hasAnyAudio ? 'Audio' : 'No audio');
+    final title = isTranscribingNow
+        ? 'Processing…'
+        : (hasAnyAudio ? 'Audio' : 'No audio');
     final subtitle = isTranscribingNow
         ? 'Playback disabled'
         : (hasAnyAudio
-            ? (audioVariant == _AudioVariant.enhanced ? 'Enhanced' : 'Original')
-            : 'Missing file');
+              ? (audioVariant == _AudioVariant.enhanced
+                    ? 'Enhanced'
+                    : 'Original')
+              : 'Missing file');
 
     return Row(
       children: [
@@ -2511,9 +2624,13 @@ class _CompactAudioBar extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+              color: (isDark ? Colors.white : Colors.black).withValues(
+                alpha: 0.06,
+              ),
               border: Border.all(
-                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.10),
+                color: (isDark ? Colors.white : Colors.black).withValues(
+                  alpha: 0.10,
+                ),
               ),
             ),
             child: Icon(
@@ -2528,9 +2645,15 @@ class _CompactAudioBar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: TextStyle(fontWeight: FontWeight.w900, color: fg)),
+              Text(
+                title,
+                style: TextStyle(fontWeight: FontWeight.w900, color: fg),
+              ),
               const SizedBox(height: 2),
-              Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
             ],
           ),
         ),
@@ -2621,7 +2744,10 @@ class _CompactSeekRow extends StatelessWidget {
       children: [
         SizedBox(
           width: 44,
-          child: Text(fmt(pos), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          child: Text(
+            fmt(pos),
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
         ),
         Expanded(
           child: SliderTheme(
@@ -2714,7 +2840,11 @@ class _GlassPersonChip extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Icon(Icons.edit, size: 16, color: Colors.white.withValues(alpha: 0.70)),
+          Icon(
+            Icons.edit,
+            size: 16,
+            color: Colors.white.withValues(alpha: 0.70),
+          ),
         ],
       ),
     );
