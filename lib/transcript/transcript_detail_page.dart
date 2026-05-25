@@ -734,6 +734,61 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     }
   }
 
+  int _currentPlaybackTurnIndex(List<_DisplayTurn> displayTurns) {
+    if (!_isPlaying) return -1;
+
+    final posMs = _pos.inMilliseconds;
+    for (var i = 0; i < displayTurns.length; i++) {
+      final turn = displayTurns[i];
+      final startSec = turn.startSec;
+      final endSec = turn.endSec;
+      if (startSec == null || endSec == null) continue;
+
+      final startMs = (startSec * 1000).round();
+      final endMs = (endSec * 1000).round();
+      if (endMs <= startMs) continue;
+
+      final isLastSegment = i == displayTurns.length - 1;
+      final inSegment =
+          posMs >= startMs &&
+          (posMs < endMs || (isLastSegment && posMs <= endMs));
+      if (inSegment) return i;
+    }
+
+    return -1;
+  }
+
+  Future<void> _playFromSegment(
+    _DisplayTurn turn,
+    _AudioVariant effectiveV,
+  ) async {
+    if (_isTranscribingNow) {
+      if (!mounted) return;
+      await AppFlushbar.info(
+        context,
+        message: 'Audio playback is disabled while transcription is running.',
+      );
+      return;
+    }
+
+    final startSec = turn.startSec;
+    if (startSec == null) return;
+
+    if (!await _ensureSourceLoaded(effectiveV)) {
+      if (!mounted) return;
+      await AppFlushbar.error(
+        context,
+        message: 'Audio file not available for playback.',
+      );
+      return;
+    }
+
+    final target = Duration(milliseconds: (startSec * 1000).round());
+    await _player.seek(target);
+    if (mounted) setState(() => _pos = target);
+    await _player.resume();
+  }
+
   Future<void> _seekTo(double v) async {
     if (_isTranscribingNow) return;
     await _player.seek(Duration(milliseconds: v.round()));
@@ -1793,6 +1848,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     _syncTurnKeys(displayTurns.length);
     final hasSearch = _searchQuery.trim().isNotEmpty;
     final searchCount = _searchMatches.length;
+    final currentPlaybackTurnIndex = _currentPlaybackTurnIndex(displayTurns);
     final currentMatchDisplay = (searchCount > 0 && _currentSearchMatch >= 0)
         ? '${_currentSearchMatch + 1}/$searchCount'
         : (hasSearch ? '0/0' : '');
@@ -2113,7 +2169,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                     if (!isProcessing) ...[
                       const SizedBox(width: 8),
                       Text(
-                        'Long-press for options',
+                        canPlayAudio
+                            ? 'Tap to play • Long-press for options'
+                            : 'Long-press for options',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.55),
                           fontSize: 11,
@@ -2149,6 +2207,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                         searchCount > 0 &&
                         _currentSearchMatch >= 0 &&
                         _searchMatches[_currentSearchMatch] == i;
+                    final isCurrentPlaybackSegment =
+                        currentPlaybackTurnIndex == i;
                     final baseSpeakerStyle = const TextStyle(
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.1,
@@ -2184,6 +2244,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                       key: _turnKeys[i],
                       padding: const EdgeInsets.only(bottom: 10),
                       child: GestureDetector(
+                        onTap: (canPlayAudio && u.startSec != null)
+                            ? () => _playFromSegment(u, effectiveV)
+                            : null,
                         onLongPress: turnId == null
                             ? null
                             : () => _showTurnActions(turnId),
@@ -2194,6 +2257,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           textSpan: textSpan,
                           subtitle: subtitle,
                           isActiveSearchMatch: isActiveSearchMatch,
+                          isCurrentPlaybackSegment: isCurrentPlaybackSegment,
                         ),
                       ),
                     );
@@ -2466,6 +2530,7 @@ class _TurnCard extends StatelessWidget {
     this.speakerSpan,
     this.textSpan,
     this.isActiveSearchMatch = false,
+    this.isCurrentPlaybackSegment = false,
   });
 
   final String speaker;
@@ -2474,16 +2539,19 @@ class _TurnCard extends StatelessWidget {
   final InlineSpan? speakerSpan;
   final InlineSpan? textSpan;
   final bool isActiveSearchMatch;
+  final bool isCurrentPlaybackSegment;
 
   @override
   Widget build(BuildContext context) {
+    final isHighlighted = isActiveSearchMatch || isCurrentPlaybackSegment;
+
     return GlassCard(
       variant: GlassCardVariant.panel,
       padding: const EdgeInsets.all(14),
-      tintOpacityDark: isActiveSearchMatch ? 0.075 : null,
-      tintOpacityLight: isActiveSearchMatch ? 0.070 : null,
-      borderOpacityDark: isActiveSearchMatch ? 0.26 : null,
-      borderOpacityLight: isActiveSearchMatch ? 0.30 : null,
+      tintOpacityDark: isHighlighted ? 0.075 : null,
+      tintOpacityLight: isHighlighted ? 0.070 : null,
+      borderOpacityDark: isHighlighted ? 0.26 : null,
+      borderOpacityLight: isHighlighted ? 0.30 : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2535,15 +2603,31 @@ class _TurnCard extends StatelessWidget {
                 height: 28,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  color: Colors.white.withValues(alpha: 0.06),
+                  color:
+                      (isCurrentPlaybackSegment
+                              ? const Color(0xFFFFD54F)
+                              : Colors.white)
+                          .withValues(
+                            alpha: isCurrentPlaybackSegment ? 0.18 : 0.06,
+                          ),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.10),
+                    color:
+                        (isCurrentPlaybackSegment
+                                ? const Color(0xFFFFD54F)
+                                : Colors.white)
+                            .withValues(
+                              alpha: isCurrentPlaybackSegment ? 0.38 : 0.10,
+                            ),
                   ),
                 ),
-                child: const Icon(
-                  Icons.record_voice_over_outlined,
+                child: Icon(
+                  isCurrentPlaybackSegment
+                      ? Icons.graphic_eq_rounded
+                      : Icons.record_voice_over_outlined,
                   size: 16,
-                  color: Colors.white70,
+                  color: isCurrentPlaybackSegment
+                      ? const Color(0xFFFFE082)
+                      : Colors.white70,
                 ),
               ),
             ],
