@@ -26,6 +26,8 @@ class GlassCard extends StatelessWidget {
     this.shadowOpacityLight,
     this.shadowOpacityDark,
     this.onTap,
+    this.borderColor,
+    this.tintColor,
 
     // ✅ pass-through (optional)
     this.grain,
@@ -51,6 +53,8 @@ class GlassCard extends StatelessWidget {
   final double? shadowOpacityDark;
 
   final VoidCallback? onTap;
+  final Color? borderColor;
+  final Color? tintColor;
 
   /// If null, uses smart default (panel=true, tile=false).
   final bool? grain;
@@ -105,6 +109,9 @@ class GlassCard extends StatelessWidget {
       shadowOffset: shadowOffset ?? const Offset(0, 12),
       shadowOpacityDark: shadowOpacityDark ?? 0.18,
       shadowOpacityLight: shadowOpacityLight ?? 0.06,
+
+      borderColor: borderColor,
+      tintColor: tintColor,
 
       // ✅ Smart default: grain on panels, off on tiles (massive perf win)
       grain: grain ?? false,

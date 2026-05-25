@@ -72,6 +72,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   Duration _pos = Duration.zero;
   Duration _dur = Duration.zero;
   String? _loadedPath;
+  int _activeTurnIndex = -1;
+  bool _autoScrollEnabled = true;
 
   bool _busyFlag = false;
 
@@ -639,14 +641,81 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     _player.onPositionChanged.listen((p) {
       if (!mounted) return;
       setState(() => _pos = p);
+      _updateActiveTurn(p);
     });
     _player.onPlayerComplete.listen((_) {
       if (!mounted) return;
       setState(() {
         _isPlaying = false;
         _pos = Duration.zero;
+        _activeTurnIndex = -1;
       });
     });
+  }
+
+  void _updateActiveTurn(Duration p) {
+    if (_turns.isEmpty) return;
+    final posSec = p.inMilliseconds / 1000.0;
+    int found = -1;
+    final displayTurns = _buildDisplayTurns();
+    for (var i = 0; i < displayTurns.length; i++) {
+      final u = displayTurns[i];
+      if (u.startSec != null && u.endSec != null) {
+        if (posSec >= u.startSec! && posSec <= u.endSec!) {
+          found = i;
+          break;
+        }
+      }
+    }
+
+    if (found != _activeTurnIndex) {
+      setState(() {
+        _activeTurnIndex = found;
+      });
+      if (found != -1 && _autoScrollEnabled) {
+        _scrollToActiveTurn(found);
+      }
+    }
+  }
+
+  void _scrollToActiveTurn(int turnIndex) {
+    if (turnIndex < 0 || turnIndex >= _turnKeys.length) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _turnKeys[turnIndex].currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.3,
+        );
+      }
+    });
+  }
+
+  Future<void> _playFromStartSec(double startSec) async {
+    if (_isTranscribingNow) return;
+
+    final origExists = _fileExists(_getOriginalPath());
+    final enhExists = _fileExists(_getEnhancedPath());
+    final effectiveV = _effectiveVariant(
+      origExists: origExists,
+      enhExists: enhExists,
+    );
+
+    if (!await _ensureSourceLoaded(effectiveV)) {
+      if (!mounted) return;
+      await AppFlushbar.error(
+        context,
+        message: 'Audio file not available for playback.',
+      );
+      return;
+    }
+
+    await _player.seek(Duration(milliseconds: (startSec * 1000).round()));
+    if (!_isPlaying) {
+      await _player.resume();
+    }
   }
 
   Future<bool> _ensureSourceLoaded(_AudioVariant v) async {
@@ -723,6 +792,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       _pos = Duration.zero;
       _dur = Duration.zero;
       _loadedPath = null;
+      _activeTurnIndex = -1;
     });
 
     await _ensureSourceLoaded(v);
@@ -1232,7 +1302,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       final lines = t.editedText!.split('\n');
       final result = <_DisplayTurn>[];
 
-      int i = 0;
+      int lastMatchIdx = -1;
+
       for (final line in lines) {
         final trimmed = line.trim();
         if (trimmed.isEmpty) continue;
@@ -1243,7 +1314,47 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             : 'Speaker';
         final text = (idx > 0) ? trimmed.substring(idx + 1).trim() : trimmed;
 
-        final ts = (i < turns.length) ? turns[i] : null;
+        // Smart chronological alignment: find the best-matching original turn
+        final cleanText = text.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
+        final lineWords = cleanText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+
+        double bestScore = 0.0;
+        int bestIdx = -1;
+
+        final startSearch = (lastMatchIdx + 1).clamp(0, turns.length);
+        final endSearch = (startSearch + 8).clamp(0, turns.length);
+
+        for (int j = startSearch; j < endSearch; j++) {
+          final orig = turns[j];
+          final origClean = orig.text.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
+          final origWords = origClean.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+
+          if (origWords.isEmpty && lineWords.isEmpty) {
+            bestIdx = j;
+            break;
+          }
+
+          final intersection = lineWords.intersection(origWords);
+          final union = lineWords.union(origWords);
+          final score = union.isEmpty ? 0.0 : intersection.length / union.length;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestIdx = j;
+          }
+        }
+
+        final int matchedIdx = (bestIdx != -1 && bestScore > 0.1)
+            ? bestIdx
+            : (lastMatchIdx + 1).clamp(0, turns.length - 1);
+
+        final ts = (matchedIdx < turns.length) ? turns[matchedIdx] : null;
+
+        if (ts != null && bestIdx != -1) {
+          lastMatchIdx = bestIdx;
+        } else {
+          lastMatchIdx = matchedIdx;
+        }
 
         result.add(
           _DisplayTurn(
@@ -1253,7 +1364,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             endSec: ts?.endSec,
           ),
         );
-        i++;
       }
       return result;
     }
@@ -2098,6 +2208,18 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                       ),
                     ],
                     const Spacer(),
+                    if (canPlayAudio) ...[
+                      _IconPillButton(
+                        tooltip: _autoScrollEnabled ? 'Disable auto-scroll' : 'Enable auto-scroll',
+                        icon: _autoScrollEnabled ? Icons.sync : Icons.sync_disabled,
+                        onTap: () {
+                          setState(() {
+                            _autoScrollEnabled = !_autoScrollEnabled;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     _MetaPill(text: '${displayTurns.length}'),
                   ],
                 ),
@@ -2115,7 +2237,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                     final u = displayTurns[i];
 
                     final subtitle = (u.startSec != null && u.endSec != null)
-                        ? '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s'
+                        ? '${_fmtClock(Duration(milliseconds: (u.startSec! * 1000).round()))} – ${_fmtClock(Duration(milliseconds: (u.endSec! * 1000).round()))}'
                         : null;
 
                     final turnId = (!showingEdited && i < _turns.length)
@@ -2156,10 +2278,15 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                       ),
                     );
 
+                    final isPlayingCurrent = _activeTurnIndex == i;
+
                     return Padding(
                       key: _turnKeys[i],
                       padding: const EdgeInsets.only(bottom: 10),
                       child: GestureDetector(
+                        onTap: (canPlayAudio && u.startSec != null)
+                            ? () => _playFromStartSec(u.startSec!)
+                            : null,
                         onLongPress: turnId == null
                             ? null
                             : () => _showTurnActions(turnId),
@@ -2170,6 +2297,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           textSpan: textSpan,
                           subtitle: subtitle,
                           isActiveSearchMatch: isActiveSearchMatch,
+                          isPlayingCurrent: isPlayingCurrent,
                         ),
                       ),
                     );
@@ -2442,6 +2570,7 @@ class _TurnCard extends StatelessWidget {
     this.speakerSpan,
     this.textSpan,
     this.isActiveSearchMatch = false,
+    this.isPlayingCurrent = false,
   });
 
   final String speaker;
@@ -2450,16 +2579,27 @@ class _TurnCard extends StatelessWidget {
   final InlineSpan? speakerSpan;
   final InlineSpan? textSpan;
   final bool isActiveSearchMatch;
+  final bool isPlayingCurrent;
 
   @override
   Widget build(BuildContext context) {
     return GlassCard(
       variant: GlassCardVariant.panel,
       padding: const EdgeInsets.all(14),
-      tintOpacityDark: isActiveSearchMatch ? 0.075 : null,
-      tintOpacityLight: isActiveSearchMatch ? 0.070 : null,
-      borderOpacityDark: isActiveSearchMatch ? 0.26 : null,
-      borderOpacityLight: isActiveSearchMatch ? 0.30 : null,
+      tintColor: isPlayingCurrent ? const Color(0xFFFF8243) : null,
+      borderColor: isPlayingCurrent ? const Color(0xFFFF8243) : null,
+      tintOpacityDark: isActiveSearchMatch
+          ? 0.075
+          : (isPlayingCurrent ? 0.06 : null),
+      tintOpacityLight: isActiveSearchMatch
+          ? 0.070
+          : (isPlayingCurrent ? 0.06 : null),
+      borderOpacityDark: isActiveSearchMatch
+          ? 0.26
+          : (isPlayingCurrent ? 0.42 : null),
+      borderOpacityLight: isActiveSearchMatch
+          ? 0.30
+          : (isPlayingCurrent ? 0.46 : null),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2490,18 +2630,22 @@ class _TurnCard extends StatelessWidget {
                   speakerSpan ??
                       TextSpan(
                         text: speaker,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w900,
                           letterSpacing: -0.1,
-                          color: Colors.white,
+                          color: isPlayingCurrent
+                              ? const Color(0xFFFF8243)
+                              : Colors.white,
                         ),
                       ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.1,
-                    color: Colors.white,
+                    color: isPlayingCurrent
+                        ? const Color(0xFFFF8243)
+                        : Colors.white,
                   ),
                 ),
               ),
@@ -2511,15 +2655,23 @@ class _TurnCard extends StatelessWidget {
                 height: 28,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  color: Colors.white.withValues(alpha: 0.06),
+                  color: isPlayingCurrent
+                      ? const Color(0xFFFF8243).withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.06),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.10),
+                    color: isPlayingCurrent
+                        ? const Color(0xFFFF8243).withValues(alpha: 0.40)
+                        : Colors.white.withValues(alpha: 0.10),
                   ),
                 ),
-                child: const Icon(
-                  Icons.record_voice_over_outlined,
+                child: Icon(
+                  isPlayingCurrent
+                      ? Icons.volume_up_rounded
+                      : Icons.record_voice_over_outlined,
                   size: 16,
-                  color: Colors.white70,
+                  color: isPlayingCurrent
+                      ? const Color(0xFFFF8243)
+                      : Colors.white70,
                 ),
               ),
             ],

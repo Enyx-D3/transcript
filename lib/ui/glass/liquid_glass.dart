@@ -30,6 +30,8 @@ class LiquidGlass extends StatelessWidget {
     this.clipBehavior = Clip.hardEdge,
     this.highlightOpacityLight = GlassTokens.highlightOpacityLight,
     this.highlightOpacityDark = GlassTokens.highlightOpacityDark,
+    this.borderColor,
+    this.tintColor,
 
     // ✅ grain
     this.grain = true,
@@ -66,6 +68,9 @@ class LiquidGlass extends StatelessWidget {
   final double highlightOpacityLight;
   final double highlightOpacityDark;
 
+  final Color? borderColor;
+  final Color? tintColor;
+
   final bool grain;
   final double grainOpacityDark;
   final double grainOpacityLight;
@@ -79,13 +84,13 @@ class LiquidGlass extends StatelessWidget {
 
     final isDark = GlassTokens.isDark(context);
 
-    final tint = Colors.white.withValues(
+    final tint = (tintColor ?? Colors.white).withValues(
       alpha: isDark
           ? (tintOpacityDark ?? GlassTokens.tintPanelDark)
           : (tintOpacityLight ?? GlassTokens.tintPanelLight),
     );
 
-    final border = Colors.white.withValues(
+    final border = (borderColor ?? Colors.white).withValues(
       alpha: isDark
           ? (borderOpacityDark ?? GlassTokens.borderOpacityDark)
           : (borderOpacityLight ?? GlassTokens.borderOpacityLight),
