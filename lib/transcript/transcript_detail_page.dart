@@ -694,7 +694,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   Future<void> _playFromStartSec(double startSec) async {
-    if (_isTranscribingNow) return;
+    if (_isTranscribingNow) {
+      if (!mounted) return;
+      await AppFlushbar.info(
+        context,
+        message: 'Audio playback is disabled while transcription is running.',
+      );
+      return;
+    }
 
     final origExists = _fileExists(_getOriginalPath());
     final enhExists = _fileExists(_getEnhancedPath());
@@ -712,10 +719,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       return;
     }
 
-    await _player.seek(Duration(milliseconds: (startSec * 1000).round()));
-    if (!_isPlaying) {
-      await _player.resume();
-    }
+    final target = Duration(milliseconds: (startSec * 1000).round());
+    await _player.seek(target);
+    if (mounted) setState(() => _pos = target);
+    await _player.resume();
   }
 
   Future<bool> _ensureSourceLoaded(_AudioVariant v) async {
@@ -1316,7 +1323,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
         // Smart chronological alignment: find the best-matching original turn
         final cleanText = text.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
-        final lineWords = cleanText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+        final lineWords = cleanText
+            .split(RegExp(r'\s+'))
+            .where((w) => w.isNotEmpty)
+            .toSet();
 
         double bestScore = 0.0;
         int bestIdx = -1;
@@ -1326,8 +1336,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
         for (int j = startSearch; j < endSearch; j++) {
           final orig = turns[j];
-          final origClean = orig.text.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
-          final origWords = origClean.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+          final origClean = orig.text.toLowerCase().replaceAll(
+            RegExp(r'[^\w\s]'),
+            '',
+          );
+          final origWords = origClean
+              .split(RegExp(r'\s+'))
+              .where((w) => w.isNotEmpty)
+              .toSet();
 
           if (origWords.isEmpty && lineWords.isEmpty) {
             bestIdx = j;
@@ -1336,7 +1352,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
           final intersection = lineWords.intersection(origWords);
           final union = lineWords.union(origWords);
-          final score = union.isEmpty ? 0.0 : intersection.length / union.length;
+          final score = union.isEmpty
+              ? 0.0
+              : intersection.length / union.length;
 
           if (score > bestScore) {
             bestScore = score;
@@ -2199,7 +2217,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                     if (!isProcessing) ...[
                       const SizedBox(width: 8),
                       Text(
-                        'Long-press for options',
+                        canPlayAudio
+                            ? 'Tap to play • Long-press for options'
+                            : 'Long-press for options',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.55),
                           fontSize: 11,
@@ -2210,8 +2230,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                     const Spacer(),
                     if (canPlayAudio) ...[
                       _IconPillButton(
-                        tooltip: _autoScrollEnabled ? 'Disable auto-scroll' : 'Enable auto-scroll',
-                        icon: _autoScrollEnabled ? Icons.sync : Icons.sync_disabled,
+                        tooltip: _autoScrollEnabled
+                            ? 'Disable auto-scroll'
+                            : 'Enable auto-scroll',
+                        icon: _autoScrollEnabled
+                            ? Icons.sync
+                            : Icons.sync_disabled,
                         onTap: () {
                           setState(() {
                             _autoScrollEnabled = !_autoScrollEnabled;
