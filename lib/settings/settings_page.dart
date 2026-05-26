@@ -59,6 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
   static const _kPrefMaxRecordingMinutes = 'pref_max_recording_minutes';
   static const _kPrefAutoEmailTranscript = 'pref_auto_email_transcript';
   static const _kPrefAutoSummaryEnabled = 'pref_auto_summary_enabled';
+  static const _kPrefTypoFixEnabled = 'pref_typo_fix_enabled';
 
   // =========================
   // Support constants
@@ -81,7 +82,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'auto': 'Auto',
   };
 
-  static const List<int> _maxMinutesOptions = [30, 60, 90, 120, 6000];
+  // static const List<int> _maxMinutesOptions = [30, 60, 90, 120, 6000];
+  static const List<int> _maxMinutesOptions = [30, 60];
 
   // =========================
   // State defaults
@@ -93,6 +95,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _maxRecordingMinutes = 60;
   bool _autoEmailTranscript = false;
   bool _autoSummaryEnabled = true; // ✅ default ON
+  bool _typoFixEnabled = false;
 
   @override
   void initState() {
@@ -239,6 +242,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final autoEmail = sp.getBool(_kPrefAutoEmailTranscript) ?? false;
 
     final autoSummary = sp.getBool(_kPrefAutoSummaryEnabled) ?? true;
+    final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? false;
 
     if (!mounted) return;
     setState(() {
@@ -249,6 +253,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _maxRecordingMinutes = safeMins;
       _autoEmailTranscript = autoEmail;
       _autoSummaryEnabled = autoSummary;
+      _typoFixEnabled = typoFix;
       _loading = false;
     });
   }
@@ -303,6 +308,13 @@ class _SettingsPageState extends State<SettingsPage> {
     await sp.setBool(_kPrefAutoSummaryEnabled, v);
     if (!mounted) return;
     setState(() => _autoSummaryEnabled = v);
+  }
+
+  Future<void> _setTypoFixEnabled(bool v) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool(_kPrefTypoFixEnabled, v);
+    if (!mounted) return;
+    setState(() => _typoFixEnabled = v);
   }
 
   // =========================
@@ -573,9 +585,9 @@ class _SettingsPageState extends State<SettingsPage> {
   String _fmtMaxTime(int minutes) {
     if (minutes == 30) return '30 min';
     if (minutes == 60) return '1 hour';
-    if (minutes == 90) return '1.5 hours';
-    if (minutes == 120) return '2 hours';
-    if (minutes == 6000) return 'No limit (Experimental)';
+    // if (minutes == 90) return '1.5 hours';
+    // if (minutes == 120) return '2 hours';
+    // if (minutes == 6000) return 'No limit (Experimental)';
     return '$minutes min';
   }
 
@@ -790,6 +802,17 @@ class _SettingsPageState extends State<SettingsPage> {
                         subtitle: 'Identifies speakers in the transcript.',
                         value: _diarizationEnabled,
                         onChanged: _setDiarizationEnabled,
+                        onLabel: 'On',
+                        offLabel: 'Off',
+                      ),
+                      _rowDivider(),
+                      _switchRow(
+                        icon: Icons.spellcheck,
+                        title: 'Fix obvious typos',
+                        subtitle:
+                            'Runs a lightweight AI pass to correct only obvious typos.',
+                        value: _typoFixEnabled,
+                        onChanged: _setTypoFixEnabled,
                         onLabel: 'On',
                         offLabel: 'Off',
                       ),

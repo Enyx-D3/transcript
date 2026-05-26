@@ -78,6 +78,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   bool _busyFlag = false;
 
   static const _kBusyTranscribing = 'busy_transcribing';
+  static const _kActiveTranscriptId = 'bg_active_transcript_id';
   static const _kProgressProcessedSec = 'progress_processed_sec';
   static const _kProgressTotalSec = 'progress_total_sec';
   static const _kProgressStage = 'progress_stage';
@@ -274,8 +275,30 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   Future<bool> _readBusyFlag() async {
     try {
-      final v = await FlutterForegroundTask.getData(key: _kBusyTranscribing);
-      return v == true;
+      final busyRaw = await FlutterForegroundTask.getData(
+        key: _kBusyTranscribing,
+      );
+      final activeRaw = await FlutterForegroundTask.getData(
+        key: _kActiveTranscriptId,
+      );
+
+      final bool busy = busyRaw == true;
+
+      int activeId = 0;
+      if (activeRaw is int) {
+        activeId = activeRaw;
+      } else {
+        activeId = int.tryParse('$activeRaw') ?? 0;
+      }
+
+      final jobLooksActive =
+          _job != null &&
+          _job!.transcriptId == widget.transcriptId &&
+          (_job!.status == 'PENDING' || _job!.status == 'RUNNING');
+
+      return busy &&
+          (activeId == widget.transcriptId ||
+              (activeId == 0 && jobLooksActive));
     } catch (_) {
       return false;
     }
@@ -440,6 +463,15 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   Future<void> _pullProgressFromFgStorage() async {
     try {
+      final activeRaw = await FlutterForegroundTask.getData(
+        key: _kActiveTranscriptId,
+      );
+      final activeId = (activeRaw is int)
+          ? activeRaw
+          : int.tryParse('$activeRaw') ?? 0;
+
+      if (activeId != widget.transcriptId) return;
+
       final processedRaw = await FlutterForegroundTask.getData(
         key: _kProgressProcessedSec,
       );
@@ -1014,6 +1046,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
           key: _kBusyTranscribing,
           value: false,
         );
+        await FlutterForegroundTask.saveData(
+          key: _kActiveTranscriptId,
+          value: 0,
+        );
       } catch (_) {}
 
       if (!mounted) return;
@@ -1041,6 +1077,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         await FlutterForegroundTask.saveData(
           key: _kBusyTranscribing,
           value: false,
+        );
+        await FlutterForegroundTask.saveData(
+          key: _kActiveTranscriptId,
+          value: 0,
         );
       } catch (_) {}
 
@@ -1087,6 +1127,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         key: _kBusyTranscribing,
         value: false,
       );
+      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
     } catch (_) {}
 
     _processingWatchdog?.cancel();
