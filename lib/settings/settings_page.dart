@@ -214,7 +214,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final autoSummary = sp.getBool(_kPrefAutoSummaryEnabled) ?? true;
 
     // ✅ NEW (default ON)
-    final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? true;
+    final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? false;
 
     if (!mounted) return;
     setState(() {

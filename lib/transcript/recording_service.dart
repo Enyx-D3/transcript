@@ -168,7 +168,8 @@ const String _kPrefMaxRecordingMinutes = 'pref_max_recording_minutes';
 const String _kMaxMinutesRuntime = 'rec_max_recording_minutes_runtime';
 
 // ✅ allowed options (same as SettingsPage)
-const List<int> _kMaxMinutesOptions = [30, 60, 90, 120,6000];
+// const List<int> _kMaxMinutesOptions = [30, 60, 90, 120,6000];
+const List<int> _kMaxMinutesOptions = [30, 60];
 
 @pragma('vm:entry-point')
 void recordingStartCallback() {
