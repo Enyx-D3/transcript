@@ -81,7 +81,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'auto': 'Auto',
   };
 
-  static const List<int> _maxMinutesOptions = [30, 60, 90, 120, 6000];
+  // static const List<int> _maxMinutesOptions = [30, 60, 90, 120, 6000];
+  static const List<int> _maxMinutesOptions = [30, 60];
 
   // =========================
   // State defaults
@@ -547,9 +548,9 @@ class _SettingsPageState extends State<SettingsPage> {
   String _fmtMaxTime(int minutes) {
     if (minutes == 30) return '30 min';
     if (minutes == 60) return '1 hour';
-    if (minutes == 90) return '1.5 hours';
-    if (minutes == 120) return '2 hours';
-    if (minutes == 6000) return 'No limit (Experimental)';
+    // if (minutes == 90) return '1.5 hours';
+    // if (minutes == 120) return '2 hours';
+    // if (minutes == 6000) return 'No limit (Experimental)';
     return '$minutes min';
   }
 
