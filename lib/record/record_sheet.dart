@@ -21,13 +21,12 @@ import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_divider.dart';
 
-
 class RecordSheet extends StatefulWidget {
   const RecordSheet({super.key});
 
   static Future<void> show(BuildContext context) async {
     const kBusyTranscribing = 'busy_transcribing';
-    
+
     final busyFlag =
         (await FlutterForegroundTask.getData(key: kBusyTranscribing)) == true;
 
@@ -77,8 +76,9 @@ class _RecordSheetState extends State<RecordSheet> {
   static const String _kActiveTranscriptId = 'bg_active_transcript_id';
   bool _handledStop = false;
 
-  final TextEditingController _targetSpeakersCtrl =
-      TextEditingController(text: '0');
+  final TextEditingController _targetSpeakersCtrl = TextEditingController(
+    text: '0',
+  );
 
   static const Map<String, String> _langOptions = {
     'en': 'English',
@@ -259,8 +259,9 @@ class _RecordSheetState extends State<RecordSheet> {
     try {
       _handledStop = false;
 
-      final int? targetSpeakers =
-          _diarizationEnabled ? _parseTargetSpeakers() : null;
+      final int? targetSpeakers = _diarizationEnabled
+          ? _parseTargetSpeakers()
+          : null;
 
       await _ensureMic();
 
@@ -369,8 +370,9 @@ class _RecordSheetState extends State<RecordSheet> {
     int? targetSpeakers,
     required String lang,
   }) async {
-    final placeholderDuration =
-        (_seconds.isFinite && _seconds >= 0) ? _seconds : 0.0;
+    final placeholderDuration = (_seconds.isFinite && _seconds >= 0)
+        ? _seconds
+        : 0.0;
 
     final obx = ObjectBox.I;
 
@@ -410,7 +412,7 @@ class _RecordSheetState extends State<RecordSheet> {
 
     try {
       final sp = await SharedPreferences.getInstance();
-      final typoFix = sp.getBool('pref_typo_fix_enabled') ?? true;
+      final typoFix = sp.getBool('pref_typo_fix_enabled') ?? false;
       await BackgroundTranscriber.start(
         wavPath: wavPath,
         translateToEnglish: false,
@@ -418,7 +420,7 @@ class _RecordSheetState extends State<RecordSheet> {
         existingTranscriptId: tId,
         targetSpeakers: targetSpeakers,
         lang: lang,
-        typoFixEnabled: typoFix
+        typoFixEnabled: typoFix,
       );
 
       final job = obx.jobs.get(jobId);
@@ -480,7 +482,9 @@ class _RecordSheetState extends State<RecordSheet> {
           children: [
             // ✅ sheet backdrop (moderate blur + stronger tint for readability)
             LiquidGlass(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               padding: EdgeInsets.zero,
               shadow: false,
               blurX: 9.0,
@@ -594,12 +598,15 @@ class _RecordSheetState extends State<RecordSheet> {
 
                               GlassButton(
                                 kind: GlassButtonKind.primary,
-                                label:
-                                    _recording ? 'Stop & transcribe' : 'Start recording',
+                                label: _recording
+                                    ? 'Stop & transcribe'
+                                    : 'Start recording',
                                 icon: _recording
                                     ? Icons.stop_rounded
                                     : Icons.fiber_manual_record,
-                                onPressed: _starting ? null : (_recording ? _stop : _start),
+                                onPressed: _starting
+                                    ? null
+                                    : (_recording ? _stop : _start),
                               ),
                             ],
                           ),
@@ -639,7 +646,9 @@ class _RecordSheetState extends State<RecordSheet> {
                                     child: Text(
                                       'Language',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.72,
+                                        ),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -651,8 +660,8 @@ class _RecordSheetState extends State<RecordSheet> {
                                       child: DropdownButtonFormField<String>(
                                         initialValue: _selectedLang,
                                         isDense: true,
-                                        iconEnabledColor:
-                                            Colors.white.withValues(alpha: 0.80),
+                                        iconEnabledColor: Colors.white
+                                            .withValues(alpha: 0.80),
                                         dropdownColor: const Color(0xFF0B0C10),
                                         items: _langOptions.entries
                                             .map(
@@ -660,9 +669,13 @@ class _RecordSheetState extends State<RecordSheet> {
                                                 value: e.key,
                                                 child: Text(
                                                   e.value,
-                                                  overflow: TextOverflow.ellipsis,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                   style: TextStyle(
-                                                    color: Colors.white.withValues(alpha: 0.92),
+                                                    color: Colors.white
+                                                        .withValues(
+                                                          alpha: 0.92,
+                                                        ),
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
@@ -673,7 +686,9 @@ class _RecordSheetState extends State<RecordSheet> {
                                             ? null
                                             : (v) {
                                                 if (v == null) return;
-                                                setState(() => _selectedLang = v);
+                                                setState(
+                                                  () => _selectedLang = v,
+                                                );
                                               },
                                         decoration: const InputDecoration(
                                           isDense: true,
@@ -698,7 +713,9 @@ class _RecordSheetState extends State<RecordSheet> {
                                     child: Text(
                                       'Speaker diarization',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.72,
+                                        ),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -709,12 +726,15 @@ class _RecordSheetState extends State<RecordSheet> {
                                         ? null
                                         : _setDiarizationEnabledLocal,
                                     activeThumbColor: Colors.black,
-                                    activeTrackColor:
-                                        Colors.white.withValues(alpha: 0.55),
-                                    inactiveThumbColor:
-                                        Colors.white.withValues(alpha: 0.70),
-                                    inactiveTrackColor:
-                                        Colors.white.withValues(alpha: 0.18),
+                                    activeTrackColor: Colors.white.withValues(
+                                      alpha: 0.55,
+                                    ),
+                                    inactiveThumbColor: Colors.white.withValues(
+                                      alpha: 0.70,
+                                    ),
+                                    inactiveTrackColor: Colors.white.withValues(
+                                      alpha: 0.18,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -727,7 +747,9 @@ class _RecordSheetState extends State<RecordSheet> {
                                       child: Text(
                                         'Target speakers',
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.72),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.72,
+                                          ),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -736,42 +758,50 @@ class _RecordSheetState extends State<RecordSheet> {
                                       width: 120,
                                       child: Theme(
                                         data: Theme.of(context).copyWith(
-                                          textSelectionTheme: TextSelectionThemeData(
-                                            selectionHandleColor:
-                                                Colors.white.withValues(alpha: 0.90),
-                                            cursorColor:
-                                                Colors.white.withValues(alpha: 0.90),
-                                            selectionColor:
-                                                Colors.white.withValues(alpha: 0.18),
-                                          ),
+                                          textSelectionTheme:
+                                              TextSelectionThemeData(
+                                                selectionHandleColor: Colors
+                                                    .white
+                                                    .withValues(alpha: 0.90),
+                                                cursorColor: Colors.white
+                                                    .withValues(alpha: 0.90),
+                                                selectionColor: Colors.white
+                                                    .withValues(alpha: 0.18),
+                                              ),
                                         ),
                                         child: _GlassField(
                                           enabled: !_recording && !_starting,
                                           child: TextField(
-                                            cursorColor: Colors.white.withValues(alpha: 0.90),
+                                            cursorColor: Colors.white
+                                                .withValues(alpha: 0.90),
                                             controller: _targetSpeakersCtrl,
                                             enabled: !_recording && !_starting,
                                             keyboardType: TextInputType.number,
                                             inputFormatters: [
-                                              FilteringTextInputFormatter.digitsOnly,
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
                                             ],
                                             style: TextStyle(
-                                              color: Colors.white.withValues(alpha: 0.92),
+                                              color: Colors.white.withValues(
+                                                alpha: 0.92,
+                                              ),
                                               fontWeight: FontWeight.w600,
                                             ),
                                             decoration: InputDecoration(
                                               hintText: '0',
                                               hintStyle: TextStyle(
-                                                color: Colors.white.withValues(alpha: 0.45),
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.45,
+                                                ),
                                                 fontWeight: FontWeight.w600,
                                               ),
                                               isDense: true,
                                               border: InputBorder.none,
                                               contentPadding:
                                                   const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 10,
-                                              ),
+                                                    horizontal: 10,
+                                                    vertical: 10,
+                                                  ),
                                             ),
                                           ),
                                         ),

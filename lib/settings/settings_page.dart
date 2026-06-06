@@ -24,7 +24,6 @@ import '../help/help_page.dart';
 // ✅ glass system
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_divider.dart';
-import '../ui/glass/glass_tokens.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -95,8 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _autoEmailTranscript = false;
   bool _autoSummaryEnabled = true; // ✅ default ON
 
-  // ✅ NEW: default ON
-  bool _typoFixEnabled = true;
+  bool _typoFixEnabled = false;
 
   @override
   void initState() {
@@ -141,30 +139,30 @@ class _SettingsPageState extends State<SettingsPage> {
   // =========================
   Future<void> _openWhatsNew() async {
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const WhatsNewPage()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const WhatsNewPage()));
   }
 
   Future<void> _openModelPage() async {
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ModelPickerPage()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
   }
 
   Future<void> _openHipaaFriendly() async {
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const HipaaFriendlyPage()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const HipaaFriendlyPage()));
   }
 
   Future<void> _openHelp() async {
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const HelpPage()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const HelpPage()));
   }
 
   Future<void> _contactSupport() async {
@@ -214,7 +212,6 @@ class _SettingsPageState extends State<SettingsPage> {
     final autoEmail = sp.getBool(_kPrefAutoEmailTranscript) ?? false;
     final autoSummary = sp.getBool(_kPrefAutoSummaryEnabled) ?? true;
 
-    // ✅ NEW (default ON)
     final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? false;
 
     if (!mounted) return;
@@ -686,7 +683,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       _kvRow(
                         icon: Icons.timer_outlined,
                         title: 'Max recording time',
-                        subtitle: 'Stops recording automatically at the selected limit.',
+                        subtitle:
+                            'Stops recording automatically at the selected limit.',
                         trailing: _trailingDropdown<int>(
                           value: _maxRecordingMinutes,
                           width: 170,
@@ -762,7 +760,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       _rowDivider(),
 
-                      // ✅ NEW: typo fix switch (default ON)
                       _switchRow(
                         icon: Icons.spellcheck,
                         title: 'Fix obvious typos',
@@ -778,7 +775,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       _switchRow(
                         icon: Icons.auto_awesome,
                         title: 'Auto-generate summary',
-                        subtitle: 'Starts summary automatically when transcription finishes.',
+                        subtitle:
+                            'Starts summary automatically when transcription finishes.',
                         value: _autoSummaryEnabled,
                         onChanged: _setAutoSummaryEnabled,
                         onLabel: 'On',
@@ -815,7 +813,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     children: [
                       InkWell(
-                        onTap: (!_busyExport && !_busyImport) ? _exportZip : null,
+                        onTap: (!_busyExport && !_busyImport)
+                            ? _exportZip
+                            : null,
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -834,14 +834,18 @@ class _SettingsPageState extends State<SettingsPage> {
                                       'Export transcripts + audio (ZIP)',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: Colors.white.withValues(alpha: 0.92),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.92,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'Share to Drive / device / email',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.70),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.70,
+                                        ),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -855,7 +859,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       _rowDivider(),
                       InkWell(
-                        onTap: (!_busyExport && !_busyImport) ? _importZip : null,
+                        onTap: (!_busyExport && !_busyImport)
+                            ? _importZip
+                            : null,
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -874,14 +880,18 @@ class _SettingsPageState extends State<SettingsPage> {
                                       'Import transcripts + audio (ZIP)',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: Colors.white.withValues(alpha: 0.92),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.92,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'Pick ZIP from device / Drive',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.70),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.70,
+                                        ),
                                         fontSize: 12,
                                       ),
                                     ),

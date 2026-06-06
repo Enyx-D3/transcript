@@ -85,7 +85,7 @@ class BackgroundTranscriber {
     String lang = 'auto',
   }) async {
     final sp = await SharedPreferences.getInstance();
-    final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? true; // default ON
+    final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? false;
 
     await start(
       wavPath: wavPath,
@@ -111,7 +111,10 @@ class BackgroundTranscriber {
     required bool typoFixEnabled,
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
-    await FlutterForegroundTask.saveData(key: _kTranslate, value: translateToEnglish);
+    await FlutterForegroundTask.saveData(
+      key: _kTranslate,
+      value: translateToEnglish,
+    );
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
 
     // ✅ mark which transcript is active (0 if unknown)
@@ -120,9 +123,15 @@ class BackgroundTranscriber {
       value: existingTranscriptId ?? 0,
     );
 
-    await FlutterForegroundTask.saveData(key: _kProgressProcessedSec, value: 0.0);
+    await FlutterForegroundTask.saveData(
+      key: _kProgressProcessedSec,
+      value: 0.0,
+    );
     await FlutterForegroundTask.saveData(key: _kProgressTotalSec, value: 0.0);
-    await FlutterForegroundTask.saveData(key: _kProgressStage, value: 'Preparing');
+    await FlutterForegroundTask.saveData(
+      key: _kProgressStage,
+      value: 'Preparing',
+    );
 
     // ✅ store int (0 means null/auto)
     await FlutterForegroundTask.saveData(
@@ -146,7 +155,10 @@ class BackgroundTranscriber {
       await FlutterForegroundTask.saveData(key: _kTitleHint, value: titleHint);
     }
     if (existingTranscriptId != null) {
-      await FlutterForegroundTask.saveData(key: _kExistingId, value: existingTranscriptId);
+      await FlutterForegroundTask.saveData(
+        key: _kExistingId,
+        value: existingTranscriptId,
+      );
     }
 
     await FlutterForegroundTask.startService(
@@ -163,11 +175,15 @@ class BackgroundTranscriber {
   }
 
   /// ✅ returns a cancelable subscription that actually removes callback.
-  static StreamSubscription<dynamic> onData(void Function(dynamic data) handler) {
+  static StreamSubscription<dynamic> onData(
+    void Function(dynamic data) handler,
+  ) {
     FlutterForegroundTask.addTaskDataCallback(handler);
-    return _TaskDataSubscription(onCancel: () {
-      FlutterForegroundTask.removeTaskDataCallback(handler);
-    });
+    return _TaskDataSubscription(
+      onCancel: () {
+        FlutterForegroundTask.removeTaskDataCallback(handler);
+      },
+    );
   }
 }
 
@@ -260,7 +276,9 @@ class _TranscribeTaskHandler extends TaskHandler {
     b.writeln('');
     b.writeln('Task: Fix ONLY obvious typos in the TEXT field.');
     b.writeln('- Do NOT change SPEAKER, START_SEC, END_SEC.');
-    b.writeln('- Do NOT rewrite, paraphrase, summarize, or change grammar/structure.');
+    b.writeln(
+      '- Do NOT rewrite, paraphrase, summarize, or change grammar/structure.',
+    );
     b.writeln('- Keep punctuation/casing as-is as much as possible.');
     b.writeln('- Output ONLY TSV lines, same count, same first 3 columns.');
     b.writeln('- If no obvious typos, return the text as it is.');
@@ -345,12 +363,14 @@ class _TranscribeTaskHandler extends TaskHandler {
 
   List<Map<String, dynamic>> _turnsToJson(List<LiteTurn> turns) {
     return turns
-        .map((t) => <String, dynamic>{
-              'speaker': t.speaker,
-              'startSec': t.startSec,
-              'endSec': t.endSec,
-              'text': t.text,
-            })
+        .map(
+          (t) => <String, dynamic>{
+            'speaker': t.speaker,
+            'startSec': t.startSec,
+            'endSec': t.endSec,
+            'text': t.text,
+          },
+        )
         .toList();
   }
 
@@ -388,8 +408,7 @@ class _TranscribeTaskHandler extends TaskHandler {
       if (s == 'true' || s == '1' || s == 'yes' || s == 'on') return true;
       if (s == 'false' || s == '0' || s == 'no' || s == 'off') return false;
     }
-    // if missing/unknown, default ON (but now it should never be missing)
-    return true;
+    return false;
   }
 
   @override
@@ -420,8 +439,9 @@ class _TranscribeTaskHandler extends TaskHandler {
     final langRaw = await FlutterForegroundTask.getData(
       key: BackgroundTranscriber._kLang,
     );
-    final String lang =
-        (langRaw is String && langRaw.trim().isNotEmpty) ? langRaw.trim() : 'auto';
+    final String lang = (langRaw is String && langRaw.trim().isNotEmpty)
+        ? langRaw.trim()
+        : 'auto';
 
     // ✅ ONLY source of truth inside task isolate (stored as int)
     final rawTypo = await FlutterForegroundTask.getData(
@@ -449,32 +469,35 @@ class _TranscribeTaskHandler extends TaskHandler {
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
         lang: lang,
-        onProgress: ({
-          required String stage,
-          required double processedSec,
-          required double totalSec,
-        }) async {
-          final pct = (totalSec > 0) ? (processedSec / totalSec * 100).round() : 0;
+        onProgress:
+            ({
+              required String stage,
+              required double processedSec,
+              required double totalSec,
+            }) async {
+              final pct = (totalSec > 0)
+                  ? (processedSec / totalSec * 100).round()
+                  : 0;
 
-          await FlutterForegroundTask.saveData(
-            key: BackgroundTranscriber._kProgressProcessedSec,
-            value: processedSec,
-          );
-          await FlutterForegroundTask.saveData(
-            key: BackgroundTranscriber._kProgressTotalSec,
-            value: totalSec,
-          );
-          await FlutterForegroundTask.saveData(
-            key: BackgroundTranscriber._kProgressStage,
-            value: stage,
-          );
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressProcessedSec,
+                value: processedSec,
+              );
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressTotalSec,
+                value: totalSec,
+              );
+              await FlutterForegroundTask.saveData(
+                key: BackgroundTranscriber._kProgressStage,
+                value: stage,
+              );
 
-          await FlutterForegroundTask.updateService(
-            notificationTitle: '$stage…',
-            notificationText:
-                '${_fmtMmSs(processedSec)} / ${_fmtMmSs(totalSec)}  ($pct%)',
-          );
-        },
+              await FlutterForegroundTask.updateService(
+                notificationTitle: '$stage…',
+                notificationText:
+                    '${_fmtMmSs(processedSec)} / ${_fmtMmSs(totalSec)}  ($pct%)',
+              );
+            },
       );
 
       Map<String, dynamic> payload = result.toJson();
@@ -485,13 +508,19 @@ class _TranscribeTaskHandler extends TaskHandler {
         if (modelPath != null) {
           final turns = _turnsFromResultJson(payload);
           if (turns.isNotEmpty) {
-            await _setStageNotification('Fixing typos', text: 'Fixing obvious typos…');
+            await _setStageNotification(
+              'Fixing typos',
+              text: 'Fixing obvious typos…',
+            );
             final fixedTurns = await _typoFixChunkTurnsIfPossible(
               modelPath: modelPath,
               turns: turns,
             );
             payload['turns'] = _turnsToJson(fixedTurns);
-            await _setStageNotification('Finalizing', text: 'Preparing result…');
+            await _setStageNotification(
+              'Finalizing',
+              text: 'Preparing result…',
+            );
           }
         }
       }
