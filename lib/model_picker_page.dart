@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:transcript/widgets/icon_pill_button.dart';
 
 import 'qwen_model_service.dart';
-import 'whisper_service.dart';
+import 'moonshine_service.dart';
 
 // ✅ Glass primitives (match your new system)
 import '../ui/glass/glass_card.dart';
@@ -21,7 +21,7 @@ class ModelPickerPage extends StatefulWidget {
 class _ModelPickerPageState extends State<ModelPickerPage> {
   String? _error;
 
-  // Qwen state
+  // Local model state
   final QwenModelService _qwenService = QwenModelService();
   ModelProgress _qwenProgress = ModelProgress.idle;
   bool _qwenDownloaded = false;
@@ -154,7 +154,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
 
             const SizedBox(height: 14),
 
-            // ---------- Qwen panel (glass) ----------
+      // ---------- Local model panel (glass) ----------
             GlassCard(
               variant: GlassCardVariant.panel,
               padding: const EdgeInsets.all(14),
@@ -186,7 +186,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Enyx Lite',
+                            'Local AI',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
@@ -195,7 +195,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Local LLM used for AI features.',
+                              'Local model used for AI features.',
                               style: TextStyle(
                                 color: muted,
                                 fontWeight: FontWeight.w600,

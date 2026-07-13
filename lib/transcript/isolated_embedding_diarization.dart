@@ -7,6 +7,8 @@ import 'package:sherpa_onnx/sherpa_onnx.dart';
 import '../audio_utils.dart';
 import 'isolated_speaker_matcher.dart';
 
+const bool _kDiarVerbose = false;
+
 /// Serializable turn structure for isolate communication
 class IsolatedEmbeddingTurn {
   final String speaker;
@@ -316,7 +318,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         }
       }
 
-      if (kDebugMode) {
+      if (kDebugMode && _kDiarVerbose) {
         debugPrint(
           '[DIA] win#$winIndex ${(a / fs).toStringAsFixed(2)}–${(b / fs).toStringAsFixed(2)} '
           'best=${best.toStringAsFixed(3)} bestCid=${bestC?.id} cur=$currentCid clusters=${clusters.length} '
@@ -332,7 +334,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         clusters.add(_IsolatedCluster(candidateCid, v));
         pendingNewCount = 0;
         pendingNewEmb = null;
-        if (kDebugMode) {
+        if (kDebugMode && _kDiarVerbose) {
           debugPrint(
               '[DIA]   FIRST SPEAKER created cid=$candidateCid clustersNow=${clusters.length}');
         }
@@ -342,20 +344,20 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
         // ✅ stay hysteresis
         if (isStay && best >= (params.stayThreshold - params.stayHysteresis)) {
-          candidateCid = currentCid!;
+          candidateCid = currentCid;
           pendingNewCount = 0;
           pendingNewEmb = null;
-          if (kDebugMode) {
+          if (kDebugMode && _kDiarVerbose) {
             debugPrint(
                 '[DIA]   STAY-HYSTERESIS -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})');
           }
         } else if (best >= th) {
           // normal match
-          if (best >= th + 0.05) bestC.update(v);
-          candidateCid = bestC.id;
+        if (best >= th + 0.05) bestC.update(v);
+        candidateCid = bestC.id;
           pendingNewCount = 0;
           pendingNewEmb = null;
-          if (kDebugMode) {
+          if (kDebugMode && _kDiarVerbose) {
             debugPrint(
               '[DIA]   MATCH -> cid=$candidateCid (best=${best.toStringAsFixed(3)} >= th=${th.toStringAsFixed(3)})',
             );
@@ -367,7 +369,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
             pendingNewCount++;
             pendingNewEmb = v;
 
-            if (kDebugMode) {
+            if (kDebugMode && _kDiarVerbose) {
               debugPrint(
                 '[DIA]   maybe NEW (best=${best.toStringAsFixed(3)} < floor=${params.newSpeakerFloor}) '
                 'pendingNew=$pendingNewCount/${params.newSpeakerConfirmWindows}',
@@ -376,17 +378,17 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
             if (pendingNewCount >= params.newSpeakerConfirmWindows) {
               candidateCid = nextId++;
-              clusters.add(_IsolatedCluster(candidateCid, pendingNewEmb!));
+              clusters.add(_IsolatedCluster(candidateCid, pendingNewEmb));
               pendingNewCount = 0;
               pendingNewEmb = null;
 
-              if (kDebugMode) {
+              if (kDebugMode && _kDiarVerbose) {
                 debugPrint(
                     '[DIA]   NEW SPEAKER CONFIRMED -> created cid=$candidateCid clustersNow=${clusters.length}');
               }
             } else {
               candidateCid = bestC.id; // until confirmed, stick to closest
-              if (kDebugMode) {
+              if (kDebugMode && _kDiarVerbose) {
                 debugPrint(
                     '[DIA]   NEW NOT CONFIRMED -> keep closest cid=$candidateCid');
               }
@@ -395,7 +397,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
             candidateCid = bestC.id;
             pendingNewCount = 0;
             pendingNewEmb = null;
-            if (kDebugMode) {
+            if (kDebugMode && _kDiarVerbose) {
               debugPrint(
                   '[DIA]   NO-MATCH but CLOSE/CAP -> keep cid=$candidateCid (best=${best.toStringAsFixed(3)})');
             }
@@ -408,11 +410,11 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         currentCid = candidateCid;
         pendingCid = null;
         pendingCount = 0;
-        if (kDebugMode) debugPrint('[DIA]   set currentCid=$currentCid (initial)');
+        if (kDebugMode && _kDiarVerbose) debugPrint('[DIA]   set currentCid=$currentCid (initial)');
       } else if (candidateCid == currentCid) {
         pendingCid = null;
         pendingCount = 0;
-        if (kDebugMode) debugPrint('[DIA]   stay on cid=$currentCid (reset pending)');
+        if (kDebugMode && _kDiarVerbose) debugPrint('[DIA]   stay on cid=$currentCid (reset pending)');
       } else {
         if (pendingCid == candidateCid) {
           pendingCount++;
@@ -421,7 +423,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
           pendingCount = 1;
         }
 
-        if (kDebugMode) {
+        if (kDebugMode && _kDiarVerbose) {
           debugPrint(
               '[DIA]   switch pending to cid=$candidateCid count=$pendingCount/${params.switchConfirmWindows}');
         }
@@ -430,15 +432,15 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
           currentCid = candidateCid;
           pendingCid = null;
           pendingCount = 0;
-          if (kDebugMode) debugPrint('[DIA]   SWITCH CONFIRMED -> currentCid=$currentCid');
+          if (kDebugMode && _kDiarVerbose) debugPrint('[DIA]   SWITCH CONFIRMED -> currentCid=$currentCid');
         } else {
           candidateCid = currentCid; // keep current until confirmed
-          if (kDebugMode) debugPrint('[DIA]   SWITCH NOT CONFIRMED -> stick cid=$currentCid');
+          if (kDebugMode && _kDiarVerbose) debugPrint('[DIA]   SWITCH NOT CONFIRMED -> stick cid=$currentCid');
         }
       }
 
-      assigns.add((a: a, b: b, cid: currentCid!, emb: v));
-      if (kDebugMode) {
+      assigns.add((a: a, b: b, cid: currentCid, emb: v));
+      if (kDebugMode && _kDiarVerbose) {
         debugPrint(
           '[DIA]   ASSIGN final cid=$currentCid t=${(a / fs).toStringAsFixed(2)}–${(b / fs).toStringAsFixed(2)}',
         );
@@ -451,7 +453,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     ext.free();
     // ── Release the ~115 MB samples array – only assigns is needed now ──
     samples = Float32List(0);
-    if (kDebugMode) debugPrint('[DIA] extractor freed, samples released');
+    if (kDebugMode && _kDiarVerbose) debugPrint('[DIA] extractor freed, samples released');
   }
 
   if (assigns.isEmpty) {
@@ -489,7 +491,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     talk[s.cid] = (talk[s.cid] ?? 0) + (s.b - s.a);
   }
 
-  if (kDebugMode) {
+  if (kDebugMode && _kDiarVerbose) {
     final parts = talk.entries
         .map((e) => '${e.key}:${(e.value / fs).toStringAsFixed(2)}s')
         .join(', ');
@@ -502,7 +504,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   talk.removeWhere((cid, samplesCount) => samplesCount < minTalkSamples);
   final allowedCids = talk.keys.toSet();
 
-  if (kDebugMode) {
+  if (kDebugMode && _kDiarVerbose) {
     debugPrint(
         '[DIA] allowedCids(minTalk=${params.minClusterTalkSec}s): ${allowedCids.toList()}');
   }
@@ -534,7 +536,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
       if (ca == null || cb == null) continue;
 
       final sim = IsolatedSpeakerMatcher.cosine(ca, cb);
-      if (kDebugMode) {
+      if (kDebugMode && _kDiarVerbose) {
         debugPrint(
           '[DIA] mergeCheck $aId vs $bId sim=${sim.toStringAsFixed(3)} th=${params.mergeClustersThreshold.toStringAsFixed(3)}',
         );
@@ -543,7 +545,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     }
   }
 
-  if (kDebugMode) {
+  if (kDebugMode && _kDiarVerbose) {
     final roots = clusterIds.map((c) => '$c->${find(c)}').join(', ');
     debugPrint('[DIA] unionRoots: $roots');
   }
@@ -573,7 +575,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     if (j > 0) {
       final prev = fixed.last;
       if (turn.a < prev.b) {
-        if (kDebugMode) {
+        if (kDebugMode && _kDiarVerbose) {
           debugPrint(
               '[DIA] overlapFix prevEnd=${prev.b.toStringAsFixed(2)} turnStart=${turn.a.toStringAsFixed(2)}');
         }
@@ -625,12 +627,12 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
       if (bestName != null && best >= params.matchThreshold) {
         diarToEnrolled[diarLab] = bestName!;
-        if (kDebugMode) {
+        if (kDebugMode && _kDiarVerbose) {
           debugPrint(
             '[DIA] MATCHED $diarLab -> $bestName sim=${best.toStringAsFixed(3)} th=${params.matchThreshold.toStringAsFixed(3)}',
           );
         }
-      } else if (kDebugMode) {
+      } else if (kDebugMode && _kDiarVerbose) {
         debugPrint(
             '[DIA] NO MATCH for $diarLab best=${best.toStringAsFixed(3)} th=${params.matchThreshold.toStringAsFixed(3)}');
       }
@@ -699,7 +701,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
       diarEmbs: diarEmbsCollapsed,
       diarToEnrolled: diarToEnrolled,
       target: params.targetSpeakers!,
-      debug: kDebugMode,
+      debug: kDebugMode && _kDiarVerbose,
     );
     mergedTurns = res.mergedTurns;
     // res.diarEmbs is available if you later want to log centroids, etc.
@@ -719,7 +721,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
       sortedSpeakers[i]: 'S${i + 1}',
   };
 
-  if (kDebugMode) debugPrint('[DIA] finalLabelMap: $finalLabelMap');
+  if (kDebugMode && _kDiarVerbose) debugPrint('[DIA] finalLabelMap: $finalLabelMap');
 
   final finalTurns = mergedTurns
       .where((t) => (t.b - t.a) >= params.minSegmentSec)
@@ -733,7 +735,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
     if (fl != null) finalMatches[fl] = enrolledName;
   });
 
-  if (kDebugMode) {
+  if (kDebugMode && _kDiarVerbose) {
     final speakersCount = finalTurns.map((t) => t.spk).toSet().length;
     debugPrint(
         '[DIA] DONE mergedTurns=${finalTurns.length} speakers=$speakersCount matches=$finalMatches');
@@ -824,8 +826,8 @@ _ForceCountResult _forceSpeakerCount({
     // Merge into the label with higher talk
     final durA = talk[bestA] ?? 0.0;
     final durB = talk[bestB] ?? 0.0;
-    final keep = (durA >= durB) ? bestA! : bestB!;
-    final drop = (keep == bestA) ? bestB! : bestA!;
+        final keep = (durA >= durB) ? bestA : bestB;
+        final drop = (keep == bestA) ? bestB : bestA;
 
     if (debug) {
       debugPrint(

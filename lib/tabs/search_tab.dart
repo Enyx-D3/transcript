@@ -296,50 +296,54 @@ class _SearchTabState extends State<SearchTab> {
                                       final sub =
                                           '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
 
-                                      return ListTile(
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 4,
-                                        ),
-                                        leading: const LeadingPillIcon(
-                                          icon: Icons.article_outlined,
-                                        ),
-                                        title: Text(
-                                          title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.92),
-                                            fontWeight: FontWeight.w700,
+                                      return Material(
+                                        color: Colors.transparent,
+                                        child: ListTile(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 4,
                                           ),
-                                        ),
-                                        subtitle: Text(
-                                          sub,
-                                          style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.65),
-                                            fontWeight: FontWeight.w600,
+                                          leading: const LeadingPillIcon(
+                                            icon: Icons.article_outlined,
                                           ),
-                                        ),
-                                        trailing: Icon(
-                                          Icons.chevron_right,
-                                          color:
-                                              Colors.white.withValues(alpha: 0.55),
-                                        ),
-                                        onTap: () async {
-                                          _unfocus();
-                                          await Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  TranscriptDetailPage(
-                                                transcriptId: t.id,
-                                              ),
+                                          title: Text(
+                                            title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.92),
+                                              fontWeight: FontWeight.w700,
                                             ),
-                                          );
-                                          _unfocus();
-                                        },
+                                          ),
+                                          subtitle: Text(
+                                            sub,
+                                            style: TextStyle(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.65),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          trailing: Icon(
+                                            Icons.chevron_right,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.55,
+                                            ),
+                                          ),
+                                          onTap: () async {
+                                            _unfocus();
+                                            await Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    TranscriptDetailPage(
+                                                  transcriptId: t.id,
+                                                ),
+                                              ),
+                                            );
+                                            _unfocus();
+                                          },
+                                        ),
                                       );
                                     },
                                   ),

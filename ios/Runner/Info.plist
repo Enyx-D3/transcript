@@ -43,7 +43,35 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.909295591544-63ecikvdsnml3bof1339hrkp63lgad42</string>
+			</array>
+		</dict>
+	</array>
+	<key>GIDClientID</key>
+	<string>909295591544-63ecikvdsnml3bof1339hrkp63lgad42.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>909295591544-bd2add2ghl48rcdpr789rhkc6h2d5j33.apps.googleusercontent.com</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Transcript needs microphone access to record meetings and create transcripts.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to the photo library to save or import media files.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>This app needs speech recognition to provide accurate transcriptions.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIRequiresFullScreen</key>
 	<true/>
 </dict>
 </plist>

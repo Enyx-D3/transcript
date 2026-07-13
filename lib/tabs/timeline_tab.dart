@@ -27,7 +27,7 @@ import '../transcript/youtube_saved_detail_page.dart';
 import '../qwen_model_service.dart';
 
 // ✅ ModelProgress type
-import '../whisper_service.dart' show ModelProgress;
+import '../moonshine_service.dart' show ModelProgress;
 import '../paywall/paywall_page.dart';
 
 import '../rate/rate_gate.dart';
@@ -220,26 +220,29 @@ class _TimelineTabState extends State<TimelineTab> {
           IconData ic,
         ) {
           final selected = _sort == v;
-          return ListTile(
-            leading: Icon(ic, color: Colors.white.withValues(alpha: 0.86)),
-            title: Text(
-              title,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
-                fontWeight: FontWeight.w600,
+          return Material(
+            color: Colors.transparent,
+            child: ListTile(
+              leading: Icon(ic, color: Colors.white.withValues(alpha: 0.86)),
+              title: Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.92),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            subtitle: Text(
-              subtitle,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.70),
-                fontWeight: FontWeight.w600,
+              subtitle: Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.70),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              trailing: selected
+                  ? Icon(Icons.check, color: Colors.white.withValues(alpha: 0.92))
+                  : null,
+              onTap: () => Navigator.of(ctx).pop(v),
             ),
-            trailing: selected
-                ? Icon(Icons.check, color: Colors.white.withValues(alpha: 0.92))
-                : null,
-            onTap: () => Navigator.of(ctx).pop(v),
           );
         }
 
@@ -1022,90 +1025,93 @@ class _TimelineTabState extends State<TimelineTab> {
             ? _fmtDate(t.createdAt)
             : '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
 
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 4,
-          ),
-          leading: LeadingPillIcon(icon: leadingIcon),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              if (tag != null) ...[const SizedBox(width: 8), tag],
-            ],
-          ),
-          subtitle: Text(
-            sub,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.70),
-              fontWeight: FontWeight.w600,
+        return Material(
+          color: Colors.transparent,
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 4,
             ),
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: t.isFavourite ? 'Unfavourite' : 'Favourite',
-                icon: Icon(
-                  t.isFavourite ? Icons.favorite : Icons.favorite_border,
-                  color: Colors.white.withValues(
-                    alpha: t.isFavourite ? 0.92 : 0.72,
+            leading: LeadingPillIcon(icon: leadingIcon),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                onPressed: () => _toggleFavourite(t),
+                if (tag != null) ...[const SizedBox(width: 8), tag],
+              ],
+            ),
+            subtitle: Text(
+              sub,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.70),
+                fontWeight: FontWeight.w600,
               ),
-              IconButton(
-                tooltip: 'Delete',
-                icon: Icon(
-                  Icons.delete_outline,
-                  color: Colors.white.withValues(alpha: 0.62),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: t.isFavourite ? 'Unfavourite' : 'Favourite',
+                  icon: Icon(
+                    t.isFavourite ? Icons.favorite : Icons.favorite_border,
+                    color: Colors.white.withValues(
+                      alpha: t.isFavourite ? 0.92 : 0.72,
+                    ),
+                  ),
+                  onPressed: () => _toggleFavourite(t),
                 ),
-                onPressed: () async => _onDeletePressed(t),
-              ),
-            ],
-          ),
-          onTap: () async {
-            _unfocus();
+                IconButton(
+                  tooltip: 'Delete',
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: Colors.white.withValues(alpha: 0.62),
+                  ),
+                  onPressed: () async => _onDeletePressed(t),
+                ),
+              ],
+            ),
+            onTap: () async {
+              _unfocus();
 
-            if (isYoutube) {
-              final metaId = t.youtubeMetaId;
-              if (metaId == null) {
-                if (!mounted || _disposed) return;
-                await AppFlushbar.success(
-                  context,
-                  message: 'Missing YouTube transcript reference',
+              if (isYoutube) {
+                final metaId = t.youtubeMetaId;
+                if (metaId == null) {
+                  if (!mounted || _disposed) return;
+                  await AppFlushbar.success(
+                    context,
+                    message: 'Missing YouTube transcript reference',
+                  );
+                  return;
+                }
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => YoutubeSavedTranscriptPage(
+                      transcriptId: t.id,
+                      youtubeMetaId: metaId,
+                    ),
+                  ),
                 );
-                return;
-              }
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => YoutubeSavedTranscriptPage(
-                    transcriptId: t.id,
-                    youtubeMetaId: metaId,
+              } else {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TranscriptDetailPage(transcriptId: t.id),
                   ),
-                ),
-              );
-            } else {
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => TranscriptDetailPage(transcriptId: t.id),
-                ),
-              );
-            }
+                );
+              }
 
-            _unfocus();
-            await _load();
-          },
+              _unfocus();
+              await _load();
+            },
+          ),
         );
       },
     );

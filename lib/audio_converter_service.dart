@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 /// Native audio converter service.
 /// 
 /// Uses platform-specific implementations to convert audio/video files
-/// to 16kHz mono PCM WAV format suitable for Whisper transcription.
+/// to 16kHz mono PCM WAV format suitable for local ASR transcription.
 class AudioConverterService {
   static const _channel = MethodChannel('com.enyxd.transcript/audio_converter');
 

@@ -1,4 +1,5 @@
 // lib/transcript/transcription_compute.dart
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -8,15 +9,16 @@ import 'package:transcript/debug/speaker_memory.dart';
 
 import '../audio_preprocess.dart';
 import '../audio_utils.dart';
+import '../llm_service.dart';
 import '../model_bootstrap.dart';
+import '../moonshine_service.dart';
+import '../qwen_model_service.dart';
 import '../speaker_embedding.dart';
-import '../whisper_service.dart';
+import 'sherpa_secondary_asr_service.dart';
+import 'transcript_alignment_service.dart';
 import 'transcription_models.dart';
 import 'isolated_embedding_diarization.dart'
-    show
-        runEmbeddingDiarizationInIsolate,
-        EnhancedDiarizationResult,
-        IsolatedEmbeddingTurn;
+    show runEmbeddingDiarizationInIsolate, IsolatedEmbeddingTurn;
 
 typedef ProgressCallback =
     void Function({
@@ -25,6 +27,19 @@ typedef ProgressCallback =
       required double totalSec,
     });
 
+String _logTs() => DateTime.now().toIso8601String();
+
+void _pipelineLog(String step, String message) {
+  debugPrint('[${_logTs()}][BG-PIPELINE][$step] $message');
+}
+
+void _pipelineError(String step, Object error, [StackTrace? st]) {
+  _pipelineLog(step, 'ERROR: $error');
+  if (st != null) {
+    debugPrint('$st');
+  }
+}
+
 // ---------------- Internal merged turn structure ----------------
 
 class _Turn {
@@ -32,6 +47,50 @@ class _Turn {
   final double a; // startSec
   final double b; // endSec
   _Turn(this.spk, this.a, this.b);
+}
+
+class _PreparedSegment {
+  final int blockId;
+  final IsolatedEmbeddingTurn turn;
+  final String slicePath;
+  final String speakerLabel;
+  final SpeakerTurnDetail speakerDetail;
+
+  const _PreparedSegment({
+    required this.blockId,
+    required this.turn,
+    required this.slicePath,
+    required this.speakerLabel,
+    required this.speakerDetail,
+  });
+}
+
+List<IsolatedEmbeddingTurn> _splitLongTurns(
+  List<IsolatedEmbeddingTurn> turns, {
+  double maxSegmentSec = 29.5,
+}) {
+  final out = <IsolatedEmbeddingTurn>[];
+  for (final turn in turns) {
+    final duration = turn.endSec - turn.startSec;
+    if (duration <= maxSegmentSec) {
+      out.add(turn);
+      continue;
+    }
+
+    double start = turn.startSec;
+    while (start < turn.endSec) {
+      final end = math.min(turn.endSec, start + maxSegmentSec);
+      out.add(
+        IsolatedEmbeddingTurn(
+          speaker: turn.speaker,
+          startSec: start,
+          endSec: end,
+        ),
+      );
+      start = end;
+    }
+  }
+  return out;
 }
 
 /// Merge consecutive segments for the same speaker if the gap between them
@@ -53,6 +112,110 @@ List<_Turn> _mergeGapAwareTurns(List<_Turn> segs, {double maxGap = 0.4}) {
   }
   out.add(cur);
   return out;
+}
+
+Future<({
+  List<IsolatedEmbeddingTurn> turns,
+  Map<String, String> speakerMatches,
+})> _runDiarizationPipeline({
+  required String wavPath,
+  required double duration,
+  required bool useIsolatedDiarization,
+  required bool matchWithEnrolledSpeakers,
+  required bool diarEnabled,
+  required int? targetSpeakers,
+}) async {
+  final speakerMatches = <String, String>{};
+  List<IsolatedEmbeddingTurn> diarizationTurns = [];
+
+  if (!diarEnabled) {
+    return (
+      turns: [IsolatedEmbeddingTurn(speaker: 'S1', startSec: 0.0, endSec: duration)],
+      speakerMatches: speakerMatches,
+    );
+  }
+
+  final mp = await ensureDiarizationModels();
+
+  if (useIsolatedDiarization) {
+    try {
+      Map<String, List<List<double>>> speakerMemoryData = {};
+      if (matchWithEnrolledSpeakers) {
+        try {
+          final memory = await SpeakerMemory.instance();
+          final allSpeakers = memory.dumpAll();
+          allSpeakers.forEach((name, embeddings) {
+            speakerMemoryData[name] = embeddings.map((emb) => emb.toList()).toList();
+          });
+        } catch (e) {
+          _pipelineError('Diarization', e);
+        }
+      }
+
+      final enhancedResult = await runEmbeddingDiarizationInIsolate(
+        wavPath: wavPath,
+        durationSec: duration,
+        embOnnxPath: mp.embOnnx,
+        windowSec: 2.5,
+        hopSec: 1.25,
+        stayThreshold: 0.68,
+        switchThreshold: 0.80,
+        switchConfirmWindows: 3,
+        mergeClustersThreshold: 0.86,
+        minClusterTalkSec: 2.5,
+        minSegmentSec: 0.8,
+        maxSpeakersCap: 8,
+        targetSpeakers: targetSpeakers,
+        matchSpeakers: matchWithEnrolledSpeakers,
+        matchThreshold: 0.67,
+        speakerMemoryData: speakerMemoryData,
+      );
+      diarizationTurns = enhancedResult.turns;
+      speakerMatches.addAll(enhancedResult.speakerMatches);
+    } catch (e, st) {
+      _pipelineError('Diarization', e, st);
+    }
+  }
+
+  if (diarizationTurns.isEmpty) {
+    try {
+      final emb = await SpeakerEmbedder.instance(mp.embOnnx);
+      final merged = await _diarizeByEmbeddings(
+        wavPath: wavPath,
+        durationSec: duration,
+        emb: emb,
+        windowSec: 2.5,
+        hopSec: 1.25,
+        stayThreshold: 0.68,
+        switchThreshold: 0.80,
+        switchConfirmWindows: 3,
+        mergeClustersThreshold: 0.86,
+        minClusterTalkSec: 2.5,
+        minSegmentSec: 0.8,
+        maxSpeakersCap: 8,
+      );
+
+      diarizationTurns = merged
+          .map(
+            (t) => IsolatedEmbeddingTurn(
+              speaker: t.spk,
+              startSec: t.a,
+              endSec: t.b,
+            ),
+          )
+          .toList();
+    } catch (e, st) {
+      _pipelineError('Diarization', e, st);
+    }
+  }
+
+  if (diarizationTurns.isEmpty) {
+    diarizationTurns = [
+      IsolatedEmbeddingTurn(speaker: 'S1', startSec: 0.0, endSec: duration),
+    ];
+  }
+
+  return (turns: diarizationTurns, speakerMatches: speakerMatches);
 }
 
 // ---------------- Embedding-only diarization (non-isolated version) ----------------
@@ -111,7 +274,7 @@ bool _isSilent(Float32List samples, int a, int b, {double rmsThresh = 0.008}) {
 
 /// Offline diarization by embeddings + online clustering.
 /// No fixed num speakers required.
-Future<List<_Turn>> diarizeByEmbeddings({
+Future<List<_Turn>> _diarizeByEmbeddings({
   required String wavPath,
   required double durationSec,
   required SpeakerEmbedder emb,
@@ -196,15 +359,9 @@ Future<List<_Turn>> diarizeByEmbeddings({
 
         if (best > newSpeakerFloor || clusters.length >= maxSpeakersCap) {
           candidateCid = bestC.id;
-          debugPrint(
-            '[Diarize] Low sim ($best), but sticking to closest speaker $candidateCid',
-          );
         } else {
           candidateCid = nextId++;
           clusters.add(_Cluster(candidateCid, v));
-          debugPrint(
-            '[Diarize] Creating NEW speaker $candidateCid (sim: $best)',
-          );
         }
       }
     } else {
@@ -283,7 +440,6 @@ Future<List<_Turn>> diarizeByEmbeddings({
       final sim = _cosine(centroidMap[aId]!, centroidMap[bId]!);
 
       if (sim >= mergeClustersThreshold) {
-        debugPrint('[Diarize] Merging clusters $aId and $bId (sim: $sim)');
         unite(aId, bId);
       }
     }
@@ -335,12 +491,78 @@ Future<List<_Turn>> diarizeByEmbeddings({
   return _mergeGapAwareTurns(finalTurns, maxGap: 0.4);
 }
 
-// Local service for this isolate
-final _whisper = WhisperService();
-
+// Local services for this isolate
+final _moonshineAsr = MoonshineService();
+final _secondaryAsr = SherpaSecondaryAsrService();
+final _qwenService = QwenModelService();
+const _alignmentService = TranscriptAlignmentService();
 // ✅ SharedPreferences keys (must match SettingsPage)
 const String _kPrefTranslateToEnglish = 'pref_translate_to_english';
 const String _kPrefDiarizationEnabled = 'pref_diarization_enabled';
+
+String _cleanModelOutput(String s) {
+  var out = s.trim();
+  out = out.replaceAll('<|im_end|>', '');
+  out = out.replaceAll('<|im_start|>assistant', '');
+  out = out.replaceAll('<|im_start|>', '');
+  if (out.toLowerCase().startsWith('answer:')) {
+    out = out.substring('answer:'.length).trim();
+  }
+  return out.trim();
+}
+
+String _fmtPromptSec(double sec) => sec.toStringAsFixed(2);
+
+String _rollingContext(List<TranscriptBlockSnapshot> blocks, {int take = 3}) {
+  final recent = blocks
+      .where((b) => b.displayText.trim().isNotEmpty)
+      .toList();
+  if (recent.isEmpty) return '';
+  final start = math.max(0, recent.length - take);
+  return recent
+      .sublist(start)
+      .map((b) => '${b.speakerLabel}: ${b.displayText}')
+      .join('\n');
+}
+
+Future<String> _runQwenFinalizer({
+  required String language,
+  required TranscriptBlockSnapshot block,
+  required String moonshineText,
+  required String sherpaText,
+  required String alignedCandidate,
+  required String speakerDetailsJson,
+  required String rollingContext,
+  required String modelPath,
+  required List<String> knownNames,
+  required List<String> knownTerms,
+}) async {
+  String latest = '';
+  await for (final event in LLMService.finalizeTranscriptBlock(
+    language: language,
+    blockId: block.blockId.toString(),
+    timeStart: _fmtPromptSec(block.startSec),
+    timeEnd: _fmtPromptSec(block.endSec),
+    speakerHint: block.speakerLabel,
+    knownNames: knownNames,
+    knownTerms: knownTerms,
+    moonshineText: moonshineText,
+    sherpaText: sherpaText,
+    alignedCandidate: alignedCandidate,
+    speakerDetailsJson: speakerDetailsJson,
+    rollingContext: rollingContext,
+    modelPath: modelPath,
+    maxTokens: 160,
+    contextSize: 4096,
+    numGpuLayers: 0,
+  )) {
+    final full = (event['full_text'] ?? '').toString();
+    if (full.trim().isNotEmpty) {
+      latest = full;
+    }
+  }
+  return _cleanModelOutput(latest);
+}
 
 // ---------------- Core compute-only pipeline ----------------
 
@@ -356,7 +578,10 @@ Future<TranscriptionResult> transcribeToResult({
     required String stage,
     required double processedSec,
     required double totalSec,
-  })? onProgress,
+  })?
+  onProgress,
+  Future<void> Function(TranscriptBlockSnapshot block)? onBlockUpdated,
+  Future<void> Function(String stage)? onStageCompleted,
 }) async {
   Future<void> emit(String stage, double processedSec, double totalSec) async {
     try {
@@ -392,207 +617,45 @@ Future<TranscriptionResult> transcribeToResult({
 
   await emit('Preparing', 0.0, duration);
 
-  final modelName = _whisper.currentModel?.name ?? 'whisper';
-
   final normalizedLang = (lang.trim().isEmpty ? 'auto' : lang.trim());
   final resultLang = translate ? 'en' : normalizedLang;
 
-  // If diarization OFF => single pass
-  if (!diarEnabled) {
-    debugPrint('[BG-PIPELINE] Diarization disabled. Single-pass transcription.');
-
-    await emit('Transcribing', 0.0, duration);
-
-    final text = await _whisper.transcribeWav(
-      wavPath: cleaned,
-      translateToEnglish: translate,
-      diarize: false,
-      noTimestamps: false,
-      splitOnWord: true,
-      lang: resultLang,
-    );
-
-    await emit('Finalizing', duration, duration);
-
-    final baseTitle = text.trim();
-    final title = (titleHint != null && titleHint.trim().isNotEmpty)
-        ? titleHint.trim()
-        : (baseTitle.isEmpty
-            ? null
-            : (baseTitle.length > 48 ? '${baseTitle.substring(0, 48)}…' : baseTitle));
-
-    return TranscriptionResult(
-      model: modelName,
-      lang: resultLang,
-      durationSec: duration,
-      title: title,
-      turns: [LiteTurn('S1', 0.0, duration, text.trim())],
-    );
-  }
-
-  // 1) Diarization
   await emit('Diarizing', 0.0, duration);
+  _pipelineLog('Diarization', 'Started for ${duration.toStringAsFixed(2)}s audio');
+  final diarizationResult = await _runDiarizationPipeline(
+    wavPath: cleaned,
+    duration: duration,
+    useIsolatedDiarization: useIsolatedDiarization,
+    matchWithEnrolledSpeakers: matchWithEnrolledSpeakers,
+    diarEnabled: diarEnabled,
+    targetSpeakers: targetSpeakers,
+  );
+  final speakerMatches = diarizationResult.speakerMatches;
+  final diarizationTurns = _splitLongTurns(diarizationResult.turns);
+  final turns = diarizationTurns;
 
-  final mp = await ensureDiarizationModels();
-
-  List<IsolatedEmbeddingTurn> diarizationTurns = [];
-  Map<String, String> speakerMatches = {};
-
-  if (useIsolatedDiarization) {
-    debugPrint('[BG-PIPELINE] Enhanced diarization start...');
-    debugPrint('[BG-PIPELINE] Starting enhanced diarization with speaker matching...');
-    //onProgress?.call(0, 1, 'Analyzing speakers');
-
-    try {
-      Map<String, List<List<double>>> speakerMemoryData = {};
-      if (matchWithEnrolledSpeakers) {
-        try {
-          final memory = await SpeakerMemory.instance();
-          final allSpeakers = memory.dumpAll();
-          allSpeakers.forEach((name, embeddings) {
-            speakerMemoryData[name] =
-                embeddings.map((emb) => emb.toList()).toList();
-          });
-        } catch (e) {
-          debugPrint('[BG-PIPELINE] Speaker memory load failed: $e');
-        }
-      }
-
-      final EnhancedDiarizationResult enhancedResult =
-          await runEmbeddingDiarizationInIsolate(
-        wavPath: cleaned,
-        durationSec: duration,
-        embOnnxPath: mp.embOnnx,
-        windowSec: 2.5,
-        hopSec: 1.25,
-        stayThreshold: 0.68,
-        switchThreshold: 0.80,
-        switchConfirmWindows: 3,
-        mergeClustersThreshold: 0.86,
-        minClusterTalkSec: 2.5,
-        minSegmentSec: 0.8,
-        maxSpeakersCap: 8,
-        targetSpeakers: targetSpeakers,
-        matchSpeakers: matchWithEnrolledSpeakers,
-        matchThreshold: 0.67,
-        speakerMemoryData: speakerMemoryData,
-      );
-      speakerMemoryData = {}; // free enrolled embeddings
-
-      diarizationTurns = enhancedResult.turns;
-      speakerMatches = enhancedResult.speakerMatches;
-    } catch (e, st) {
-      debugPrint('[BG-PIPELINE] Enhanced diarization failed: $e');
-      debugPrint('$st');
-
-      final emb = await SpeakerEmbedder.instance(mp.embOnnx);
-      final merged = await diarizeByEmbeddings(
-        wavPath: cleaned,
-        durationSec: duration,
-        emb: emb,
-        windowSec: 2.5,
-        hopSec: 1.25,
-        stayThreshold: 0.68,
-        switchThreshold: 0.80,
-        switchConfirmWindows: 3,
-        mergeClustersThreshold: 0.86,
-        minClusterTalkSec: 2.5,
-        minSegmentSec: 0.8,
-        maxSpeakersCap: 8,
-      );
-
-      diarizationTurns = merged
-          .map((t) =>
-              IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b))
-          .toList();
-    }
-  } else {
-    final emb = await SpeakerEmbedder.instance(mp.embOnnx);
-    debugPrint('[BG-PIPELINE] In-thread diarization start...');
-
-    final merged = await diarizeByEmbeddings(
-      wavPath: cleaned,
-      durationSec: duration,
-      emb: emb,
-      windowSec: 2.5,
-      hopSec: 1.25,
-      stayThreshold: 0.68,
-      switchThreshold: 0.80,
-      switchConfirmWindows: 3,
-      mergeClustersThreshold: 0.86,
-      minClusterTalkSec: 2.5,
-      minSegmentSec: 0.8,
-      maxSpeakersCap: 8,
-    );
-
-    diarizationTurns = merged
-        .map((t) =>
-            IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b))
-        .toList();
-  }
-
-  final turns = diarizationTurns.map((t) {
-    final speakerName = matchWithEnrolledSpeakers
-        ? (speakerMatches[t.speaker] ?? t.speaker)
-        : t.speaker;
-    return LiteTurn(speakerName, t.startSec, t.endSec, '');
-  }).toList();
-
-  // If diarization produced nothing => single pass
-  if (turns.isEmpty) {
-    debugPrint('[BG-PIPELINE] No diarization segments. Single speaker fallback.');
-
-    await emit('Transcribing', 0.0, duration);
-
-    final text = await _whisper.transcribeWav(
-      wavPath: cleaned,
-      translateToEnglish: translate,
-      diarize: false,
-      noTimestamps: false,
-      splitOnWord: true,
-      lang: resultLang,
-    );
-
-    await emit('Finalizing', duration, duration);
-
-    final baseTitle = text.trim();
-    final title = (titleHint != null && titleHint.trim().isNotEmpty)
-        ? titleHint.trim()
-        : (baseTitle.isEmpty
-            ? null
-            : (baseTitle.length > 48 ? '${baseTitle.substring(0, 48)}…' : baseTitle));
-
-    return TranscriptionResult(
-      model: modelName,
-      lang: resultLang,
-      durationSec: duration,
-      title: title,
-      turns: [LiteTurn('S1', 0.0, duration, text.trim())],
-    );
-  }
-
-  debugPrint('[BG-PIPELINE] Transcribing ${turns.length} segments');
-  await emit('Transcribing', 0.0, duration);
-  debugPrint('[BG-PIPELINE] Starting transcription of ${turns.length} segments');
-  //onProgress?.call(0, turns.length, 'Transcribing');
-
-  final tmpDir = Directory(
-    '${Directory.systemTemp.path}/transcript_tmp_${DateTime.now().millisecondsSinceEpoch}',
-  )..createSync(recursive: true);
-
-  // Pre-parse WAV info once — avoids re-reading the header for every segment
+  final blocks = <TranscriptBlockSnapshot>[];
   final wavInfo = await parseWavInfo(cleaned);
+  final preparedSegments = <_PreparedSegment>[];
+  final speakerDetails = <SpeakerTurnDetail>[];
+  final knownNames = speakerMatches.values
+      .where((value) => value.trim().isNotEmpty)
+      .toSet()
+      .toList()
+    ..sort();
+  const knownTerms = <String>[];
 
-  final out = <LiteTurn>[];
+  _pipelineLog('Moonshine', 'Starting Moonshine ASR stage for ${turns.length} segments');
+  await emit('Moonshine', 0.0, duration);
+
   double processedSec = 0.0;
 
   for (int i = 0; i < turns.length; i++) {
     final turn = turns[i];
-
     if ((turn.endSec - turn.startSec) < 0.1) continue;
 
-    final slice = '${tmpDir.path}/slice_$i.wav';
-
+    final slice =
+        '${Directory.systemTemp.path}/transcript_segment_${DateTime.now().millisecondsSinceEpoch}_$i.wav';
     try {
       await trimWav16kMonoPcm(
         inputPath: cleaned,
@@ -602,32 +665,77 @@ Future<TranscriptionResult> transcribeToResult({
         preParsedInfo: wavInfo,
       );
 
-      final text = await _whisper.transcribeWav(
-        wavPath: slice,
-        translateToEnglish: translate,
-        diarize: false,
-        noTimestamps: false,
-        splitOnWord: true,
-        lang: resultLang,
-      );
+      final speakerLabel = matchWithEnrolledSpeakers
+          ? (speakerMatches[turn.speaker] ?? turn.speaker)
+          : turn.speaker;
 
-      final trimmedText = text.trim();
-      if (trimmedText.isNotEmpty) {
-        out.add(LiteTurn(turn.speaker, turn.startSec, turn.endSec, trimmedText));
+      final speakerDetail = SpeakerTurnDetail(
+        speakerId: turn.speaker,
+        speakerLabel: speakerLabel,
+        startSec: turn.startSec,
+        endSec: turn.endSec,
+        confidence: 0.78,
+        matchSource: speakerMatches.containsKey(turn.speaker)
+            ? 'speaker_memory'
+            : 'heuristic',
+        matchedName: speakerMatches[turn.speaker],
+        note: 'Dual ASR transcription.',
+      );
+      speakerDetails.add(speakerDetail);
+
+      final segment = _PreparedSegment(
+        blockId: i,
+        turn: turn,
+        slicePath: slice,
+        speakerLabel: speakerLabel,
+        speakerDetail: speakerDetail,
+      );
+      preparedSegments.add(segment);
+
+      final moonshineText = await _moonshineAsr.transcribeWav(
+        wavPath: slice,
+        lang: resultLang,
+        translateToEnglish: translate,
+        noTimestamps: false,
+      );
+      final moonshineDraft = moonshineText.trim();
+      if (moonshineDraft.isEmpty) {
+        continue;
+      }
+
+      final block = TranscriptBlockSnapshot(
+        meetingId: '0',
+        blockId: segment.blockId,
+        language: resultLang,
+        startSec: turn.startSec,
+        endSec: turn.endSec,
+        speakerId: turn.speaker,
+        speakerLabel: speakerLabel,
+        rawText: moonshineDraft,
+        alignedText: null,
+        finalText: null,
+        status: 'moonshine',
+        confidence: 0.74,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        speakerDetails: [speakerDetail],
+        metadata: {
+          'moonshineText': moonshineDraft,
+          'transcriptionSource': 'moonshine_primary',
+          'transcriptionStage': 'moonshine_draft',
+        },
+      );
+      blocks.add(block);
+
+      if (onBlockUpdated != null) {
+        await onBlockUpdated(block);
       }
     } catch (e, st) {
-      debugPrint('[BG-PIPELINE] Segment $i error: $e');
-      debugPrint('$st');
+      _pipelineError('Moonshine', e, st);
     } finally {
-      // ✅ Always advance based on audio covered
       processedSec = math.max(processedSec, turn.endSec);
-      await emit('Transcribing', processedSec, duration);
+      await emit('Moonshine', processedSec, duration);
 
-      try {
-        File(slice).deleteSync();
-      } catch (_) {}
-      
-      // Periodic memory relief - yield every 10 segments to allow GC
       if ((i + 1) % 10 == 0) {
         await Future.delayed(const Duration(milliseconds: 20));
       }
@@ -635,64 +743,226 @@ Future<TranscriptionResult> transcribeToResult({
   }
 
   try {
-    if (tmpDir.existsSync()) tmpDir.deleteSync(recursive: true);
+    if (onStageCompleted != null) {
+      await onStageCompleted('moonshine_complete');
+    }
   } catch (_) {}
 
-  // Clean up preprocessed temp WAV if different from input
-  if (cleaned != wavPath) {
+  _pipelineLog('Whisper', 'Starting secondary ASR stage for ${preparedSegments.length} segments');
+  await emit('Whisper', 0.0, duration);
+  processedSec = 0.0;
+
+  for (final segment in preparedSegments) {
     try {
-      File(cleaned).deleteSync();
+      final whisperText = await _secondaryAsr.transcribeWav(
+        wavPath: segment.slicePath,
+        lang: resultLang,
+        translateToEnglish: translate,
+        noTimestamps: false,
+      );
+      final sherpaText = whisperText.trim();
+      if (sherpaText.isEmpty) {
+        continue;
+      }
+
+      final blockIndex = blocks.indexWhere((b) => b.blockId == segment.blockId);
+      final existing = blockIndex >= 0 ? blocks[blockIndex] : null;
+      final moonshineText = (existing?.metadata['moonshineText'] ?? existing?.rawText ?? '')
+          .toString()
+          .trim();
+
+      final alignment = _alignmentService.alignBlock(
+        language: resultLang,
+        blockId: segment.blockId,
+        moonshineText: moonshineText,
+        sherpaText: sherpaText,
+        speakerHint: segment.speakerLabel,
+        knownNames: knownNames,
+        knownTerms: knownTerms,
+      );
+
+      final nextBlock = (existing ??
+              TranscriptBlockSnapshot(
+                meetingId: '0',
+                blockId: segment.blockId,
+                language: resultLang,
+                startSec: segment.turn.startSec,
+                endSec: segment.turn.endSec,
+                speakerId: segment.turn.speaker,
+                speakerLabel: segment.speakerLabel,
+                rawText: moonshineText.isNotEmpty ? moonshineText : sherpaText,
+                alignedText: null,
+                finalText: null,
+                status: 'moonshine',
+                confidence: 0.72,
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+                speakerDetails: [segment.speakerDetail],
+                metadata: const {},
+              ))
+          .copyWith(
+            rawText: moonshineText.isNotEmpty ? moonshineText : sherpaText,
+            alignedText: alignment.alignedText.trim().isEmpty
+                ? sherpaText
+                : alignment.alignedText.trim(),
+            finalText: null,
+            status: 'aligned',
+            confidence: alignment.confidence,
+            updatedAt: DateTime.now(),
+            metadata: {
+              ...?existing?.metadata,
+              'moonshineText': moonshineText,
+              'whisperText': sherpaText,
+              'alignedCandidate': alignment.alignedText,
+              'alignmentConfidence': alignment.confidence,
+              'disagreementSpans': alignment.disagreementSpans,
+              'uncertainWords': alignment.uncertainWords,
+              'transcriptionSource': 'dual_asr',
+              'transcriptionStage': 'whisper_aligned',
+            },
+          );
+
+      if (blockIndex >= 0) {
+        blocks[blockIndex] = nextBlock;
+      } else {
+        blocks.add(nextBlock);
+        blocks.sort((a, b) => a.blockId.compareTo(b.blockId));
+      }
+
+      if (onBlockUpdated != null) {
+        await onBlockUpdated(nextBlock);
+      }
+    } catch (e, st) {
+      _pipelineError('Whisper', e, st);
+    } finally {
+      processedSec = math.max(processedSec, segment.turn.endSec);
+      await emit('Whisper', processedSec, duration);
+    }
+  }
+
+  _secondaryAsr.dispose();
+
+  try {
+    if (onStageCompleted != null) {
+      await onStageCompleted('whisper_complete');
+    }
+  } catch (_) {}
+
+  final hasQwenModel = await _qwenService.isModelDownloaded();
+  if (hasQwenModel && blocks.isNotEmpty) {
+    final qwenPath = await _qwenService.modelFilePath();
+    _pipelineLog('Qwen', 'Starting transcript finalizer for ${blocks.length} blocks');
+    await emit('Qwen', 0.0, duration);
+    processedSec = 0.0;
+
+    for (int i = 0; i < blocks.length; i++) {
+      final existing = blocks[i];
+      try {
+        final moonshineText = (existing.metadata['moonshineText'] ?? existing.rawText)
+            .toString();
+        final sherpaText = (existing.metadata['whisperText'] ?? existing.alignedText ?? '')
+            .toString();
+        final alignedCandidate = (existing.metadata['alignedCandidate'] ??
+                existing.alignedText ??
+                existing.displayText)
+            .toString();
+        final speakerDetailsJson = jsonEncode(
+          existing.speakerDetails.map((e) => e.toJson()).toList(),
+        );
+        final qwenText = await _runQwenFinalizer(
+          language: resultLang,
+          block: existing,
+          moonshineText: moonshineText,
+          sherpaText: sherpaText,
+          alignedCandidate: alignedCandidate,
+          speakerDetailsJson: speakerDetailsJson,
+          rollingContext: _rollingContext(blocks.sublist(0, i)),
+          modelPath: qwenPath,
+          knownNames: knownNames,
+          knownTerms: knownTerms,
+        );
+        if (qwenText.trim().isEmpty) {
+          continue;
+        }
+
+        final nextBlock = existing.copyWith(
+          finalText: qwenText.trim(),
+          status: 'finalized',
+          confidence: math.max(existing.confidence, 0.88),
+          updatedAt: DateTime.now(),
+          metadata: {
+            ...existing.metadata,
+            'qwenText': qwenText.trim(),
+            'transcriptionStage': 'qwen_finalized',
+            'transcriptionSource': 'qwen_finalizer',
+          },
+        );
+        blocks[i] = nextBlock;
+
+        if (onBlockUpdated != null) {
+          await onBlockUpdated(nextBlock);
+        }
+      } catch (e, st) {
+        _pipelineError('Qwen', e, st);
+      } finally {
+        processedSec = math.max(processedSec, existing.endSec);
+        await emit('Qwen', processedSec, duration);
+      }
+    }
+
+    try {
+      if (onStageCompleted != null) {
+        await onStageCompleted('qwen_complete');
+      }
     } catch (_) {}
   }
 
-  final nonEmpty = out.where((t) => t.text.trim().isNotEmpty).toList();
-  await emit('Finalizing', duration, duration);
-
-  if (nonEmpty.isEmpty) {
-    final title =
-        (titleHint != null && titleHint.trim().isNotEmpty) ? titleHint.trim() : null;
-
-    return TranscriptionResult(
-      model: modelName,
-      lang: resultLang,
-      durationSec: duration,
-      title: title,
-      turns: const [],
-    );
-  }
-
-  // Re-merge consecutive turns with same speaker
-  final mergedTurns = <LiteTurn>[];
-  LiteTurn? cur;
-  for (final t in nonEmpty) {
-    if (cur == null) {
-      cur = t;
-      continue;
-    }
-    final gap = t.startSec - cur.endSec;
-    final same = t.speaker == cur.speaker;
-
-    if (same && gap >= -0.05 && gap <= 0.5) {
-      cur = LiteTurn(cur.speaker, cur.startSec, t.endSec, '${cur.text} ${t.text}'.trim());
-    } else {
-      mergedTurns.add(cur);
-      cur = t;
-    }
-  }
-  if (cur != null) mergedTurns.add(cur);
+  final mergedTurns = blocks
+      .where((block) => block.displayText.isNotEmpty)
+      .map(
+        (block) => LiteTurn(
+          block.speakerLabel,
+          block.startSec,
+          block.endSec,
+          block.displayText,
+        ),
+      )
+      .toList();
 
   final firstText = mergedTurns.isNotEmpty ? mergedTurns.first.text.trim() : '';
   final title = (titleHint != null && titleHint.trim().isNotEmpty)
       ? titleHint.trim()
       : (firstText.isEmpty
-          ? null
-          : (firstText.length > 48 ? '${firstText.substring(0, 48)}…' : firstText));
+            ? null
+            : (firstText.length > 48
+                  ? '${firstText.substring(0, 48)}…'
+                  : firstText));
+
+  await emit('Finalizing', duration, duration);
+  _pipelineLog(
+    'Done',
+    'Completed transcription with ${mergedTurns.length} turns and ${blocks.length} blocks',
+  );
+
+  for (final segment in preparedSegments) {
+    try {
+      File(segment.slicePath).deleteSync();
+    } catch (_) {}
+  }
+
+  try {
+    if (cleaned != wavPath) {
+      File(cleaned).deleteSync();
+    }
+  } catch (_) {}
 
   return TranscriptionResult(
-    model: modelName,
+    model: 'moonshine_whisper_qwen',
     lang: resultLang,
     durationSec: duration,
     title: title,
     turns: mergedTurns,
+    speakerDetails: speakerDetails,
+    blocks: blocks,
   );
 }

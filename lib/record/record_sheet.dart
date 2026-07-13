@@ -1,4 +1,5 @@
 // lib/record/record_sheet.dart
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../transcript/transcript_detail_page.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
 import '../transcript/background_transcriber.dart';
+import '../transcript/platform_transcription_runner.dart';
 
 // ✅ Glass primitives (same language as ImportAudioSheet)
 import '../ui/glass/liquid_glass.dart';
@@ -370,79 +372,108 @@ class _RecordSheetState extends State<RecordSheet> {
     int? targetSpeakers,
     required String lang,
   }) async {
-    final placeholderDuration = (_seconds.isFinite && _seconds >= 0)
-        ? _seconds
-        : 0.0;
-
-    final obx = ObjectBox.I;
-
-    final tId = obx.transcripts.put(
-      TranscriptEntity(
-        title: '',
-        model: 'whisper',
-        lang: lang,
-        audioPath: wavPath,
-        durationSec: placeholderDuration,
-        createdAt: DateTime.now(),
-      ),
-    );
-
-    final jobId = obx.jobs.put(
-      TranscriptionJobEntity(
-        wavPath: wavPath,
-        translateToEnglish: false,
-        titleHint: null,
-        transcriptId: tId,
-        status: 'PENDING',
-        createdAt: DateTime.now(),
-      ),
-    );
-
-    await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
-    await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: tId);
-
-    if (!mounted) return;
-
-    Navigator.of(context).pop();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TranscriptDetailPage(transcriptId: tId),
-      ),
-    );
-
     try {
-      final sp = await SharedPreferences.getInstance();
-      final typoFix = sp.getBool('pref_typo_fix_enabled') ?? false;
-      await BackgroundTranscriber.start(
-        wavPath: wavPath,
-        translateToEnglish: false,
-        titleHint: null,
-        existingTranscriptId: tId,
-        targetSpeakers: targetSpeakers,
-        lang: lang,
-        typoFixEnabled: typoFix,
+      if (!mounted) return;
+      setState(() => _starting = true);
+
+      final placeholderDuration = (_seconds.isFinite && _seconds >= 0)
+          ? _seconds
+          : 0.0;
+
+      final obx = ObjectBox.I;
+
+      final tId = obx.transcripts.put(
+        TranscriptEntity(
+          title: '',
+          model: 'moonshine',
+          lang: lang,
+          audioPath: wavPath,
+          durationSec: placeholderDuration,
+          createdAt: DateTime.now(),
+        ),
       );
 
-      final job = obx.jobs.get(jobId);
-      if (job != null && job.status == 'PENDING') {
-        job.status = 'RUNNING';
-        obx.jobs.put(job);
-      }
-    } catch (e) {
-      final job = obx.jobs.get(jobId);
-      if (job != null) {
-        job.status = 'ERROR';
-        job.error = 'Failed to start transcription.';
-        obx.jobs.put(job);
-      }
+      final jobId = obx.jobs.put(
+        TranscriptionJobEntity(
+          wavPath: wavPath,
+          translateToEnglish: false,
+          titleHint: null,
+          transcriptId: tId,
+          status: 'PENDING',
+          createdAt: DateTime.now(),
+        ),
+      );
+
       await FlutterForegroundTask.saveData(
         key: _kBusyTranscribing,
-        value: false,
+        value: true,
       );
-      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
+      await FlutterForegroundTask.saveData(
+        key: _kActiveTranscriptId,
+        value: tId,
+      );
 
       if (!mounted) return;
+
+      Navigator.of(context).pop();
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TranscriptDetailPage(transcriptId: tId),
+        ),
+      );
+
+      try {
+        if (PlatformTranscriptionRunner.usesForegroundRunner) {
+          await PlatformTranscriptionRunner.runForegroundExistingTranscript(
+            transcriptId: tId,
+            jobId: jobId,
+            wavPath: wavPath,
+            lang: lang,
+            targetSpeakers: targetSpeakers,
+          );
+        } else {
+          final sp = await SharedPreferences.getInstance();
+          final typoFix = sp.getBool('pref_typo_fix_enabled') ?? false;
+          await BackgroundTranscriber.start(
+            wavPath: wavPath,
+            translateToEnglish: false,
+            titleHint: null,
+            existingTranscriptId: tId,
+            targetSpeakers: targetSpeakers,
+            lang: lang,
+            typoFixEnabled: typoFix,
+          );
+
+          final job = obx.jobs.get(jobId);
+          if (job != null && job.status == 'PENDING') {
+            job.status = 'RUNNING';
+            obx.jobs.put(job);
+          }
+        }
+      } catch (e) {
+        final job = obx.jobs.get(jobId);
+        if (job != null) {
+          job.status = 'ERROR';
+          job.error = 'Failed to start transcription.';
+          obx.jobs.put(job);
+        }
+        await FlutterForegroundTask.saveData(
+          key: _kBusyTranscribing,
+          value: false,
+        );
+        await FlutterForegroundTask.saveData(
+          key: _kActiveTranscriptId,
+          value: 0,
+        );
+
+        if (!mounted) return;
+        await AppFlushbar.error(context, message: 'Processing Error: $e');
+      }
+    } catch (e) {
+      if (!mounted) return;
       await AppFlushbar.error(context, message: 'Processing Error: $e');
+    } finally {
+      if (mounted) setState(() => _starting = false);
     }
   }
 

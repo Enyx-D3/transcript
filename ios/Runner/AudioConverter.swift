@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 
 /// Native iOS audio converter using AVFoundation.
-/// Converts various audio/video formats to 16kHz mono PCM WAV for Whisper.
+/// Converts various audio/video formats to 16kHz mono PCM WAV for local ASR.
 /// Uses streaming to handle long audio files without running out of memory.
 class AudioConverter {
     

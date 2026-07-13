@@ -560,45 +560,48 @@ class _AccountTabState extends State<AccountTab> {
           return GlassCard(
             variant: GlassCardVariant.panel,
             padding: EdgeInsets.zero,
-            child: ListTile(
-              leading: Icon(icon, color: Colors.white.withValues(alpha: 0.90)),
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                leading: Icon(icon, color: Colors.white.withValues(alpha: 0.90)),
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white.withValues(alpha: 0.92),
+                        ),
+                      ),
+                    ),
+                    if (badge != null) ...[const SizedBox(width: 8), badge],
+                  ],
+                ),
+                subtitle: Text(
+                  subtitle,
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.70)),
+                ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      priceRight,
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         color: Colors.white.withValues(alpha: 0.92),
                       ),
                     ),
-                  ),
-                  if (badge != null) ...[const SizedBox(width: 8), badge],
-                ],
-              ),
-              subtitle: Text(
-                subtitle,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.70)),
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    priceRight,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white.withValues(alpha: 0.92),
+                    const SizedBox(height: 2),
+                    Icon(
+                      Icons.chevron_right,
+                      color: Colors.white.withValues(alpha: 0.70),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Icon(
-                    Icons.chevron_right,
-                    color: Colors.white.withValues(alpha: 0.70),
-                  ),
-                ],
+                  ],
+                ),
+                onTap: onTap,
               ),
-              onTap: onTap,
             ),
           );
         }

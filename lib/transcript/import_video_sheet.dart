@@ -13,6 +13,7 @@ import '../objectbox/entities.dart';
 import '../objectbox/objectbox_store.dart';
 
 import 'background_transcriber.dart';
+import 'platform_transcription_runner.dart';
 import 'transcript_detail_page.dart';
 
 // ✅ Glass primitives (same as ImportAudioSheet / RecordSheet)
@@ -20,7 +21,6 @@ import '../ui/glass/liquid_glass.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_divider.dart';
-
 
 class ImportVideoSheet extends StatefulWidget {
   const ImportVideoSheet({super.key});
@@ -34,7 +34,10 @@ class ImportVideoSheet extends StatefulWidget {
 
     final busy = busyFlag && running;
     if (busyFlag && !running) {
-      await FlutterForegroundTask.saveData(key: kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(
+        key: kBusyTranscribing,
+        value: false,
+      );
     }
 
     if (busy) {
@@ -78,8 +81,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
     'auto': 'Auto',
   };
 
-  final TextEditingController _targetSpeakersCtrl =
-      TextEditingController(text: '0');
+  final TextEditingController _targetSpeakersCtrl = TextEditingController(
+    text: '0',
+  );
 
   PlatformFile? _picked;
   String? _inputPathTemp;
@@ -250,7 +254,8 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
 
   Future<String> _extractAudioToWav16kMono(String inputVideoPath) async {
     final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}/recordings')..createSync(recursive: true);
+    final dir = Directory('${docs.path}/recordings')
+      ..createSync(recursive: true);
 
     final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
     final outPath = '${dir.path}/import_video_$ts.wav';
@@ -276,8 +281,6 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
     setState(() => _working = true);
 
     try {
-      await AppFlushbar.info(context, message: 'Extracting audio…');
-
       final inputPath = await _ensureReadableLocalPath(f);
       final wavPath = await _extractAudioToWav16kMono(inputPath);
 
@@ -288,7 +291,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
         durationSec = await readWavDuration(wavPath);
       } catch (_) {}
 
-      final lang = (_selectedLang.trim().isEmpty) ? 'auto' : _selectedLang.trim();
+      final lang = (_selectedLang.trim().isEmpty)
+          ? 'auto'
+          : _selectedLang.trim();
       final targetSpeakers = _parseTargetSpeakers();
 
       final obx = ObjectBox.I;
@@ -296,7 +301,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
       final tId = obx.transcripts.put(
         TranscriptEntity(
           title: '',
-          model: 'whisper',
+          model: 'moonshine',
           sourceType: 3, // ✅ VIDEO
           lang: lang,
           audioPath: wavPath,
@@ -316,8 +321,14 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
         ),
       );
 
-      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
-      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: tId);
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: true,
+      );
+      await FlutterForegroundTask.saveData(
+        key: _kActiveTranscriptId,
+        value: tId,
+      );
 
       if (!mounted) return;
 
@@ -329,20 +340,29 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
       );
 
       try {
-       
-        await BackgroundTranscriber.startFromPrefs(
-          wavPath: wavPath,
-          translateToEnglish: false,
-          titleHint: null,
-          existingTranscriptId: tId,
-          targetSpeakers: targetSpeakers,
-          lang: lang,
-        );
+        if (PlatformTranscriptionRunner.usesForegroundRunner) {
+          await PlatformTranscriptionRunner.runForegroundExistingTranscript(
+            transcriptId: tId,
+            jobId: jobId,
+            wavPath: wavPath,
+            lang: lang,
+            targetSpeakers: targetSpeakers,
+          );
+        } else {
+          await BackgroundTranscriber.startFromPrefs(
+            wavPath: wavPath,
+            translateToEnglish: false,
+            titleHint: null,
+            existingTranscriptId: tId,
+            targetSpeakers: targetSpeakers,
+            lang: lang,
+          );
 
-        final job = obx.jobs.get(jobId);
-        if (job != null && job.status == 'PENDING') {
-          job.status = 'RUNNING';
-          obx.jobs.put(job);
+          final job = obx.jobs.get(jobId);
+          if (job != null && job.status == 'PENDING') {
+            job.status = 'RUNNING';
+            obx.jobs.put(job);
+          }
         }
       } catch (_) {
         final job = obx.jobs.get(jobId);
@@ -355,15 +375,23 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
           key: _kBusyTranscribing,
           value: false,
         );
-        await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
+        await FlutterForegroundTask.saveData(
+          key: _kActiveTranscriptId,
+          value: 0,
+        );
 
         if (!mounted) return;
         await AppFlushbar.error(context, message: 'Processing failed!');
       }
     } catch (_) {
-      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: false,
+      );
       await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
-      if (mounted) await AppFlushbar.error(context, message: 'Processing failed!');
+      if (mounted) {
+        await AppFlushbar.error(context, message: 'Processing failed!');
+      }
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -401,7 +429,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
           children: [
             // ✅ match your preferred ImportAudioSheet backdrop (moderate blur)
             LiquidGlass(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               padding: EdgeInsets.zero,
               shadow: false,
               blurX: 9.0,
@@ -488,6 +518,7 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                   height: 1.28,
                                 ),
                               ),
+                              const SizedBox(height: 10),
                               if (selectedName != null) ...[
                                 const SizedBox(height: 12),
                                 Container(
@@ -499,7 +530,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                     color: Colors.white.withValues(alpha: 0.04),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(
-                                      color: Colors.white.withValues(alpha: 0.10),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.10,
+                                      ),
                                     ),
                                   ),
                                   child: Row(
@@ -507,12 +540,15 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                       Icon(
                                         Icons.video_file_outlined,
                                         size: 18,
-                                        color: Colors.white.withValues(alpha: 0.78),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.78,
+                                        ),
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               selectedName,
@@ -528,7 +564,8 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                               Text(
                                                 _fileMeta(_picked!),
                                                 style: TextStyle(
-                                                  color: Colors.white.withValues(alpha: 0.58),
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.58),
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.w600,
                                                 ),
@@ -560,7 +597,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                       icon: Icons.play_arrow_rounded,
                                       loading: _working,
                                       onPressed:
-                                          (_working || _picked == null) ? null : _start,
+                                          (_working || _picked == null)
+                                              ? null
+                                              : _start,
                                     ),
                                   ),
                                 ],
@@ -604,7 +643,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                     child: Text(
                                       'Language',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.72,
+                                        ),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -616,8 +657,8 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                       child: DropdownButtonFormField<String>(
                                         initialValue: _selectedLang,
                                         isDense: true,
-                                        iconEnabledColor:
-                                            Colors.white.withValues(alpha: 0.80),
+                                        iconEnabledColor: Colors.white
+                                            .withValues(alpha: 0.80),
                                         dropdownColor: const Color(0xFF0B0C10),
                                         items: _langOptions.entries
                                             .map(
@@ -625,10 +666,13 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                                 value: e.key,
                                                 child: Text(
                                                   e.value,
-                                                  overflow: TextOverflow.ellipsis,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                   style: TextStyle(
                                                     color: Colors.white
-                                                        .withValues(alpha: 0.92),
+                                                        .withValues(
+                                                          alpha: 0.92,
+                                                        ),
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
@@ -639,7 +683,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                             ? null
                                             : (v) {
                                                 if (v == null) return;
-                                                setState(() => _selectedLang = v);
+                                                setState(
+                                                  () => _selectedLang = v,
+                                                );
                                               },
                                         decoration: const InputDecoration(
                                           isDense: true,
@@ -663,7 +709,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                     child: Text(
                                       'Speaker diarization',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.72,
+                                        ),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -673,15 +721,18 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                     onChanged: _working
                                         ? null
                                         : (v) => setState(
-                                              () => _diarizationEnabled = v,
-                                            ),
+                                            () => _diarizationEnabled = v,
+                                          ),
                                     activeThumbColor: Colors.black,
-                                    activeTrackColor:
-                                        Colors.white.withValues(alpha: 0.55),
-                                    inactiveThumbColor:
-                                        Colors.white.withValues(alpha: 0.70),
-                                    inactiveTrackColor:
-                                        Colors.white.withValues(alpha: 0.18),
+                                    activeTrackColor: Colors.white.withValues(
+                                      alpha: 0.55,
+                                    ),
+                                    inactiveThumbColor: Colors.white.withValues(
+                                      alpha: 0.70,
+                                    ),
+                                    inactiveTrackColor: Colors.white.withValues(
+                                      alpha: 0.18,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -694,7 +745,9 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                       child: Text(
                                         'Target speakers',
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.72),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.72,
+                                          ),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -703,14 +756,16 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                       width: 120,
                                       child: Theme(
                                         data: Theme.of(context).copyWith(
-                                          textSelectionTheme: TextSelectionThemeData(
-                                            selectionHandleColor:
-                                                Colors.white.withValues(alpha: 0.90),
-                                            cursorColor:
-                                                Colors.white.withValues(alpha: 0.90),
-                                            selectionColor:
-                                                Colors.white.withValues(alpha: 0.18),
-                                          ),
+                                          textSelectionTheme:
+                                              TextSelectionThemeData(
+                                                selectionHandleColor: Colors
+                                                    .white
+                                                    .withValues(alpha: 0.90),
+                                                cursorColor: Colors.white
+                                                    .withValues(alpha: 0.90),
+                                                selectionColor: Colors.white
+                                                    .withValues(alpha: 0.18),
+                                              ),
                                         ),
                                         child: _GlassField(
                                           enabled: !_working,
@@ -719,27 +774,32 @@ class _ImportVideoSheetState extends State<ImportVideoSheet> {
                                             enabled: !_working,
                                             keyboardType: TextInputType.number,
                                             inputFormatters: [
-                                              FilteringTextInputFormatter.digitsOnly,
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
                                             ],
                                             style: TextStyle(
-                                              color: Colors.white.withValues(alpha: 0.92),
+                                              color: Colors.white.withValues(
+                                                alpha: 0.92,
+                                              ),
                                               fontWeight: FontWeight.w600,
                                             ),
-                                            cursorColor:
-                                                Colors.white.withValues(alpha: 0.90),
+                                            cursorColor: Colors.white
+                                                .withValues(alpha: 0.90),
                                             decoration: InputDecoration(
                                               hintText: '0',
                                               hintStyle: TextStyle(
-                                                color: Colors.white.withValues(alpha: 0.45),
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.45,
+                                                ),
                                                 fontWeight: FontWeight.w600,
                                               ),
                                               isDense: true,
                                               border: InputBorder.none,
                                               contentPadding:
                                                   const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 10,
-                                              ),
+                                                    horizontal: 10,
+                                                    vertical: 10,
+                                                  ),
                                             ),
                                           ),
                                         ),

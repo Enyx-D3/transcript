@@ -171,21 +171,24 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                             const GlassDivider(height: 1, thickness: 0.8),
                         itemBuilder: (_, i) {
                           final v = protos[i];
-                          return ListTile(
-                            leading:
-                                const LeadingPillIcon(icon: Icons.graphic_eq),
-                            title: Text(
-                              'Vector ${i + 1}',
-                              style: TextStyle(
-                                color: GlassTokens.fg(context),
-                                fontWeight: FontWeight.w800,
+                          return Material(
+                            color: Colors.transparent,
+                            child: ListTile(
+                              leading:
+                                  const LeadingPillIcon(icon: Icons.graphic_eq),
+                              title: Text(
+                                'Vector ${i + 1}',
+                                style: TextStyle(
+                                  color: GlassTokens.fg(context),
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
-                            ),
-                            subtitle: Text(
-                              'dim = ${v.length}',
-                              style: TextStyle(
-                                color: GlassTokens.muted(context),
-                                fontWeight: FontWeight.w600,
+                              subtitle: Text(
+                                'dim = ${v.length}',
+                                style: TextStyle(
+                                  color: GlassTokens.muted(context),
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           );

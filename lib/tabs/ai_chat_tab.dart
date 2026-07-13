@@ -6,7 +6,7 @@ import 'package:transcript/common/confirm_dialog.dart';
 
 import '../llm_service.dart';
 import '../qwen_model_service.dart';
-import '../whisper_service.dart' show ModelProgress;
+import '../moonshine_service.dart' show ModelProgress;
 
 import '../objectbox/objectbox_store.dart';
 

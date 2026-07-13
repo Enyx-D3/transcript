@@ -11,7 +11,7 @@ import '../objectbox.g.dart';
 
 import '../llm_service.dart' show LLMService, qwenMaxContext;
 import '../qwen_model_service.dart';
-import '../whisper_service.dart' show ModelProgress;
+import '../moonshine_service.dart' show ModelProgress;
 
 import '../report/report_dialog.dart';
 import '../report/report_service.dart';

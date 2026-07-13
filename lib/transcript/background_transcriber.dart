@@ -8,12 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'transcription_models.dart';
 import 'transcription_compute.dart' show transcribeToResult;
-
-// ✅ Typo-fix LLM runner
-import '../llm_service.dart' show LLMService;
-
-// ✅ Qwen model path provider
-import '../qwen_model_service.dart';
+import 'transcript_block_repository.dart';
 
 @pragma('vm:entry-point')
 void transcribeStartCallback() {
@@ -220,8 +215,6 @@ class _TaskDataSubscription implements StreamSubscription<dynamic> {
 }
 
 class _TranscribeTaskHandler extends TaskHandler {
-  final QwenModelService _qwenService = QwenModelService();
-
   String _fmtMmSs(double sec) {
     final s = (sec.isFinite && sec > 0) ? sec : 0.0;
     final total = s.round();
@@ -230,174 +223,49 @@ class _TranscribeTaskHandler extends TaskHandler {
     return '$m:$ss';
   }
 
-  // -------------------------
-  // Typo-fix helpers
-  // -------------------------
+  List<TranscriptBlockSnapshot> _buildInitialBlocks({
+    required int transcriptId,
+    required String lang,
+    required TranscriptionResult result,
+  }) {
+    final blocks = <TranscriptBlockSnapshot>[];
 
-  String _escapeTurnText(String s) {
-    return s
-        .replaceAll('\r\n', '\n')
-        .replaceAll('\r', '\n')
-        .replaceAll('\n', r'\n')
-        .replaceAll('\t', r'\t');
-  }
+    for (var i = 0; i < result.turns.length; i++) {
+      final turn = result.turns[i];
+      final speakerDetail = i < result.speakerDetails.length
+          ? result.speakerDetails[i]
+          : null;
+      final raw = turn.text.trim();
 
-  Future<String> _runTypoFixModel({
-    required String modelPath,
-    required String prompt,
-  }) async {
-    final buf = StringBuffer();
-
-    await for (final r in LLMService.generateText(
-      prompt: prompt,
-      modelPath: modelPath,
-      maxTokens: 4096,
-      temperature: 0.0,
-      contextSize: 32768,
-      conversationHistory: const [],
-    )) {
-      final newText = r['new_text'] as String?;
-      if (newText != null && newText.isNotEmpty) buf.write(newText);
-      if (r['done'] == true) break;
-    }
-
-    return buf.toString().trim();
-  }
-
-  Future<List<LiteTurn>> _typoFixChunkTurnsIfPossible({
-    required String modelPath,
-    required List<LiteTurn> turns,
-  }) async {
-    if (turns.isEmpty) return turns;
-
-    final b = StringBuffer();
-    b.writeln('You will receive transcript turns in TSV format:');
-    b.writeln('SPEAKER<TAB>START_SEC<TAB>END_SEC<TAB>TEXT');
-    b.writeln('');
-    b.writeln('Task: Fix ONLY obvious typos in the TEXT field.');
-    b.writeln('- Do NOT change SPEAKER, START_SEC, END_SEC.');
-    b.writeln(
-      '- Do NOT rewrite, paraphrase, summarize, or change grammar/structure.',
-    );
-    b.writeln('- Keep punctuation/casing as-is as much as possible.');
-    b.writeln('- Output ONLY TSV lines, same count, same first 3 columns.');
-    b.writeln('- If no obvious typos, return the text as it is.');
-    b.writeln('');
-    b.writeln('TSV:');
-
-    for (final t in turns) {
-      b.writeln(
-        '${t.speaker}\t${t.startSec.toStringAsFixed(2)}\t${t.endSec.toStringAsFixed(2)}\t${_escapeTurnText(t.text)}',
+      blocks.add(
+        TranscriptBlockSnapshot(
+          meetingId: transcriptId.toString(),
+          blockId: i,
+          language: lang,
+          startSec: turn.startSec,
+          endSec: turn.endSec,
+          speakerId: speakerDetail?.speakerId ?? turn.speaker,
+          speakerLabel: speakerDetail?.speakerLabel ?? turn.speaker,
+          rawText: raw,
+          alignedText: raw,
+          finalText: null,
+          status: 'raw',
+          confidence: speakerDetail?.confidence ?? 0.72,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+          speakerDetails: speakerDetail == null ? const [] : [speakerDetail],
+          metadata: {
+            'turnIndex': i,
+            'speakerMatchSource': speakerDetail?.matchSource ?? 'heuristic',
+            if (speakerDetail?.matchedName != null)
+              'matchedName': speakerDetail!.matchedName,
+          },
+        ),
       );
     }
 
-    final fixedRaw = await _runTypoFixModel(
-      modelPath: modelPath,
-      prompt: b.toString(),
-    );
-
-    if (fixedRaw.trim().isEmpty) return turns;
-
-    final lines = fixedRaw
-        .split('\n')
-        .map((e) => e.trimRight())
-        .where((e) => e.trim().isNotEmpty)
-        .toList();
-
-    int firstTsv = -1;
-    for (int i = 0; i < lines.length; i++) {
-      if (!lines[i].contains('\t')) continue;
-      final parts = lines[i].split('\t');
-      if (parts.length >= 4) {
-        firstTsv = i;
-        break;
-      }
-    }
-    if (firstTsv < 0) return turns;
-
-    final tsvLines = lines.sublist(firstTsv);
-    if (tsvLines.length < turns.length) return turns;
-
-    final out = <LiteTurn>[];
-    for (int i = 0; i < turns.length; i++) {
-      final raw = tsvLines[i];
-      final parts = raw.split('\t');
-      if (parts.length < 4) return turns;
-
-      final spk = parts[0].trim();
-      final startStr = parts[1].trim();
-      final endStr = parts[2].trim();
-      final text = parts.sublist(3).join('\t').trim();
-
-      final orig = turns[i];
-      if (spk != orig.speaker ||
-          startStr != orig.startSec.toStringAsFixed(2) ||
-          endStr != orig.endSec.toStringAsFixed(2)) {
-        return turns;
-      }
-
-      out.add(LiteTurn(spk, orig.startSec, orig.endSec, text));
-    }
-
-    return out;
+    return blocks;
   }
-
-  List<LiteTurn> _turnsFromResultJson(Map<String, dynamic> j) {
-    final raw = j['turns'];
-    if (raw is! List) return const <LiteTurn>[];
-    final out = <LiteTurn>[];
-    for (final it in raw) {
-      if (it is! Map) continue;
-      final m = it.cast<String, dynamic>();
-      final spk = (m['speaker'] ?? m['spk'] ?? '').toString();
-      final s0 = m['startSec'] ?? m['start_sec'] ?? m['start'] ?? 0.0;
-      final s1 = m['endSec'] ?? m['end_sec'] ?? m['end'] ?? 0.0;
-      final txt = (m['text'] ?? '').toString();
-      final start = (s0 is num) ? s0.toDouble() : double.tryParse('$s0') ?? 0.0;
-      final end = (s1 is num) ? s1.toDouble() : double.tryParse('$s1') ?? 0.0;
-      if (spk.isEmpty) continue;
-      out.add(LiteTurn(spk, start, end, txt));
-    }
-    return out;
-  }
-
-  List<Map<String, dynamic>> _turnsToJson(List<LiteTurn> turns) {
-    return turns
-        .map(
-          (t) => <String, dynamic>{
-            'speaker': t.speaker,
-            'startSec': t.startSec,
-            'endSec': t.endSec,
-            'text': t.text,
-          },
-        )
-        .toList();
-  }
-
-  Future<void> _setStageNotification(String stage, {String? text}) async {
-    await FlutterForegroundTask.saveData(
-      key: BackgroundTranscriber._kProgressStage,
-      value: stage,
-    );
-    await FlutterForegroundTask.updateService(
-      notificationTitle: '$stage…',
-      notificationText: text ?? stage,
-    );
-  }
-
-  Future<String?> _resolveTypoFixModelPath() async {
-    try {
-      final ok = await _qwenService.isModelDownloaded();
-      if (!ok) return null;
-      final path = await _qwenService.modelFilePath();
-      final p = path.trim();
-      if (p.isEmpty) return null;
-      return p;
-    } catch (_) {
-      return null;
-    }
-  }
-
   bool _readTypoFixEnabled(dynamic v) {
     // ✅ robust decoding across platforms
     if (v is bool) return v;
@@ -459,6 +327,10 @@ class _TranscribeTaskHandler extends TaskHandler {
     }
 
     try {
+      if (existingId != null) {
+        await TranscriptBlockRepository.instance.clear(existingId);
+      }
+
       await FlutterForegroundTask.updateService(
         notificationTitle: 'Transcribing…',
         notificationText: 'Preparing Transcript',
@@ -469,6 +341,25 @@ class _TranscribeTaskHandler extends TaskHandler {
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
         lang: lang,
+        onBlockUpdated: (block) async {
+          if (existingId == null) return;
+          final normalized = block.copyWith(meetingId: existingId.toString());
+          await TranscriptBlockRepository.instance.upsert(existingId, normalized);
+          FlutterForegroundTask.sendDataToMain({
+            'type': 'transcribe_block_update',
+            'existingId': existingId,
+            'wavPath': wavPath,
+            'block': normalized.toJson(),
+          });
+        },
+        onStageCompleted: (stage) async {
+          FlutterForegroundTask.sendDataToMain({
+            'type': 'transcribe_stage_update',
+            'existingId': existingId,
+            'wavPath': wavPath,
+            'stage': stage,
+          });
+        },
         onProgress:
             ({
               required String stage,
@@ -500,30 +391,52 @@ class _TranscribeTaskHandler extends TaskHandler {
             },
       );
 
-      Map<String, dynamic> payload = result.toJson();
+      final transcriptId = existingId ?? 0;
+      final finalBlocks = result.blocks.isNotEmpty
+          ? result.blocks
+                .map(
+                  (block) => block.copyWith(meetingId: transcriptId.toString()),
+                )
+                .toList()
+          : _buildInitialBlocks(
+              transcriptId: transcriptId,
+              lang: lang,
+              result: result,
+            );
 
-      // ✅ ONLY run typo fix when enabled
-      if (typoFixEnabled) {
-        final modelPath = await _resolveTypoFixModelPath();
-        if (modelPath != null) {
-          final turns = _turnsFromResultJson(payload);
-          if (turns.isNotEmpty) {
-            await _setStageNotification(
-              'Fixing typos',
-              text: 'Fixing obvious typos…',
-            );
-            final fixedTurns = await _typoFixChunkTurnsIfPossible(
-              modelPath: modelPath,
-              turns: turns,
-            );
-            payload['turns'] = _turnsToJson(fixedTurns);
-            await _setStageNotification(
-              'Finalizing',
-              text: 'Preparing result…',
-            );
-          }
-        }
+      if (existingId != null) {
+        await TranscriptBlockRepository.instance.save(existingId, finalBlocks);
       }
+
+      final payload = result.toJson();
+      payload['blocks'] = finalBlocks.map((b) => b.toJson()).toList();
+      payload['turns'] = finalBlocks
+          .map(
+            (b) => {
+              'speaker': b.speakerLabel,
+              'startSec': b.startSec,
+              'endSec': b.endSec,
+              'text': b.displayText,
+              'status': b.status,
+              'confidence': b.confidence,
+            },
+          )
+          .toList();
+      payload['speakerDetails'] = result.speakerDetails
+          .map((e) => e.toJson())
+          .toList();
+      payload['pipeline'] = {
+        'language': result.lang,
+        'rawBlockCount': finalBlocks.length,
+        'finalBlockCount': finalBlocks.length,
+        'moonshineUsed':
+            result.blocks.any((b) => b.metadata['moonshineText'] != null),
+        'whisperUsed':
+            result.blocks.any((b) => b.metadata['whisperText'] != null),
+        'qwenUsed':
+            result.blocks.any((b) => b.metadata['qwenText'] != null),
+        'speakerDetails': result.speakerDetails.map((e) => e.toJson()).toList(),
+      };
 
       FlutterForegroundTask.sendDataToMain({
         'type': 'transcribe_result',

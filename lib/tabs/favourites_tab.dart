@@ -169,23 +169,26 @@ class _FavouritesTabState extends State<FavouritesTab> {
         ) {
           final selected = _sort == v;
 
-          return ListTile(
-            leading: Icon(ic, color: Colors.white.withValues(alpha: 0.86)),
-            title: Text(
-              title,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
-                fontWeight: FontWeight.w700,
+          return Material(
+            color: Colors.transparent,
+            child: ListTile(
+              leading: Icon(ic, color: Colors.white.withValues(alpha: 0.86)),
+              title: Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.92),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
+              subtitle: Text(
+                subtitle,
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.65)),
+              ),
+              trailing: selected
+                  ? Icon(Icons.check, color: Colors.white.withValues(alpha: 0.85))
+                  : null,
+              onTap: () => Navigator.of(ctx).pop(v),
             ),
-            subtitle: Text(
-              subtitle,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.65)),
-            ),
-            trailing: selected
-                ? Icon(Icons.check, color: Colors.white.withValues(alpha: 0.85))
-                : null,
-            onTap: () => Navigator.of(ctx).pop(v),
           );
         }
 
@@ -472,47 +475,50 @@ class _FavouritesTabState extends State<FavouritesTab> {
                                           ? Icons.video_file
                                           : Icons.article_outlined));
 
-                              return ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 4,
-                                ),
-                                leading: LeadingPillIcon(icon: leadingIcon),
-                                title: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.92,
+                              return Material(
+                                color: Colors.transparent,
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 4,
+                                  ),
+                                  leading: LeadingPillIcon(icon: leadingIcon),
+                                  title: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.92,
+                                            ),
+                                            fontWeight: FontWeight.w700,
                                           ),
-                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
-                                    ),
-                                    if (isYoutube || isAudio || isVideo) ...[
-                                      const SizedBox(width: 8),
-                                      if (isYoutube)
-                                        const SourceTag(type: 'youtube')
-                                      else if (isAudio)
-                                        const SourceTag(type: 'audio')
-                                      else if (isVideo)
-                                        const SourceTag(type: 'video'),
+                                      if (isYoutube || isAudio || isVideo) ...[
+                                        const SizedBox(width: 8),
+                                        if (isYoutube)
+                                          const SourceTag(type: 'youtube')
+                                        else if (isAudio)
+                                          const SourceTag(type: 'audio')
+                                        else if (isVideo)
+                                          const SourceTag(type: 'video'),
+                                      ],
                                     ],
-                                  ],
-                                ),
-                                subtitle: Text(
-                                  sub,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.65),
-                                    fontWeight: FontWeight.w600,
                                   ),
+                                  subtitle: Text(
+                                    sub,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.65),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  trailing: heartPill(t),
+                                  onTap: () => _openTranscript(t),
                                 ),
-                                trailing: heartPill(t),
-                                onTap: () => _openTranscript(t),
                               );
                             },
                           ),

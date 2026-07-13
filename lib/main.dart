@@ -1,6 +1,5 @@
-import 'dart:io';
+import 'dart:async';
 import 'dart:ui' show DartPluginRegistrant;
-
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -13,34 +12,36 @@ import 'package:transcript/ui/glass/glass_background.dart';
 import 'package:transcript/widgets/brand_logo.dart';
 import 'package:transcript/widgets/status_pill.dart';
 
+import 'moonshine_service.dart';
 import 'objectbox/objectbox_store.dart';
+import 'qwen_model_service.dart';
 import 'record/recording_service.dart';
 
 import 'transcript/background_transcriber.dart';
+import 'transcript/model_download_state.dart';
+import 'transcript/sherpa_secondary_asr_service.dart';
 import 'transcript/transcription_models.dart';
 import 'transcript/transcription_persistence.dart';
+import 'transcript/transcript_block_repository.dart';
 
 // App gate
 import 'auth/app_gate.dart';
 import 'auth/eligibility_gate.dart';
-// If you still need the global Whisper for ModelPickerPage, keep this:
-import 'whisper_service.dart';
 import 'package:background_downloader/background_downloader.dart';
-
 
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_tokens.dart';
-
-
-final whisper = WhisperService(); // UI-only: downloads & selection
 
 final TranscriptMailService _mailer = TranscriptMailService(
   baseUrl: 'https://enyx.app',
   // authToken: 'optional', // if you use it
 );
 
-Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async {
+Future<void> _normalizeImportAudioPaths(
+  int transcriptId,
+  String wavPath,
+) async {
   final obx = ObjectBox.I;
 
   final t = obx.transcripts.get(transcriptId);
@@ -57,7 +58,9 @@ Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async 
   if (p.isEmpty && a.isNotEmpty && wavPath.trim().isEmpty) return;
 
   // Force import rule
-  t.audioPath = wavPath.trim().isEmpty ? (a.isEmpty ? null : a) : wavPath.trim();
+  t.audioPath = wavPath.trim().isEmpty
+      ? (a.isEmpty ? null : a)
+      : wavPath.trim();
   t.processedAudioPath = null;
 
   // optional timestamp
@@ -65,10 +68,10 @@ Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async 
 
   obx.transcripts.put(t);
 
-  debugPrint('[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)');
+  debugPrint(
+    '[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)',
+  );
 }
-
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -129,6 +132,75 @@ Future<void> main() async {
               await deleteTranscriptAudioIfUserEnabled(transcriptId);
             }
 
+            final blocksRaw = payload['blocks'];
+            List<TranscriptBlockSnapshot> blocks = const [];
+            if (blocksRaw is List) {
+              blocks = blocksRaw
+                  .whereType<Map>()
+                  .map(
+                    (e) => TranscriptBlockSnapshot.fromJson(
+                      Map<String, dynamic>.from(e),
+                    ),
+                  )
+                  .toList();
+            }
+
+            if (blocks.isEmpty) {
+              final turnsRaw = payload['turns'];
+              if (turnsRaw is List) {
+                blocks = turnsRaw
+                    .asMap()
+                    .entries
+                    .map((entry) {
+                      final idx = entry.key;
+                      final turn = entry.value;
+                      if (turn is! Map) {
+                        return null;
+                      }
+                      final m = Map<String, dynamic>.from(turn);
+                      final speaker = (m['speaker'] ?? 'Speaker').toString();
+                      final text = (m['text'] ?? '').toString();
+                      final s0 =
+                          m['startSec'] ?? m['start_sec'] ?? m['start'] ?? 0.0;
+                      final s1 = m['endSec'] ?? m['end_sec'] ?? m['end'] ?? 0.0;
+                      final start = (s0 is num)
+                          ? s0.toDouble()
+                          : double.tryParse('$s0') ?? 0.0;
+                      final end = (s1 is num)
+                          ? s1.toDouble()
+                          : double.tryParse('$s1') ?? 0.0;
+                      return TranscriptBlockSnapshot(
+                        meetingId: transcriptId.toString(),
+                        blockId: idx,
+                        language: result.lang,
+                        startSec: start,
+                        endSec: end,
+                        speakerId: speaker,
+                        speakerLabel: speaker,
+                        rawText: text,
+                        alignedText: text,
+                        finalText: text,
+                        status: 'finalized',
+                        confidence: 0.75,
+                        createdAt: DateTime.now(),
+                        updatedAt: DateTime.now(),
+                      );
+                    })
+                    .whereType<TranscriptBlockSnapshot>()
+                    .toList();
+              }
+            }
+
+            if (blocks.isNotEmpty) {
+              blocks = blocks
+                  .map((b) => b.copyWith(meetingId: transcriptId.toString()))
+                  .toList();
+              await TranscriptBlockRepository.instance.save(
+                transcriptId,
+                blocks,
+              );
+            }
+
             await AutoEmailService.sendIfEnabled(
               transcriptId: transcriptId,
               mailer: _mailer,
@@ -148,7 +220,8 @@ Future<void> main() async {
       await BackgroundTranscriber.init();
 
       // ✅ 4) downloader tracking last (optional)
-      FileDownloader().trackTasks().catchError((_) => null);
+      unawaited(FileDownloader().trackTasks());
+
     } catch (e, st) {
       debugPrint('Post-frame init failed: $e');
       debugPrint('$st');
@@ -217,6 +290,9 @@ class SplashGate extends StatefulWidget {
 class _SplashGateState extends State<SplashGate> {
   String _status = 'Preparing…';
   bool _failed = false;
+  StreamSubscription<ModelProgress>? _qwenSub;
+  StreamSubscription<ModelProgress>? _moonshineSub;
+  StreamSubscription<ModelDownloadState>? _secondaryAsrSub;
 
   @override
   void initState() {
@@ -224,15 +300,12 @@ class _SplashGateState extends State<SplashGate> {
     _boot();
   }
 
-  Future<void> _recoverStaleTranscriptionLock() async {
-    const kBusy = 'busy_transcribing';
-
-    final busyFlag = (await FlutterForegroundTask.getData(key: kBusy)) == true;
-    final running = await FlutterForegroundTask.isRunningService;
-
-    if (busyFlag && !running) {
-      await FlutterForegroundTask.saveData(key: kBusy, value: false);
-    }
+  @override
+  void dispose() {
+    _qwenSub?.cancel();
+    _moonshineSub?.cancel();
+    _secondaryAsrSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _boot() async {
@@ -244,7 +317,7 @@ class _SplashGateState extends State<SplashGate> {
 
       final perm = await Permission.microphone.request();
       if (!perm.isGranted) {
-        throw Exception('Microphone permission is required');
+        debugPrint('[BOOT] Microphone permission not granted yet: $perm');
       }
 
       final p = await FlutterForegroundTask.checkNotificationPermission();
@@ -254,6 +327,8 @@ class _SplashGateState extends State<SplashGate> {
 
       setState(() => _status = 'Initializing…');
       // await _recoverStaleTranscriptionLock();
+
+      await _prepareRequiredModels();
 
       setState(() => _status = 'Checking access…');
       final eligibility = await checkEligibilityOnce(Supabase.instance.client);
@@ -275,12 +350,117 @@ class _SplashGateState extends State<SplashGate> {
     }
   }
 
+  Future<void> _prepareRequiredModels() async {
+    await _prepareQwenModel();
+    await _prepareMoonshineModel();
+    await _prepareSecondaryAsrModel();
+  }
+
+  Future<void> _prepareQwenModel() async {
+    final service = QwenModelService();
+    if (await service.isModelDownloaded()) {
+      if (mounted) setState(() => _status = 'AI model ready (1/3)…');
+      return;
+    }
+
+    _qwenSub?.cancel();
+    _qwenSub = service.progress.listen((progress) {
+      if (!mounted) return;
+      setState(() {
+        _status = _statusFromModelProgress(
+          prefix: 'Downloading AI model (1/3)',
+          progress: progress,
+        );
+      });
+    });
+
+    await service.ensureModelDownloaded();
+    if (mounted) setState(() => _status = 'AI model ready (1/3)…');
+  }
+
+  Future<void> _prepareMoonshineModel() async {
+    final service = MoonshineService();
+    if (await service.isModelDownloaded()) {
+      if (mounted) setState(() => _status = 'Moonshine ready (2/3)…');
+      return;
+    }
+
+    _moonshineSub?.cancel();
+    _moonshineSub = service.progress.listen((progress) {
+      if (!mounted) return;
+      setState(() {
+        _status = _statusFromModelProgress(
+          prefix: 'Downloading Moonshine (2/3)',
+          progress: progress,
+        );
+      });
+    });
+
+    await service.ensureModelDownloaded();
+    if (mounted) setState(() => _status = 'Moonshine ready (2/3)…');
+  }
+
+  Future<void> _prepareSecondaryAsrModel() async {
+    final service = SherpaSecondaryAsrService();
+    if (await service.isModelReady()) {
+      if (mounted) setState(() => _status = 'Whisper ready (3/3)…');
+      return;
+    }
+
+    _secondaryAsrSub?.cancel();
+    _secondaryAsrSub = service.progress.listen((progress) {
+      if (!mounted) return;
+      setState(() {
+        _status = _statusFromDownloadState(
+          prefix: 'Downloading Whisper (3/3)',
+          progress: progress,
+        );
+      });
+    });
+
+    await service.ensureModelDownloaded();
+    if (mounted) setState(() => _status = 'Whisper ready (3/3)…');
+  }
+
+  String _statusFromModelProgress({
+    required String prefix,
+    required ModelProgress progress,
+  }) {
+    if (progress.error != null && progress.error!.isNotEmpty) {
+      return progress.error!;
+    }
+    if (progress.stage == 'extracting') {
+      return '$prefix • Preparing files…';
+    }
+    if (progress.total > 0) {
+      final pct = (progress.percent * 100).clamp(0, 100).toStringAsFixed(0);
+      return '$prefix • $pct%';
+    }
+    return prefix;
+  }
+
+  String _statusFromDownloadState({
+    required String prefix,
+    required ModelDownloadState progress,
+  }) {
+    if (progress.error != null && progress.error!.isNotEmpty) {
+      return progress.error!;
+    }
+    if (progress.stage == 'extracting') {
+      return '$prefix • Preparing files…';
+    }
+    if (progress.total > 0) {
+      final pct = (progress.percent * 100).clamp(0, 100).toStringAsFixed(0);
+      return '$prefix • $pct%';
+    }
+    return prefix;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context, alpha: 0.78);
-    final isDark = GlassTokens.isDark(context);
 
     return PopScope(
       canPop: false,
@@ -312,8 +492,8 @@ class _SplashGateState extends State<SplashGate> {
                       const SizedBox(height: 8),
 
                       // ---- Status pill ----
-                      StatusPill(text: _status,isError: _failed),
-                      
+                      StatusPill(text: _status, isError: _failed),
+
                       const SizedBox(height: 14),
 
                       // ---- Progress / error card ----
@@ -329,8 +509,9 @@ class _SplashGateState extends State<SplashGate> {
                                 borderRadius: BorderRadius.circular(999),
                                 child: LinearProgressIndicator(
                                   minHeight: 3,
-                                  backgroundColor:
-                                      Colors.white.withValues(alpha: 0.10),
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.10,
+                                  ),
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     GlassTokens.fg(context, alpha: 0.92),
                                   ),
@@ -389,7 +570,6 @@ class _SplashGateState extends State<SplashGate> {
                       ),
 
                       const SizedBox(height: 18),
-
                     ],
                   ),
                 ),
@@ -401,4 +581,3 @@ class _SplashGateState extends State<SplashGate> {
     );
   }
 }
-

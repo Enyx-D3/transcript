@@ -69,7 +69,7 @@ class TranscriptEntity {
   @Index()
   String? title;
 
-  /// Whisper/model name and language tag used.
+  /// ASR/model name and language tag used.
   String model;
   String lang;
 

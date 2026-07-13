@@ -14,6 +14,7 @@ import '../objectbox/entities.dart';
 import '../objectbox/objectbox_store.dart';
 
 import 'background_transcriber.dart';
+import 'platform_transcription_runner.dart';
 import 'transcript_detail_page.dart';
 
 // ✅ Glass primitives (same as RecordSheet)
@@ -21,7 +22,6 @@ import '../ui/glass/liquid_glass.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_divider.dart';
-
 
 class ImportAudioSheet extends StatefulWidget {
   const ImportAudioSheet({super.key});
@@ -35,7 +35,10 @@ class ImportAudioSheet extends StatefulWidget {
 
     final busy = busyFlag && running;
     if (busyFlag && !running) {
-      await FlutterForegroundTask.saveData(key: kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(
+        key: kBusyTranscribing,
+        value: false,
+      );
     }
 
     if (busy) {
@@ -79,8 +82,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     'auto': 'Auto',
   };
 
-  final TextEditingController _targetSpeakersCtrl =
-      TextEditingController(text: '0');
+  final TextEditingController _targetSpeakersCtrl = TextEditingController(
+    text: '0',
+  );
 
   PlatformFile? _picked;
   String? _inputPathTemp;
@@ -204,7 +208,8 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
 
   Future<String> _convertToWav16kMono(String inputPath) async {
     final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}/recordings')..createSync(recursive: true);
+    final dir = Directory('${docs.path}/recordings')
+      ..createSync(recursive: true);
 
     final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
     final outPath = '${dir.path}/import_$ts.wav';
@@ -230,8 +235,6 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
     setState(() => _working = true);
 
     try {
-      await AppFlushbar.info(context, message: 'Preparing audio…');
-
       final inputPath = await _ensureReadableLocalPath(f);
       final wavPath = await _convertToWav16kMono(inputPath);
 
@@ -242,7 +245,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
         durationSec = await readWavDuration(wavPath);
       } catch (_) {}
 
-      final lang = (_selectedLang.trim().isEmpty) ? 'auto' : _selectedLang.trim();
+      final lang = (_selectedLang.trim().isEmpty)
+          ? 'auto'
+          : _selectedLang.trim();
       final targetSpeakers = _parseTargetSpeakers();
 
       final obx = ObjectBox.I;
@@ -250,7 +255,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
       final tId = obx.transcripts.put(
         TranscriptEntity(
           title: '',
-          model: 'whisper',
+          model: 'moonshine',
           sourceType: 2,
           lang: lang,
           audioPath: wavPath,
@@ -270,31 +275,48 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
         ),
       );
 
-      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
-      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: tId);
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: true,
+      );
+      await FlutterForegroundTask.saveData(
+        key: _kActiveTranscriptId,
+        value: tId,
+      );
 
       if (!mounted) return;
 
       Navigator.of(context).pop();
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => TranscriptDetailPage(transcriptId: tId)),
+        MaterialPageRoute(
+          builder: (_) => TranscriptDetailPage(transcriptId: tId),
+        ),
       );
 
       try {
-        
-        await BackgroundTranscriber.startFromPrefs(
-          wavPath: wavPath,
-          translateToEnglish: false,
-          titleHint: null,
-          existingTranscriptId: tId,
-          targetSpeakers: targetSpeakers,
-          lang: lang,
-        );
+        if (PlatformTranscriptionRunner.usesForegroundRunner) {
+          await PlatformTranscriptionRunner.runForegroundExistingTranscript(
+            transcriptId: tId,
+            jobId: jobId,
+            wavPath: wavPath,
+            lang: lang,
+            targetSpeakers: targetSpeakers,
+          );
+        } else {
+          await BackgroundTranscriber.startFromPrefs(
+            wavPath: wavPath,
+            translateToEnglish: false,
+            titleHint: null,
+            existingTranscriptId: tId,
+            targetSpeakers: targetSpeakers,
+            lang: lang,
+          );
 
-        final job = obx.jobs.get(jobId);
-        if (job != null && job.status == 'PENDING') {
-          job.status = 'RUNNING';
-          obx.jobs.put(job);
+          final job = obx.jobs.get(jobId);
+          if (job != null && job.status == 'PENDING') {
+            job.status = 'RUNNING';
+            obx.jobs.put(job);
+          }
         }
       } catch (e) {
         final job = obx.jobs.get(jobId);
@@ -303,16 +325,27 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
           job.error = 'Failed to start transcription.';
           obx.jobs.put(job);
         }
-        await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
-        await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
+        await FlutterForegroundTask.saveData(
+          key: _kBusyTranscribing,
+          value: false,
+        );
+        await FlutterForegroundTask.saveData(
+          key: _kActiveTranscriptId,
+          value: 0,
+        );
 
         if (!mounted) return;
         await AppFlushbar.error(context, message: 'Processing failed!');
       }
     } catch (_) {
-      await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: false);
+      await FlutterForegroundTask.saveData(
+        key: _kBusyTranscribing,
+        value: false,
+      );
       await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
-      if (mounted) await AppFlushbar.error(context, message: 'Processing failed!');
+      if (mounted) {
+        await AppFlushbar.error(context, message: 'Processing failed!');
+      }
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -351,7 +384,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
           children: [
             // ✅ PERF: sheet backdrop is tint-only (global blur should exist behind)
             LiquidGlass(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               padding: EdgeInsets.zero,
               shadow: false,
               blurX: 9.0,
@@ -422,9 +457,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
-                                selectedName == null
-                                    ? 'No file selected'
-                                    : selectedName,
+                                selectedName ?? 'No file selected',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   color: fg,
@@ -447,9 +480,11 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                       kind: GlassButtonKind.primary,
                                       label: 'Transcribe',
                                       icon: Icons.play_arrow_rounded,
-                                      loading: false,
+                                      loading: _working,
                                       onPressed:
-                                          (_working || _picked == null) ? null : _start,
+                                          (_working || _picked == null)
+                                              ? null
+                                              : _start,
                                     ),
                                   ),
                                 ],
@@ -492,7 +527,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                     child: Text(
                                       'Language',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.72,
+                                        ),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -504,8 +541,8 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                       child: DropdownButtonFormField<String>(
                                         initialValue: _selectedLang,
                                         isDense: true,
-                                        iconEnabledColor:
-                                            Colors.white.withValues(alpha: 0.80),
+                                        iconEnabledColor: Colors.white
+                                            .withValues(alpha: 0.80),
                                         dropdownColor: const Color(0xFF0B0C10),
                                         items: _langOptions.entries
                                             .map(
@@ -513,10 +550,13 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                                 value: e.key,
                                                 child: Text(
                                                   e.value,
-                                                  overflow: TextOverflow.ellipsis,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                   style: TextStyle(
                                                     color: Colors.white
-                                                        .withValues(alpha: 0.92),
+                                                        .withValues(
+                                                          alpha: 0.92,
+                                                        ),
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
@@ -527,7 +567,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                             ? null
                                             : (v) {
                                                 if (v == null) return;
-                                                setState(() => _selectedLang = v);
+                                                setState(
+                                                  () => _selectedLang = v,
+                                                );
                                               },
                                         decoration: const InputDecoration(
                                           isDense: true,
@@ -552,7 +594,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                     child: Text(
                                       'Speaker diarization',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.72,
+                                        ),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -562,15 +606,18 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                     onChanged: _working
                                         ? null
                                         : (v) => setState(
-                                              () => _diarizationEnabled = v,
-                                            ),
+                                            () => _diarizationEnabled = v,
+                                          ),
                                     activeThumbColor: Colors.black,
-                                    activeTrackColor:
-                                        Colors.white.withValues(alpha: 0.55),
-                                    inactiveThumbColor:
-                                        Colors.white.withValues(alpha: 0.70),
-                                    inactiveTrackColor:
-                                        Colors.white.withValues(alpha: 0.18),
+                                    activeTrackColor: Colors.white.withValues(
+                                      alpha: 0.55,
+                                    ),
+                                    inactiveThumbColor: Colors.white.withValues(
+                                      alpha: 0.70,
+                                    ),
+                                    inactiveTrackColor: Colors.white.withValues(
+                                      alpha: 0.18,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -583,7 +630,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                       child: Text(
                                         'Target speakers',
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.72),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.72,
+                                          ),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -592,14 +641,16 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                       width: 120,
                                       child: Theme(
                                         data: Theme.of(context).copyWith(
-                                          textSelectionTheme: TextSelectionThemeData(
-                                            selectionHandleColor:
-                                                Colors.white.withValues(alpha: 0.90),
-                                            cursorColor:
-                                                Colors.white.withValues(alpha: 0.90),
-                                            selectionColor:
-                                                Colors.white.withValues(alpha: 0.18),
-                                          ),
+                                          textSelectionTheme:
+                                              TextSelectionThemeData(
+                                                selectionHandleColor: Colors
+                                                    .white
+                                                    .withValues(alpha: 0.90),
+                                                cursorColor: Colors.white
+                                                    .withValues(alpha: 0.90),
+                                                selectionColor: Colors.white
+                                                    .withValues(alpha: 0.18),
+                                              ),
                                         ),
                                         child: _GlassField(
                                           enabled: !_working,
@@ -608,27 +659,32 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                                             enabled: !_working,
                                             keyboardType: TextInputType.number,
                                             inputFormatters: [
-                                              FilteringTextInputFormatter.digitsOnly,
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
                                             ],
                                             style: TextStyle(
-                                              color: Colors.white.withValues(alpha: 0.92),
+                                              color: Colors.white.withValues(
+                                                alpha: 0.92,
+                                              ),
                                               fontWeight: FontWeight.w600,
                                             ),
-                                            cursorColor:
-                                                Colors.white.withValues(alpha: 0.90),
+                                            cursorColor: Colors.white
+                                                .withValues(alpha: 0.90),
                                             decoration: InputDecoration(
                                               hintText: '0',
                                               hintStyle: TextStyle(
-                                                color: Colors.white.withValues(alpha: 0.45),
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.45,
+                                                ),
                                                 fontWeight: FontWeight.w600,
                                               ),
                                               isDense: true,
                                               border: InputBorder.none,
                                               contentPadding:
                                                   const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 10,
-                                              ),
+                                                    horizontal: 10,
+                                                    vertical: 10,
+                                                  ),
                                             ),
                                           ),
                                         ),

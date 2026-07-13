@@ -1,4 +1,3 @@
-import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:async';
 import 'package:fllama/fllama.dart';
@@ -55,22 +54,6 @@ List<Message> formatPromptForModel({
 
   messages.add(Message(Role.user, prompt));
   return messages;
-}
-
-/// Build summary prompt over transcript (as user content)
-String _buildSummaryPrompt(String transcript, int maxWord) {
-  return '''
-Summarize the following *Transcript*.
-The summary should be at max $maxWord words.
-Focus on:
-- Overall summary
-- Key decisions if available
-- Action items if available (with owners if mentioned)
-- Risks / open questions if available
-- Dont add any thing
-Transcript:
-$transcript
-''';
 }
 
 /// ✅ Chunk summary prompt
@@ -151,6 +134,56 @@ $transcript
 ''';
 }
 
+String _buildTranscriptFinalizerPrompt({
+  required String language,
+  required String blockId,
+  required String timeStart,
+  required String timeEnd,
+  required String speakerHint,
+  required List<String> knownNames,
+  required List<String> knownTerms,
+  required String moonshineText,
+  required String sherpaText,
+  required String alignedCandidate,
+  required String speakerDetailsJson,
+  required String rollingContext,
+}) {
+  return '''
+language: $language
+block_id: $blockId
+time_start: $timeStart
+time_end: $timeEnd
+speaker_hint: $speakerHint
+known_names: ${knownNames.join(', ')}
+known_terms: ${knownTerms.join(', ')}
+
+speaker_details:
+$speakerDetailsJson
+
+rolling_context:
+$rollingContext
+
+moonshine:
+$moonshineText
+
+sherpa:
+$sherpaText
+
+aligned_candidate:
+$alignedCandidate
+
+task:
+Merge the ASR outputs into one clean meeting transcript.
+Preserve meaning.
+Do not invent details.
+Do not summarize.
+Do not remove important details.
+Fix punctuation, casing, names, acronyms, and obvious ASR errors.
+Keep the speaker meaning unchanged.
+Return only the final transcript text.
+''';
+}
+
 /// ✅ Split transcript into chunks by word-count (simple + stable)
 List<String> _splitIntoChunksByWords(String text, {required int chunkWords}) {
   final words = text
@@ -174,7 +207,10 @@ Future<void> _runChat({
   required List<Message> messages,
 }) async {
   final qwenPrompt = _formatQwenPrompt(messages);
-  debugPrint('Qwen prompt: $qwenPrompt');
+  debugPrint(
+    'Qwen prompt length=${qwenPrompt.length} preview='
+    '${qwenPrompt.substring(0, qwenPrompt.length.clamp(0, 240))}',
+  );
 
   String lastSentText = '';
 
@@ -186,7 +222,7 @@ Future<void> _runChat({
       maxTokens: request['max_tokens'],
       temperature: (request['temperature'] ?? 0.7) as double,
       contextSize: request['context_size'],
-      numGpuLayers: 99,
+      numGpuLayers: (request['num_gpu_layers'] ?? 99) as int,
       frequencyPenalty: 0.5,
       presencePenalty: 0.6,
       topP: 0.95,
@@ -226,7 +262,7 @@ Future<String> _runChatCollect({
       maxTokens: request['max_tokens'],
       temperature: (request['temperature'] ?? 0.7) as double,
       contextSize: request['context_size'],
-      numGpuLayers: 99,
+      numGpuLayers: (request['num_gpu_layers'] ?? 99) as int,
       frequencyPenalty: 0.5,
       presencePenalty: 0.6,
       topP: 0.95,
@@ -385,6 +421,14 @@ class LLMService {
               .where((s) => s.isNotEmpty)
               .join('\n\n');
 
+          if (combined.trim().isEmpty) {
+            debugPrint(
+              'LLM summary skipped final merge because chunk summaries were empty.',
+            );
+            replyPort.send({'done': true, 'full_text': ''});
+            break;
+          }
+
           // 3) final summary over combined summaries (STREAM this one)
           final finalMessages = <Message>[
             Message(
@@ -414,6 +458,59 @@ class LLMService {
           final logicalMessages = <Message>[
             Message(Role.system, 'You only fix typos in transcripts.'),
             Message(Role.user, _buildTypoFixPrompt(transcript: transcript)),
+          ];
+
+          await _runChat(
+            request: request,
+            replyPort: replyPort,
+            messages: logicalMessages,
+          );
+          break;
+
+        case 'finalize_transcript':
+          final language = (request['language'] ?? 'en').toString();
+          final blockId = (request['block_id'] ?? '').toString();
+          final timeStart = (request['time_start'] ?? '').toString();
+          final timeEnd = (request['time_end'] ?? '').toString();
+          final speakerHint = (request['speaker_hint'] ?? '').toString();
+          final knownNames =
+              (request['known_names'] as List<dynamic>? ?? const [])
+                  .map((e) => e.toString())
+                  .toList();
+          final knownTerms =
+              (request['known_terms'] as List<dynamic>? ?? const [])
+                  .map((e) => e.toString())
+                  .toList();
+          final moonshineText = (request['moonshine_text'] ?? '').toString();
+          final sherpaText = (request['sherpa_text'] ?? '').toString();
+          final alignedCandidate = (request['aligned_candidate'] ?? '')
+              .toString();
+          final speakerDetailsJson = (request['speaker_details_json'] ?? '[]')
+              .toString();
+          final rollingContext = (request['rolling_context'] ?? '').toString();
+
+          final logicalMessages = <Message>[
+            Message(
+              Role.system,
+              'You repair transcript blocks and never chat.',
+            ),
+            Message(
+              Role.user,
+              _buildTranscriptFinalizerPrompt(
+                language: language,
+                blockId: blockId,
+                timeStart: timeStart,
+                timeEnd: timeEnd,
+                speakerHint: speakerHint,
+                knownNames: knownNames,
+                knownTerms: knownTerms,
+                moonshineText: moonshineText,
+                sherpaText: sherpaText,
+                alignedCandidate: alignedCandidate,
+                speakerDetailsJson: speakerDetailsJson,
+                rollingContext: rollingContext,
+              ),
+            ),
           ];
 
           await _runChat(
@@ -608,6 +705,62 @@ class LLMService {
         'max_tokens': maxTokens,
         'temperature': temperature,
         'context_size': contextSize,
+      },
+      'replyPort': responsePort.sendPort,
+    });
+
+    await for (final response in responsePort) {
+      if (response is Map<String, dynamic>) {
+        yield response;
+        if (response['done'] == true) break;
+      }
+    }
+    responsePort.close();
+  }
+
+  static Stream<Map<String, dynamic>> finalizeTranscriptBlock({
+    required String language,
+    required String blockId,
+    required String timeStart,
+    required String timeEnd,
+    required String speakerHint,
+    required List<String> knownNames,
+    required List<String> knownTerms,
+    required String moonshineText,
+    required String sherpaText,
+    required String alignedCandidate,
+    required String speakerDetailsJson,
+    required String rollingContext,
+    required String modelPath,
+    int maxTokens = 512,
+    double temperature = 0.1,
+    int contextSize = qwenMaxContext,
+    int numGpuLayers = 99,
+  }) async* {
+    await initialize();
+    final sendPort = await _isolateCompleter!.future;
+    final responsePort = ReceivePort();
+
+    sendPort.send({
+      'type': 'finalize_transcript',
+      'request': {
+        'language': language,
+        'block_id': blockId,
+        'time_start': timeStart,
+        'time_end': timeEnd,
+        'speaker_hint': speakerHint,
+        'known_names': knownNames,
+        'known_terms': knownTerms,
+        'moonshine_text': moonshineText,
+        'sherpa_text': sherpaText,
+        'aligned_candidate': alignedCandidate,
+        'speaker_details_json': speakerDetailsJson,
+        'rolling_context': rollingContext,
+        'model_path': modelPath,
+        'max_tokens': maxTokens,
+        'temperature': temperature,
+        'context_size': contextSize,
+        'num_gpu_layers': numGpuLayers,
       },
       'replyPort': responsePort.sendPort,
     });

@@ -17,6 +17,8 @@ import '../objectbox.g.dart';
 import '../report/report_dialog.dart';
 import '../report/report_service.dart';
 import '../send_transcript/send_transcript_healper.dart';
+import 'transcription_models.dart';
+import 'transcript_block_repository.dart';
 
 import '../llm_service.dart' show LLMService, qwenMaxContext;
 import '../qwen_model_service.dart';
@@ -38,8 +40,17 @@ class _DisplayTurn {
   final String text;
   final double? startSec;
   final double? endSec;
+  final String? status;
+  final double? confidence;
 
-  _DisplayTurn(this.speaker, this.text, {this.startSec, this.endSec});
+  _DisplayTurn(
+    this.speaker,
+    this.text, {
+    this.startSec,
+    this.endSec,
+    this.status,
+    this.confidence,
+  });
 }
 
 enum _AudioVariant { original, enhanced }
@@ -55,6 +66,7 @@ class TranscriptDetailPage extends StatefulWidget {
 class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   TranscriptEntity? _t;
   List<TranscriptTurnEntity> _turns = const [];
+  List<TranscriptBlockSnapshot> _blocks = const [];
   TranscriptionJobEntity? _job;
 
   Timer? _poll;
@@ -431,6 +443,56 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         );
       }
     }
+
+    final blocksRaw = payload['blocks'];
+    if (blocksRaw is List) {
+      final normalizedBlocks = <TranscriptBlockSnapshot>[];
+      for (final it in blocksRaw) {
+        if (it is! Map) continue;
+        normalizedBlocks.add(
+          TranscriptBlockSnapshot.fromJson(
+            Map<String, dynamic>.from(it.cast<String, dynamic>()),
+          ).copyWith(meetingId: transcriptId.toString()),
+        );
+      }
+      if (normalizedBlocks.isNotEmpty) {
+        unawaited(
+          TranscriptBlockRepository.instance.save(transcriptId, normalizedBlocks),
+        );
+        if (mounted) {
+          setState(() {
+            _blocks = normalizedBlocks;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _applyBgBlockUpdateToDb({
+    required int transcriptId,
+    required Map<String, dynamic> blockJson,
+  }) async {
+    try {
+      final block = TranscriptBlockSnapshot.fromJson(blockJson)
+          .copyWith(meetingId: transcriptId.toString());
+      await TranscriptBlockRepository.instance.upsert(transcriptId, block);
+
+      if (!mounted || transcriptId != widget.transcriptId) return;
+
+      final nextBlocks = [..._blocks];
+      final index = nextBlocks.indexWhere((b) => b.blockId == block.blockId);
+      if (index >= 0) {
+        nextBlocks[index] = block;
+      } else {
+        nextBlocks.add(block);
+        nextBlocks.sort((a, b) => a.blockId.compareTo(b.blockId));
+      }
+
+      setState(() {
+        _blocks = nextBlocks;
+      });
+      _recomputeSearchMatches(_buildDisplayTurns(), notify: true);
+    } catch (_) {}
   }
 
   // ============================================================
@@ -638,7 +700,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             };
 
             final mergedMeta = <String, dynamic>{
-              if (meta != null) ...meta,
+              ...?meta,
               ...localMeta,
             };
 
@@ -811,7 +873,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     });
 
     await _ensureSourceLoaded(v);
-    _debugPrintAudioPaths();
   }
 
   // ============================================================
@@ -881,7 +942,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   // Data loading
   // ============================================================
 
-  void _loadOnce() {
+  Future<void> _loadOnce() async {
     final obx = ObjectBox.I;
 
     final t = obx.transcripts.get(widget.transcriptId);
@@ -893,14 +954,19 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final rows = q.find();
     q.close();
 
+    final blocks = await TranscriptBlockRepository.instance.load(
+      widget.transcriptId,
+    );
+
     final job = _getLatestJob();
-    final displayTurns = _buildDisplayTurnsFor(t, rows);
+    final displayTurns = _buildDisplayTurnsFor(t, rows, blocks);
     _recomputeSearchMatches(displayTurns);
 
     if (!mounted) return;
     setState(() {
       _t = t;
       _turns = rows;
+      _blocks = blocks;
       _job = job;
 
       if (job?.status == 'ERROR') {
@@ -912,7 +978,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       }
     });
 
-    _debugPrintAudioPaths();
     _stopPlaybackIfNeeded();
   }
 
@@ -921,7 +986,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   // ============================================================
 
   Future<void> _refreshTick() async {
-    _loadOnce();
+    await _loadOnce();
     await _pullProgressFromFgStorage();
 
     final newBusy = await _readBusyFlag();
@@ -1070,6 +1135,33 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       _poll = null;
 
       await AppFlushbar.error(context, message: 'Transcription Failed');
+      return;
+    }
+
+    if (type == 'transcribe_block_update') {
+      final existingId = data['existingId'] as int?;
+      if (existingId != widget.transcriptId) return;
+
+      final blockRaw = data['block'];
+      if (blockRaw is Map) {
+        await _applyBgBlockUpdateToDb(
+          transcriptId: widget.transcriptId,
+          blockJson: blockRaw.cast<String, dynamic>(),
+        );
+      }
+      return;
+    }
+
+    if (type == 'transcribe_stage_update') {
+      final existingId = data['existingId'] as int?;
+      if (existingId != widget.transcriptId) return;
+
+      final stage = (data['stage'] ?? '').toString();
+      if (stage == 'moonshine_complete' ||
+          stage == 'whisper_complete' ||
+          stage == 'qwen_complete') {
+        await _refreshTick();
+      }
       return;
     }
 
@@ -1309,13 +1401,29 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   List<_DisplayTurn> _buildDisplayTurns() {
-    return _buildDisplayTurnsFor(_t, _turns);
+    return _buildDisplayTurnsFor(_t, _turns, _blocks);
   }
 
   List<_DisplayTurn> _buildDisplayTurnsFor(
     TranscriptEntity? t,
     List<TranscriptTurnEntity> turns,
+    List<TranscriptBlockSnapshot> blocks,
   ) {
+    if (blocks.isNotEmpty) {
+      return blocks
+          .map(
+            (b) => _DisplayTurn(
+              b.speakerLabel.isEmpty ? 'Speaker' : b.speakerLabel,
+              b.displayText,
+              startSec: b.startSec,
+              endSec: b.endSec,
+              status: b.status,
+              confidence: b.confidence,
+            ),
+          )
+          .toList();
+    }
+
     if (t?.editedText != null && t!.editedText!.trim().isNotEmpty) {
       final lines = t.editedText!.split('\n');
       final result = <_DisplayTurn>[];
@@ -1339,6 +1447,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             text,
             startSec: ts?.startSec,
             endSec: ts?.endSec,
+            status: 'finalized',
           ),
         );
         i++;
@@ -1353,6 +1462,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
             u.text,
             startSec: u.startSec,
             endSec: u.endSec,
+            status: 'finalized',
           ),
         )
         .toList();
@@ -2256,6 +2366,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           speakerSpan: speakerSpan,
                           textSpan: textSpan,
                           subtitle: subtitle,
+                          status: u.status,
+                          confidence: u.confidence,
                           isActiveSearchMatch: isActiveSearchMatch,
                           isCurrentPlaybackSegment: isCurrentPlaybackSegment,
                         ),
@@ -2335,6 +2447,33 @@ class _MetaPill extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status, this.confidence});
+
+  final String status;
+  final double? confidence;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = status.trim().toLowerCase();
+    final color = switch (normalized) {
+      'raw' => const Color(0xFF90CAF9),
+      'aligned' => const Color(0xFFFFD54F),
+      'finalized' => const Color(0xFF81C784),
+      'finalising' => const Color(0xFF81C784),
+      'finalizing' => const Color(0xFF81C784),
+      'needs_review' => const Color(0xFFFF8A65),
+      _ => Colors.white70,
+    };
+
+    final label = confidence == null
+        ? status
+        : '$status ${(confidence! * 100).round()}%';
+
+    return _MetaPill(text: label, accent: color);
   }
 }
 
@@ -2529,6 +2668,8 @@ class _TurnCard extends StatelessWidget {
     this.subtitle,
     this.speakerSpan,
     this.textSpan,
+    this.status,
+    this.confidence,
     this.isActiveSearchMatch = false,
     this.isCurrentPlaybackSegment = false,
   });
@@ -2538,6 +2679,8 @@ class _TurnCard extends StatelessWidget {
   final String? subtitle;
   final InlineSpan? speakerSpan;
   final InlineSpan? textSpan;
+  final String? status;
+  final double? confidence;
   final bool isActiveSearchMatch;
   final bool isCurrentPlaybackSegment;
 
@@ -2597,6 +2740,10 @@ class _TurnCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (status != null) ...[
+                const SizedBox(width: 8),
+                _StatusPill(status: status!, confidence: confidence),
+              ],
               const SizedBox(width: 8),
               Container(
                 width: 28,

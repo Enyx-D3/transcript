@@ -489,40 +489,43 @@ class _CalendarPageState extends State<CalendarPage> {
                               ? t.title!.trim()
                               : 'Untitled';
 
-                          return ListTile(
-                            leading: const LeadingPillIcon(
-                              icon: Icons.description,
-                            ),
-                            title: Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.92),
-                                fontWeight: FontWeight.w600,
+                          return Material(
+                            color: Colors.transparent,
+                            child: ListTile(
+                              leading: const LeadingPillIcon(
+                                icon: Icons.description,
                               ),
-                            ),
-                            subtitle: Text(
-                              '$hh:$mm • ${_fmtDuration(t.durationSec)}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.70),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            trailing: Icon(
-                              Icons.chevron_right,
-                              color: Colors.white.withValues(alpha: 0.72),
-                            ),
-                            onTap: () {
-                              unfocus();
-                              Navigator.of(context).pop();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      TranscriptDetailPage(transcriptId: t.id),
+                              title: Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.92),
+                                  fontWeight: FontWeight.w600,
                                 ),
-                              );
-                            },
+                              ),
+                              subtitle: Text(
+                                '$hh:$mm • ${_fmtDuration(t.durationSec)}',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.70),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              trailing: Icon(
+                                Icons.chevron_right,
+                                color: Colors.white.withValues(alpha: 0.72),
+                              ),
+                              onTap: () {
+                                unfocus();
+                                Navigator.of(context).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        TranscriptDetailPage(transcriptId: t.id),
+                                  ),
+                                );
+                              },
+                            ),
                           );
                         },
                       ),

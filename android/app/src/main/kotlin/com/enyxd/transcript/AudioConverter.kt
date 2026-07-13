@@ -15,7 +15,7 @@ import kotlin.math.roundToInt
 
 /**
  * Native Android audio converter using MediaCodec.
- * Converts various audio formats to 16kHz mono PCM WAV for Whisper.
+ * Converts various audio formats to 16kHz mono PCM WAV for local ASR.
  *
  * Updated:
  * ✅ Respect BufferInfo.offset/size (prevents corrupted PCM)

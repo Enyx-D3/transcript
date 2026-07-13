@@ -5,7 +5,7 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'whisper_service.dart' show ModelProgress;
+import 'moonshine_service.dart' show ModelProgress;
 
 class QwenModelService {
   QwenModelService._internal() {
@@ -15,9 +15,9 @@ class QwenModelService {
   static final QwenModelService _instance = QwenModelService._internal();
   factory QwenModelService() => _instance;
 
-  static const String _fileName = 'granite-4.0-350m-Q4_K_M.gguf';
+  static const String _fileName = 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
   static const String _url =
-      'https://huggingface.co/ibm-granite/granite-4.0-350m-GGUF/resolve/main/granite-4.0-350m-Q4_K_M.gguf?download=true';
+      'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true';
 
   // ✅ stable identity so we can look it up after restart
   static const String _taskId = 'enyx_model_download';
@@ -32,9 +32,17 @@ class QwenModelService {
   StreamSubscription<TaskUpdate>? _updatesSub;
 
   DownloadTask? _activeTask;
+  Completer<bool>? _downloadCompleter;
 
   void _emit(ModelProgress p) {
     if (!_progressCtrl.isClosed) _progressCtrl.add(p);
+  }
+
+  void _completeDownload(bool ok) {
+    final completer = _downloadCompleter;
+    if (completer == null || completer.isCompleted) return;
+    completer.complete(ok);
+    _downloadCompleter = null;
   }
 
   Future<String> modelFilePath() async {
@@ -82,10 +90,12 @@ class QwenModelService {
             _emit(
               const ModelProgress(downloading: false, received: 1, total: 1),
             );
+            _completeDownload(true);
             break;
           case TaskStatus.canceled:
             _activeTask = null;
             _emit(ModelProgress.idle);
+            _completeDownload(false);
             break;
           case TaskStatus.failed:
             _activeTask = null;
@@ -97,6 +107,7 @@ class QwenModelService {
                 error: update.exception?.toString() ?? 'Model download failed',
               ),
             );
+            _completeDownload(false);
             break;
           default:
             // running/paused/enqueued/etc — progress updates will drive UI
@@ -113,6 +124,7 @@ Future<void> _restoreFromDatabase() async {
   try {
     if (await isModelDownloaded()) {
       _emit(const ModelProgress(downloading: false, received: 1, total: 1));
+      _completeDownload(true);
       return;
     }
 
@@ -141,6 +153,7 @@ Future<void> _restoreFromDatabase() async {
 
     if (status == TaskStatus.complete) {
       _emit(const ModelProgress(downloading: false, received: 1, total: 1));
+      _completeDownload(true);
     }
 
     if (status == TaskStatus.failed) {
@@ -150,6 +163,7 @@ Future<void> _restoreFromDatabase() async {
         total: 0,
         error: 'Model download failed',
       ));
+      _completeDownload(false);
     }
   } catch (_) {
     // ignore
@@ -203,11 +217,37 @@ Future<void> _restoreFromDatabase() async {
           error: 'Failed to enqueue model download',
         ),
       );
+      _completeDownload(false);
     }
+  }
+
+  Future<bool> ensureModelDownloaded({bool autoDownload = true}) async {
+    if (await isModelDownloaded()) {
+      _emit(const ModelProgress(downloading: false, received: 1, total: 1));
+      return true;
+    }
+
+    final existing = _downloadCompleter;
+    if (existing != null) {
+      return existing.future;
+    }
+
+    if (!autoDownload) return false;
+
+    _downloadCompleter = Completer<bool>();
+    try {
+      await downloadModel();
+    } catch (_) {
+      _completeDownload(false);
+    }
+
+    final completer = _downloadCompleter;
+    return completer?.future ?? false;
   }
 
   Future<void> cancelDownload() async {
     await _bd.cancelTaskWithId(_taskId); // ✅ stable id
+    _completeDownload(false);
   }
 
   void dispose() {

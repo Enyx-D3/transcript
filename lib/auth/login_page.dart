@@ -31,24 +31,15 @@ class _LoginPageState extends State<LoginPage> {
   bool _busy = false;
   String? _error;
 
-  // Email/password controllers (kept for later)
-  final _emailCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
-  bool _pwObscured = true;
-
   SupabaseClient get _sb => Supabase.instance.client;
 
-  /// IMPORTANT:
-  /// This must be the **Web application** OAuth client ID (server client ID).
-  static const String _serverClientId =
+  /// Web OAuth client configured in Supabase for Google ID-token login.
+  static const String _supabaseGoogleClientId =
       '909295591544-bd2add2ghl48rcdpr789rhkc6h2d5j33.apps.googleusercontent.com';
 
-  @override
-  void dispose() {
-    _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    super.dispose();
-  }
+  /// iOS client ID from GoogleService-Info.plist / Google Cloud OAuth config.
+  static const String _iosClientId =
+      '909295591544-63ecikvdsnml3bof1339hrkp63lgad42.apps.googleusercontent.com';
 
   Future<void> _ensureProfile(User user) async {
     final now = DateTime.now().toUtc();
@@ -95,11 +86,6 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _signInWithGoogle() async {
     if (_busy) return;
 
-    if (!Platform.isAndroid) {
-      setState(() => _error = 'This login flow is configured for Android only.');
-      return;
-    }
-
     FocusScope.of(context).unfocus();
 
     setState(() {
@@ -108,31 +94,13 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final GoogleSignIn signIn = GoogleSignIn.instance;
-
-      await signIn.initialize(
-        serverClientId: _serverClientId,
-      );
-
-      final googleAccount = await signIn.authenticate();
-      final googleAuthentication = googleAccount.authentication;
-      final idToken = googleAuthentication.idToken;
-
-      if (idToken == null) {
-        throw Exception('No ID Token found. Check your serverClientId.');
+      if (Platform.isAndroid) {
+        await _signInWithGoogleAndroid();
+      } else if (Platform.isIOS || Platform.isMacOS) {
+        await _signInWithGoogleApple();
+      } else {
+        await _signInWithGoogleFallback();
       }
-
-      final res = await _sb.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-      );
-
-      final user = res.user;
-      if (user == null) {
-        throw Exception('Supabase sign-in failed (no user returned).');
-      }
-
-      await _ensureProfile(user);
 
       if (!mounted) return;
       setState(() => _busy = false);
@@ -161,53 +129,52 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _signInWithEmailPassword() async {
-    if (_busy) return;
+  Future<void> _signInWithGoogleAndroid() async {
+    final signIn = GoogleSignIn.instance;
+    await signIn.initialize(serverClientId: _supabaseGoogleClientId);
 
-    final email = _emailCtrl.text.trim();
-    final password = _passwordCtrl.text;
+    final googleAccount = await signIn.authenticate();
+    final idToken = googleAccount.authentication.idToken;
+    await _signInToSupabaseWithGoogleToken(idToken);
+  }
 
-    if (email.isEmpty || password.isEmpty) {
-      setState(() => _error = 'Enter email and password.');
-      return;
+  Future<void> _signInWithGoogleApple() async {
+    final signIn = GoogleSignIn.instance;
+    await signIn.initialize(
+      clientId: _iosClientId,
+      serverClientId: _supabaseGoogleClientId,
+    );
+
+    final googleAccount = await signIn.authenticate();
+    final idToken = googleAccount.authentication.idToken;
+    await _signInToSupabaseWithGoogleToken(idToken);
+  }
+
+  Future<void> _signInWithGoogleFallback() async {
+    final signIn = GoogleSignIn.instance;
+    await signIn.initialize(serverClientId: _supabaseGoogleClientId);
+
+    final googleAccount = await signIn.authenticate();
+    final idToken = googleAccount.authentication.idToken;
+    await _signInToSupabaseWithGoogleToken(idToken);
+  }
+
+  Future<void> _signInToSupabaseWithGoogleToken(String? idToken) async {
+    if (idToken == null) {
+      throw Exception('No ID Token found. Check your Google client IDs.');
     }
 
-    FocusScope.of(context).unfocus();
+    final res = await _sb.auth.signInWithIdToken(
+      provider: OAuthProvider.google,
+      idToken: idToken,
+    );
 
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    try {
-      final res = await _sb.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-
-      final user = res.user;
-      if (user == null) {
-        throw Exception('Login failed (no user returned).');
-      }
-
-      await _ensureProfile(user);
-
-      if (!mounted) return;
-      setState(() => _busy = false);
-      widget.onLoggedIn?.call();
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = e.message;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = 'Login Failed, Provide valid credentials';
-      });
+    final user = res.user;
+    if (user == null) {
+      throw Exception('Supabase sign-in failed (no user returned).');
     }
+
+    await _ensureProfile(user);
   }
 
   Future<void> _openTerms() async {
