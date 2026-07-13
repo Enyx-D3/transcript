@@ -2234,9 +2234,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                 if (isProcessing || _processingFailed)
                   const SizedBox(height: 12),
 
-                if (!isProcessing &&
-                    !_processingFailed &&
-                    labels.isNotEmpty) ...[
+                if (displayTurns.isNotEmpty && labels.isNotEmpty) ...[
                   Row(
                     children: [
                       Text(
@@ -2302,7 +2300,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                 if (_processingFailed && displayTurns.isEmpty)
                   const _InlineHint(text: 'No segments were generated.'),
 
-                if (!isProcessing && !_processingFailed)
+                if (displayTurns.isNotEmpty)
                   ...List.generate(displayTurns.length, (i) {
                     final u = displayTurns[i];
 
