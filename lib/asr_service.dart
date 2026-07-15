@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
@@ -43,13 +44,6 @@ class AsrService {
   }) async {
     _ensureBindings();
     final modelPaths = await _ensureModelFilesOnDisk();
-    final wave = readWave(wavPath);
-
-    if (wave.sampleRate != 16000) {
-      throw StateError(
-        'Expected 16 kHz WAV for sherpa-onnx transcription, got ${wave.sampleRate} Hz.',
-      );
-    }
 
     final normalizedLang = lang.trim().toLowerCase();
     final whisperLanguage = normalizedLang.isEmpty || normalizedLang == 'auto'
@@ -57,34 +51,19 @@ class AsrService {
         : normalizedLang;
     final whisperTask = translateToEnglish ? 'translate' : 'transcribe';
 
-    final recognizer = OfflineRecognizer(
-      OfflineRecognizerConfig(
-        model: OfflineModelConfig(
-          tokens: modelPaths.tokens,
-          numThreads: mathMin(4, Platform.numberOfProcessors),
-          debug: false,
-          provider: 'cpu',
-          whisper: OfflineWhisperModelConfig(
-            encoder: modelPaths.encoder,
-            decoder: modelPaths.decoder,
-            language: whisperLanguage,
-            task: whisperTask,
-          ),
-        ),
+    return Isolate.run(
+      () => _decodeWavInWorker(
+        wavPath: wavPath,
+        encoder: modelPaths.encoder,
+        decoder: modelPaths.decoder,
+        tokens: modelPaths.tokens,
+        whisperLanguage: whisperLanguage,
+        whisperTask: whisperTask,
       ),
     );
-
-    final stream = recognizer.createStream();
-    try {
-      stream.acceptWaveform(samples: wave.samples, sampleRate: wave.sampleRate);
-      recognizer.decode(stream);
-      final result = recognizer.getResult(stream);
-      return result.text.trim();
-    } finally {
-      stream.free();
-      recognizer.free();
-    }
   }
+
+  void releaseCachedRecognizer() {}
 
   void _ensureBindings() {
     if (_bindingsInitialized) return;
@@ -162,3 +141,50 @@ class AsrService {
 }
 
 int mathMin(int a, int b) => a < b ? a : b;
+
+String _decodeWavInWorker({
+  required String wavPath,
+  required String encoder,
+  required String decoder,
+  required String tokens,
+  required String whisperLanguage,
+  required String whisperTask,
+}) {
+  initBindings();
+
+  final wave = readWave(wavPath);
+  if (wave.sampleRate != 16000) {
+    throw StateError(
+      'Expected 16 kHz WAV for sherpa-onnx transcription, got ${wave.sampleRate} Hz.',
+    );
+  }
+
+  final recognizer = OfflineRecognizer(
+    OfflineRecognizerConfig(
+      model: OfflineModelConfig(
+        tokens: tokens,
+        // Keep native ASR from starving Android's UI thread on mid-range phones.
+        numThreads: mathMin(2, Platform.numberOfProcessors),
+        debug: false,
+        provider: 'cpu',
+        whisper: OfflineWhisperModelConfig(
+          encoder: encoder,
+          decoder: decoder,
+          language: whisperLanguage,
+          task: whisperTask,
+        ),
+      ),
+    ),
+  );
+
+  final stream = recognizer.createStream();
+  try {
+    stream.acceptWaveform(samples: wave.samples, sampleRate: wave.sampleRate);
+    recognizer.decode(stream);
+    final result = recognizer.getResult(stream);
+    return result.text.trim();
+  } finally {
+    stream.free();
+    recognizer.free();
+  }
+}

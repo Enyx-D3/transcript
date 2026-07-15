@@ -38,8 +38,31 @@ class _DisplayTurn {
   final String text;
   final double? startSec;
   final double? endSec;
+  // final String? badgeText;
+  final bool isPlaceholder;
 
-  _DisplayTurn(this.speaker, this.text, {this.startSec, this.endSec});
+  _DisplayTurn(
+    this.speaker,
+    this.text, {
+    this.startSec,
+    this.endSec,
+    // this.badgeText,
+    this.isPlaceholder = false,
+  });
+}
+
+class _PartialTurnItem {
+  final String key;
+  final _DisplayTurn turn;
+
+  const _PartialTurnItem({required this.key, required this.turn});
+}
+
+class _PartialTurnsSnapshot {
+  final List<_PartialTurnItem> turns;
+  final int? total;
+
+  const _PartialTurnsSnapshot({this.turns = const [], this.total});
 }
 
 enum _AudioVariant { original, enhanced }
@@ -88,6 +111,13 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   bool _processingFailed = false;
   String? _processingError;
   Timer? _processingWatchdog;
+  List<_PartialTurnItem> _partialTurns = const [];
+  int? _partialExpectedTotal;
+  final ValueNotifier<_PartialTurnsSnapshot> _partialTurnsNotifier =
+      ValueNotifier<_PartialTurnsSnapshot>(const _PartialTurnsSnapshot());
+  Timer? _partialFlushTimer;
+  List<_PartialTurnItem>? _pendingPartialTurns;
+  int? _pendingPartialExpectedTotal;
 
   final ReportService _reportService = const ReportService(
     baseUrl: 'https://enyx.app',
@@ -260,6 +290,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     _bgSub?.cancel();
     _poll?.cancel();
     _processingWatchdog?.cancel();
+    _partialFlushTimer?.cancel();
+    _partialTurnsNotifier.dispose();
     _searchCtrl.dispose();
     _scrollController.dispose();
     _player.stop();
@@ -637,10 +669,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
               'turnCount': _turns.length,
             };
 
-            final mergedMeta = <String, dynamic>{
-              if (meta != null) ...meta,
-              ...localMeta,
-            };
+            final mergedMeta = <String, dynamic>{...?meta, ...localMeta};
 
             final combinedNote = ('[meta] $mergedMeta\n${note.trim()}').trim();
 
@@ -984,7 +1013,11 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   }
 
   void _syncWatchdog() {
-    final shouldArm = _busyFlag && _turns.isEmpty && !_processingFailed;
+    final shouldArm =
+        _busyFlag &&
+        _turns.isEmpty &&
+        _partialTurns.isEmpty &&
+        !_processingFailed;
 
     if (!shouldArm) {
       _processingWatchdog?.cancel();
@@ -999,7 +1032,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       _processingWatchdog = null;
 
       if (!mounted) return;
-      if (_turns.isNotEmpty) return;
+      if (_turns.isNotEmpty || _partialTurns.isNotEmpty) return;
 
       final running = await _isFgServiceRunningSafe();
       if (running) {
@@ -1073,6 +1106,58 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       return;
     }
 
+    if (type == 'transcribe_partial') {
+      final existingId = data['existingId'] as int?;
+      if (existingId != widget.transcriptId) return;
+
+      final turnRaw = data['turn'];
+      if (turnRaw is! Map) return;
+      final turn = turnRaw.cast<String, dynamic>();
+      final text = (turn['text'] ?? '').toString().trim();
+      if (text.isEmpty) return;
+
+      final speaker = (turn['speaker'] ?? 'S1').toString();
+      final startSec = (turn['startSec'] is num)
+          ? (turn['startSec'] as num).toDouble()
+          : double.tryParse('${turn['startSec']}');
+      final endSec = (turn['endSec'] is num)
+          ? (turn['endSec'] as num).toDouble()
+          : double.tryParse('${turn['endSec']}');
+      final index = (data['index'] is int)
+          ? data['index'] as int
+          : int.tryParse('${data['index']}') ?? 0;
+      final total = (data['total'] is int)
+          ? data['total'] as int
+          : int.tryParse('${data['total']}');
+
+      _processingWatchdog?.cancel();
+      _processingWatchdog = null;
+
+      _upsertPartialTurn(
+        key: 'chunk_$index',
+        total: total,
+        turn: _DisplayTurn(
+          speaker,
+          text,
+          startSec: startSec,
+          endSec: endSec,
+          // badgeText: total != null && total > 0
+          //     ? 'Chunk ${index + 1}/$total'
+          //     : 'Chunk ${index + 1}',
+        ),
+      );
+
+      if (!mounted) return;
+      if (!_busyFlag || _processingFailed || _processingError != null) {
+        setState(() {
+          _busyFlag = true;
+          _processingFailed = false;
+          _processingError = null;
+        });
+      }
+      return;
+    }
+
     if (type != 'transcribe_result') return;
 
     final existingId = data['existingId'] as int?;
@@ -1113,6 +1198,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         _busyFlag = false;
         _processingFailed = false;
         _processingError = null;
+        _partialTurns = const [];
+        _partialExpectedTotal = null;
+        _partialTurnsNotifier.value = const _PartialTurnsSnapshot();
       });
     }
 
@@ -1302,8 +1390,14 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     }
 
     final b = StringBuffer();
-    for (final u in _turns) {
-      b.writeln('${u.speakerLabel}: ${u.text}');
+    if (_turns.isNotEmpty) {
+      for (final u in _turns) {
+        b.writeln('${u.speakerLabel}: ${u.text}');
+      }
+    } else {
+      for (final u in _partialTurns) {
+        b.writeln('${u.turn.speaker}: ${u.turn.text}');
+      }
     }
     return b.toString().trim();
   }
@@ -1361,6 +1455,82 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   String? _subtitleForTurn(_DisplayTurn u) {
     if (u.startSec == null || u.endSec == null) return null;
     return '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s';
+  }
+
+  List<_DisplayTurn> _displayTurnsForRender(bool isProcessing) {
+    if (_turns.isNotEmpty) return _buildDisplayTurns();
+    final items = _partialTurns.map((e) => e.turn).toList();
+    if (isProcessing && !_processingFailed) {
+      items.add(
+        _DisplayTurn(
+          'Processing next segment',
+          '',
+          // badgeText: 'Live',
+          isPlaceholder: true,
+        ),
+      );
+    }
+    return items;
+  }
+
+  List<_DisplayTurn> _displayTurnsFromPartialSnapshot(
+    _PartialTurnsSnapshot snapshot,
+    bool isProcessing,
+  ) {
+    final items = snapshot.turns.map((e) => e.turn).toList();
+    if (isProcessing && !_processingFailed) {
+      items.add(
+        _DisplayTurn(
+          'Processing next segment',
+          '',
+          // badgeText: 'Live',
+          isPlaceholder: true,
+        ),
+      );
+    }
+    return items;
+  }
+
+  void _upsertPartialTurn({
+    required String key,
+    required _DisplayTurn turn,
+    int? total,
+  }) {
+    final next = [...(_pendingPartialTurns ?? _partialTurns)];
+    final i = next.indexWhere((e) => e.key == key);
+    final item = _PartialTurnItem(key: key, turn: turn);
+    if (i >= 0) {
+      next[i] = item;
+    } else {
+      next.add(item);
+    }
+    next.sort((a, b) {
+      final sa = a.turn.startSec ?? double.infinity;
+      final sb = b.turn.startSec ?? double.infinity;
+      return sa.compareTo(sb);
+    });
+
+    _pendingPartialTurns = next;
+    if (total != null && total > 0) {
+      _pendingPartialExpectedTotal = total;
+    }
+
+    _partialFlushTimer ??= Timer(const Duration(milliseconds: 350), () {
+      _partialFlushTimer = null;
+      final pending = _pendingPartialTurns;
+      if (pending == null || !mounted) return;
+      final pendingTotal = _pendingPartialExpectedTotal;
+      _pendingPartialTurns = null;
+      _pendingPartialExpectedTotal = null;
+      _partialTurns = pending;
+      if (pendingTotal != null) {
+        _partialExpectedTotal = pendingTotal;
+      }
+      _partialTurnsNotifier.value = _PartialTurnsSnapshot(
+        turns: pending,
+        total: _partialExpectedTotal,
+      );
+    });
   }
 
   void _syncTurnKeys(int length) {
@@ -1424,7 +1594,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
   void _handleSearchChanged(String value) {
     _searchQuery = value.trim();
-    final displayTurns = _buildDisplayTurns();
+    final displayTurns = _displayTurnsForRender(_isProcessingNow);
     _recomputeSearchMatches(displayTurns, notify: true);
     if (_searchMatches.isNotEmpty) {
       _scrollToMatchedTurn(_searchMatches[_currentSearchMatch]);
@@ -1806,6 +1976,147 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
+  Widget _buildTurnsSection({
+    required ThemeData theme,
+    required Color fg,
+    required bool isProcessing,
+    required bool canPlayAudio,
+    required _AudioVariant effectiveV,
+    required bool showingEdited,
+    required int searchCount,
+  }) {
+    return ValueListenableBuilder<_PartialTurnsSnapshot>(
+      valueListenable: _partialTurnsNotifier,
+      builder: (context, partialSnapshot, _) {
+        final displayTurns = _turns.isEmpty
+            ? _displayTurnsFromPartialSnapshot(partialSnapshot, isProcessing)
+            : _displayTurnsForRender(isProcessing);
+        _syncTurnKeys(displayTurns.length);
+        final currentPlaybackTurnIndex = _currentPlaybackTurnIndex(
+          displayTurns,
+        );
+        final countText =
+            partialSnapshot.total != null && isProcessing && _turns.isEmpty
+            ? '${partialSnapshot.turns.length}/${partialSnapshot.total!}'
+            : '${displayTurns.where((e) => !e.isPlaceholder).length}';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Turns',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: fg,
+                  ),
+                ),
+                if (!isProcessing) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    canPlayAudio
+                        ? 'Tap to play • Long-press for options'
+                        : 'Long-press for options',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                _MetaPill(text: countText),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (isProcessing && displayTurns.isEmpty)
+              const _InlineHint(
+                text: 'No segments yet. We’ll list them here when ready.',
+              ),
+            if (_processingFailed && displayTurns.isEmpty)
+              const _InlineHint(text: 'No segments were generated.'),
+            if (displayTurns.isNotEmpty)
+              ...List.generate(displayTurns.length, (i) {
+                final u = displayTurns[i];
+                if (u.isPlaceholder) {
+                  return const Padding(
+                    padding: EdgeInsets.only(bottom: 10),
+                    child: _TurnPlaceholderCard(),
+                  );
+                }
+
+                final subtitle = (u.startSec != null && u.endSec != null)
+                    ? '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s'
+                    : null;
+                final turnId = (!showingEdited && i < _turns.length)
+                    ? _turns[i].id
+                    : null;
+                final isActiveSearchMatch =
+                    searchCount > 0 &&
+                    _currentSearchMatch >= 0 &&
+                    _searchMatches[_currentSearchMatch] == i;
+                final isCurrentPlaybackSegment = currentPlaybackTurnIndex == i;
+                final baseSpeakerStyle = const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.1,
+                  color: Colors.white,
+                );
+                final baseTextStyle = const TextStyle(
+                  height: 1.35,
+                  fontSize: 14.5,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                );
+                final highlightColor = isActiveSearchMatch
+                    ? const Color(0xFFFFD54F)
+                    : const Color(0xFFFFF176);
+                final speakerSpan = _buildHighlightedSpan(
+                  u.speaker,
+                  normalStyle: baseSpeakerStyle,
+                  highlightStyle: baseSpeakerStyle.copyWith(
+                    backgroundColor: highlightColor,
+                    color: Colors.black,
+                  ),
+                );
+                final textSpan = _buildHighlightedSpan(
+                  u.text,
+                  normalStyle: baseTextStyle,
+                  highlightStyle: baseTextStyle.copyWith(
+                    backgroundColor: highlightColor,
+                    color: Colors.black,
+                  ),
+                );
+
+                return Padding(
+                  key: _turnKeys[i],
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: GestureDetector(
+                    onTap: (canPlayAudio && u.startSec != null)
+                        ? () => _playFromSegment(u, effectiveV)
+                        : null,
+                    onLongPress: turnId == null
+                        ? null
+                        : () => _showTurnActions(turnId),
+                    child: _TurnCard(
+                      speaker: u.speaker,
+                      text: u.text,
+                      speakerSpan: speakerSpan,
+                      textSpan: textSpan,
+                      subtitle: subtitle,
+                      // badgeText: u.badgeText,
+                      isActiveSearchMatch: isActiveSearchMatch,
+                      isCurrentPlaybackSegment: isCurrentPlaybackSegment,
+                    ),
+                  ),
+                );
+              }),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1842,13 +2153,10 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final hasAnyAudio = origExists || enhExists;
     final canPlayAudio = hasAnyAudio && !_isTranscribingNow;
 
-    final displayTurns = _buildDisplayTurns();
     final showingEdited =
         (t.editedText != null && t.editedText!.trim().isNotEmpty);
-    _syncTurnKeys(displayTurns.length);
     final hasSearch = _searchQuery.trim().isNotEmpty;
     final searchCount = _searchMatches.length;
-    final currentPlaybackTurnIndex = _currentPlaybackTurnIndex(displayTurns);
     final currentMatchDisplay = (searchCount > 0 && _currentSearchMatch >= 0)
         ? '${_currentSearchMatch + 1}/$searchCount'
         : (hasSearch ? '0/0' : '');
@@ -2157,111 +2465,15 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                   const SizedBox(height: 14),
                 ],
 
-                Row(
-                  children: [
-                    Text(
-                      'Turns',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        color: fg,
-                      ),
-                    ),
-                    if (!isProcessing) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        canPlayAudio
-                            ? 'Tap to play • Long-press for options'
-                            : 'Long-press for options',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.55),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    const Spacer(),
-                    _MetaPill(text: '${displayTurns.length}'),
-                  ],
+                _buildTurnsSection(
+                  theme: theme,
+                  fg: fg,
+                  isProcessing: isProcessing,
+                  canPlayAudio: canPlayAudio,
+                  effectiveV: effectiveV,
+                  showingEdited: showingEdited,
+                  searchCount: searchCount,
                 ),
-                const SizedBox(height: 8),
-
-                if (isProcessing && displayTurns.isEmpty)
-                  const _InlineHint(
-                    text: 'No segments yet. We’ll list them here when ready.',
-                  ),
-                if (_processingFailed && displayTurns.isEmpty)
-                  const _InlineHint(text: 'No segments were generated.'),
-
-                if (!isProcessing && !_processingFailed)
-                  ...List.generate(displayTurns.length, (i) {
-                    final u = displayTurns[i];
-
-                    final subtitle = (u.startSec != null && u.endSec != null)
-                        ? '${u.startSec!.toStringAsFixed(2)}–${u.endSec!.toStringAsFixed(2)}s'
-                        : null;
-
-                    final turnId = (!showingEdited && i < _turns.length)
-                        ? _turns[i].id
-                        : null;
-                    final isActiveSearchMatch =
-                        searchCount > 0 &&
-                        _currentSearchMatch >= 0 &&
-                        _searchMatches[_currentSearchMatch] == i;
-                    final isCurrentPlaybackSegment =
-                        currentPlaybackTurnIndex == i;
-                    final baseSpeakerStyle = const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.1,
-                      color: Colors.white,
-                    );
-                    final baseTextStyle = const TextStyle(
-                      height: 1.35,
-                      fontSize: 14.5,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    );
-                    final highlightColor = isActiveSearchMatch
-                        ? const Color(0xFFFFD54F)
-                        : const Color(0xFFFFF176);
-                    final speakerSpan = _buildHighlightedSpan(
-                      u.speaker,
-                      normalStyle: baseSpeakerStyle,
-                      highlightStyle: baseSpeakerStyle.copyWith(
-                        backgroundColor: highlightColor,
-                        color: Colors.black,
-                      ),
-                    );
-                    final textSpan = _buildHighlightedSpan(
-                      u.text,
-                      normalStyle: baseTextStyle,
-                      highlightStyle: baseTextStyle.copyWith(
-                        backgroundColor: highlightColor,
-                        color: Colors.black,
-                      ),
-                    );
-
-                    return Padding(
-                      key: _turnKeys[i],
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: GestureDetector(
-                        onTap: (canPlayAudio && u.startSec != null)
-                            ? () => _playFromSegment(u, effectiveV)
-                            : null,
-                        onLongPress: turnId == null
-                            ? null
-                            : () => _showTurnActions(turnId),
-                        child: _TurnCard(
-                          speaker: u.speaker,
-                          text: u.text,
-                          speakerSpan: speakerSpan,
-                          textSpan: textSpan,
-                          subtitle: subtitle,
-                          isActiveSearchMatch: isActiveSearchMatch,
-                          isCurrentPlaybackSegment: isCurrentPlaybackSegment,
-                        ),
-                      ),
-                    );
-                  }),
               ],
             ),
             if (_searchOpen)
@@ -2527,6 +2739,7 @@ class _TurnCard extends StatelessWidget {
     required this.speaker,
     required this.text,
     this.subtitle,
+    // this.badgeText,
     this.speakerSpan,
     this.textSpan,
     this.isActiveSearchMatch = false,
@@ -2536,6 +2749,7 @@ class _TurnCard extends StatelessWidget {
   final String speaker;
   final String text;
   final String? subtitle;
+  // final String? badgeText;
   final InlineSpan? speakerSpan;
   final InlineSpan? textSpan;
   final bool isActiveSearchMatch;
@@ -2597,6 +2811,30 @@ class _TurnCard extends StatelessWidget {
                   ),
                 ),
               ),
+              // if (badgeText != null) ...[
+                // const SizedBox(width: 8),
+                // Container(
+                //   padding: const EdgeInsets.symmetric(
+                //     horizontal: 8,
+                //     vertical: 4,
+                //   ),
+                //   decoration: BoxDecoration(
+                //     borderRadius: BorderRadius.circular(999),
+                //     color: Colors.white.withValues(alpha: 0.08),
+                //     border: Border.all(
+                //       color: Colors.white.withValues(alpha: 0.14),
+                //     ),
+                //   ),
+                //   child: Text(
+                //     badgeText!,
+                //     style: const TextStyle(
+                //       color: Colors.white70,
+                //       fontSize: 11,
+                //       fontWeight: FontWeight.w800,
+                //     ),
+                //   ),
+                // ),
+              // ],
               const SizedBox(width: 8),
               Container(
                 width: 28,
@@ -2652,6 +2890,80 @@ class _TurnCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TurnPlaceholderCard extends StatefulWidget {
+  const _TurnPlaceholderCard();
+
+  @override
+  State<_TurnPlaceholderCard> createState() => _TurnPlaceholderCardState();
+}
+
+class _TurnPlaceholderCardState extends State<_TurnPlaceholderCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.55, end: 0.9).animate(_controller),
+      child: GlassCard(
+        variant: GlassCardVariant.panel,
+        padding: const EdgeInsets.all(14),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _ShimmerBlock(width: 72, height: 12),
+                Spacer(),
+                _ShimmerBlock(width: 42, height: 24, radius: 999),
+              ],
+            ),
+            SizedBox(height: 12),
+            _ShimmerBlock(width: double.infinity, height: 12),
+            SizedBox(height: 8),
+            _ShimmerBlock(width: double.infinity, height: 12),
+            SizedBox(height: 8),
+            _ShimmerBlock(width: 180, height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShimmerBlock extends StatelessWidget {
+  const _ShimmerBlock({
+    required this.width,
+    required this.height,
+    this.radius = 8,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        color: Colors.white.withValues(alpha: 0.10),
       ),
     );
   }

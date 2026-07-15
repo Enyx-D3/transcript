@@ -25,6 +25,13 @@ typedef ProgressCallback =
       required double totalSec,
     });
 
+typedef PartialTurnCallback =
+    Future<void> Function({
+      required LiteTurn turn,
+      required int index,
+      int? total,
+    });
+
 // ---------------- Internal merged turn structure ----------------
 
 class _Turn {
@@ -351,6 +358,8 @@ Future<TranscriptionResult> transcribeToResult({
   bool matchWithEnrolledSpeakers = true,
   String lang = 'auto',
   int? targetSpeakers,
+  bool? diarizationEnabled,
+  PartialTurnCallback? onPartialTurn,
   // ✅ Future callback so background can await saveData()
   Future<void> Function({
     required String stage,
@@ -359,7 +368,58 @@ Future<TranscriptionResult> transcribeToResult({
   })?
   onProgress,
 }) async {
+  try {
+    return await _transcribeToResultInner(
+      wavPath: wavPath,
+      titleHint: titleHint,
+      useIsolatedDiarization: useIsolatedDiarization,
+      matchWithEnrolledSpeakers: matchWithEnrolledSpeakers,
+      lang: lang,
+      targetSpeakers: targetSpeakers,
+      diarizationEnabled: diarizationEnabled,
+      onPartialTurn: onPartialTurn,
+      onProgress: onProgress,
+    );
+  } finally {
+    _asr.releaseCachedRecognizer();
+  }
+}
+
+Future<TranscriptionResult> _transcribeToResultInner({
+  required String wavPath,
+  String? titleHint,
+  bool useIsolatedDiarization = true,
+  bool matchWithEnrolledSpeakers = true,
+  String lang = 'auto',
+  int? targetSpeakers,
+  bool? diarizationEnabled,
+  PartialTurnCallback? onPartialTurn,
+  Future<void> Function({
+    required String stage,
+    required double processedSec,
+    required double totalSec,
+  })?
+  onProgress,
+}) async {
   String? lastLoggedStage;
+  final pipelineWatch = Stopwatch()..start();
+  const double kSingleSpeakerChunkSec = 25.0;
+  const double kSingleSpeakerChunkOverlapSec = 0.35;
+
+  void phaseLog(
+    String stage,
+    String message, {
+    double? processedSec,
+    double? totalSec,
+  }) {
+    final audioPart = (processedSec != null && totalSec != null)
+        ? ' | audio=${processedSec.toStringAsFixed(1)}s/${totalSec.toStringAsFixed(1)}s'
+        : '';
+    debugPrint(
+      '[BG-PHASE ${DateTime.now().toIso8601String()}] '
+      '$stage | $message | elapsed=${(pipelineWatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s$audioPart',
+    );
+  }
 
   Future<void> emit(String stage, double processedSec, double totalSec) async {
     final shouldLog =
@@ -370,7 +430,8 @@ Future<TranscriptionResult> transcribeToResult({
       lastLoggedStage = stage;
       debugPrint(
         '[BG-PHASE ${DateTime.now().toIso8601String()}] '
-        '$stage (${processedSec.toStringAsFixed(1)}s / ${totalSec.toStringAsFixed(1)}s)',
+        '$stage | progress | elapsed=${(pipelineWatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s '
+        '| audio=${processedSec.toStringAsFixed(1)}s/${totalSec.toStringAsFixed(1)}s',
       );
     }
 
@@ -387,51 +448,213 @@ Future<TranscriptionResult> transcribeToResult({
     }
   }
 
+  Future<List<LiteTurn>> transcribeInFixedChunks({
+    required String speaker,
+    required String sourceWavPath,
+    required double totalDuration,
+    required String language,
+    required bool shouldTranslate,
+  }) async {
+    final tmpDir = Directory(
+      '${Directory.systemTemp.path}/transcript_tmp_${DateTime.now().millisecondsSinceEpoch}',
+    )..createSync(recursive: true);
+
+    final wavInfo = await parseWavInfo(sourceWavPath);
+    final out = <LiteTurn>[];
+    double processedSec = 0.0;
+    int chunkIndex = 0;
+    final totalChunks = totalDuration > 0
+        ? (totalDuration / kSingleSpeakerChunkSec).ceil()
+        : 0;
+
+    try {
+      for (
+        double startSec = 0.0;
+        startSec < totalDuration;
+        startSec += kSingleSpeakerChunkSec
+      ) {
+        final safeStart = math.max(
+          0.0,
+          startSec - kSingleSpeakerChunkOverlapSec,
+        );
+        final safeEnd = math.min(
+          totalDuration,
+          startSec + kSingleSpeakerChunkSec + kSingleSpeakerChunkOverlapSec,
+        );
+        if ((safeEnd - safeStart) < 0.1) continue;
+
+        final slice = '${tmpDir.path}/slice_$chunkIndex.wav';
+        try {
+          phaseLog(
+            'Transcribing',
+            'chunk ${chunkIndex + 1}/$totalChunks start (${safeStart.toStringAsFixed(1)}s-${safeEnd.toStringAsFixed(1)}s)',
+            processedSec: safeStart,
+            totalSec: totalDuration,
+          );
+          await trimWav16kMonoPcm(
+            inputPath: sourceWavPath,
+            startSec: safeStart,
+            endSec: safeEnd,
+            outputPath: slice,
+            preParsedInfo: wavInfo,
+          );
+
+          final text = await _asr.transcribeWav(
+            wavPath: slice,
+            translateToEnglish: shouldTranslate,
+            diarize: false,
+            noTimestamps: false,
+            splitOnWord: true,
+            lang: language,
+          );
+
+          final trimmedText = text.trim();
+          phaseLog(
+            'Transcribing',
+            'chunk ${chunkIndex + 1}/$totalChunks done chars=${trimmedText.length}',
+            processedSec: safeEnd,
+            totalSec: totalDuration,
+          );
+          if (trimmedText.isNotEmpty) {
+            final turn = LiteTurn(speaker, safeStart, safeEnd, trimmedText);
+            out.add(turn);
+            if (onPartialTurn != null) {
+              await onPartialTurn(
+                turn: turn,
+                index: chunkIndex,
+                total: totalChunks > 0 ? totalChunks : null,
+              );
+            }
+          }
+        } catch (e, st) {
+          debugPrint('[BG-PIPELINE] Chunk $chunkIndex error: $e');
+          debugPrint('$st');
+        } finally {
+          processedSec = math.max(
+            processedSec,
+            math.min(totalDuration, startSec + kSingleSpeakerChunkSec),
+          );
+          await emit('Transcribing', processedSec, totalDuration);
+          try {
+            File(slice).deleteSync();
+          } catch (_) {}
+        }
+
+        chunkIndex++;
+        await Future.delayed(const Duration(milliseconds: 35));
+      }
+    } finally {
+      try {
+        if (tmpDir.existsSync()) tmpDir.deleteSync(recursive: true);
+      } catch (_) {}
+    }
+
+    if (out.isEmpty) return const [];
+
+    final merged = <LiteTurn>[];
+    LiteTurn? cur;
+    for (final t in out) {
+      if (cur == null) {
+        cur = t;
+        continue;
+      }
+
+      if (t.speaker == cur.speaker) {
+        cur = LiteTurn(
+          cur.speaker,
+          cur.startSec,
+          t.endSec,
+          '${cur.text} ${t.text}'.trim(),
+        );
+      } else {
+        merged.add(cur);
+        cur = t;
+      }
+    }
+    if (cur != null) merged.add(cur);
+
+    return merged;
+  }
+
+  List<LiteTurn> splitTurnsForAsr(List<LiteTurn> input) {
+    final out = <LiteTurn>[];
+    for (final turn in input) {
+      final duration = turn.endSec - turn.startSec;
+      if (duration <= kSingleSpeakerChunkSec) {
+        out.add(turn);
+        continue;
+      }
+
+      var start = turn.startSec;
+      while (start < turn.endSec) {
+        final end = math.min(turn.endSec, start + kSingleSpeakerChunkSec);
+        if (end - start >= 0.1) {
+          out.add(LiteTurn(turn.speaker, start, end, turn.text));
+        }
+        start = end;
+      }
+    }
+    return out;
+  }
+
   bool translate = false;
-  bool diarEnabled = true;
+  bool diarEnabled = diarizationEnabled ?? true;
 
   try {
     final prefs = await SharedPreferences.getInstance();
     translate = prefs.getBool(_kPrefTranslateToEnglish) ?? false;
-    diarEnabled = prefs.getBool(_kPrefDiarizationEnabled) ?? true;
+    diarEnabled =
+        diarizationEnabled ?? (prefs.getBool(_kPrefDiarizationEnabled) ?? true);
   } catch (_) {
     translate = false;
-    diarEnabled = true;
+    diarEnabled = diarizationEnabled ?? true;
   }
 
   // 0) Preprocess
   await emit('Preparing', 0.0, 0.0);
+  phaseLog('Preparing', 'preprocess start');
 
   final cleaned = await preprocessWav16kMono(wavPath);
   final duration = await readWavDuration(cleaned);
 
   await emit('Preparing', 0.0, duration);
+  phaseLog(
+    'Preparing',
+    'preprocess done',
+    processedSec: 0.0,
+    totalSec: duration,
+  );
 
   final modelName = _asr.currentModel.name;
 
   final normalizedLang = (lang.trim().isEmpty ? 'auto' : lang.trim());
   final resultLang = translate ? 'en' : normalizedLang;
 
-  // If diarization OFF => single pass
+  // If diarization OFF => fixed-size chunks to avoid large-file crashes
   if (!diarEnabled) {
     debugPrint(
-      '[BG-PIPELINE] Diarization disabled. Single-pass transcription.',
+      '[BG-PIPELINE] Diarization disabled. Fixed-chunk transcription.',
     );
 
     await emit('Transcribing', 0.0, duration);
 
-    final text = await _asr.transcribeWav(
-      wavPath: cleaned,
-      translateToEnglish: translate,
-      diarize: false,
-      noTimestamps: false,
-      splitOnWord: true,
-      lang: resultLang,
+    final turns = await transcribeInFixedChunks(
+      speaker: 'S1',
+      sourceWavPath: cleaned,
+      totalDuration: duration,
+      language: resultLang,
+      shouldTranslate: translate,
     );
 
     await emit('Finalizing', duration, duration);
+    phaseLog(
+      'Finalizing',
+      'fixed chunks complete turns=${turns.length}',
+      processedSec: duration,
+      totalSec: duration,
+    );
 
-    final baseTitle = text.trim();
+    final baseTitle = turns.isNotEmpty ? turns.first.text.trim() : '';
     final title = (titleHint != null && titleHint.trim().isNotEmpty)
         ? titleHint.trim()
         : (baseTitle.isEmpty
@@ -445,14 +668,26 @@ Future<TranscriptionResult> transcribeToResult({
       lang: resultLang,
       durationSec: duration,
       title: title,
-      turns: [LiteTurn('S1', 0.0, duration, text.trim())],
+      turns: turns,
     );
   }
 
   // 1) Diarization
   await emit('Diarizing', 0.0, duration);
+  phaseLog(
+    'Diarizing',
+    'loading diarization models',
+    processedSec: 0.0,
+    totalSec: duration,
+  );
 
   final mp = await ensureDiarizationModels();
+  phaseLog(
+    'Diarizing',
+    'diarization models ready',
+    processedSec: 0.0,
+    totalSec: duration,
+  );
 
   List<IsolatedEmbeddingTurn> diarizationTurns = [];
   Map<String, String> speakerMatches = {};
@@ -461,6 +696,12 @@ Future<TranscriptionResult> transcribeToResult({
     debugPrint('[BG-PIPELINE] Enhanced diarization start...');
     debugPrint(
       '[BG-PIPELINE] Starting enhanced diarization with speaker matching...',
+    );
+    phaseLog(
+      'Diarizing',
+      'enhanced isolate start targetSpeakers=${targetSpeakers ?? 'auto'}',
+      processedSec: 0.0,
+      totalSec: duration,
     );
     //onProgress?.call(0, 1, 'Analyzing speakers');
 
@@ -503,9 +744,21 @@ Future<TranscriptionResult> transcribeToResult({
 
       diarizationTurns = enhancedResult.turns;
       speakerMatches = enhancedResult.speakerMatches;
+      phaseLog(
+        'Diarizing',
+        'enhanced isolate done turns=${diarizationTurns.length} matches=${speakerMatches.length}',
+        processedSec: duration,
+        totalSec: duration,
+      );
     } catch (e, st) {
       debugPrint('[BG-PIPELINE] Enhanced diarization failed: $e');
       debugPrint('$st');
+      phaseLog(
+        'Diarizing',
+        'enhanced isolate failed, fallback in-thread start',
+        processedSec: 0.0,
+        totalSec: duration,
+      );
 
       final emb = await SpeakerEmbedder.instance(mp.embOnnx);
       final merged = await _diarizeByEmbeddings(
@@ -532,10 +785,22 @@ Future<TranscriptionResult> transcribeToResult({
             ),
           )
           .toList();
+      phaseLog(
+        'Diarizing',
+        'fallback in-thread done turns=${diarizationTurns.length}',
+        processedSec: duration,
+        totalSec: duration,
+      );
     }
   } else {
     final emb = await SpeakerEmbedder.instance(mp.embOnnx);
     debugPrint('[BG-PIPELINE] In-thread diarization start...');
+    phaseLog(
+      'Diarizing',
+      'in-thread start targetSpeakers=${targetSpeakers ?? 'auto'}',
+      processedSec: 0.0,
+      totalSec: duration,
+    );
 
     final merged = await _diarizeByEmbeddings(
       wavPath: cleaned,
@@ -558,35 +823,56 @@ Future<TranscriptionResult> transcribeToResult({
               IsolatedEmbeddingTurn(speaker: t.spk, startSec: t.a, endSec: t.b),
         )
         .toList();
+    phaseLog(
+      'Diarizing',
+      'in-thread done turns=${diarizationTurns.length}',
+      processedSec: duration,
+      totalSec: duration,
+    );
   }
 
-  final turns = diarizationTurns.map((t) {
+  var turns = diarizationTurns.map((t) {
     final speakerName = matchWithEnrolledSpeakers
         ? (speakerMatches[t.speaker] ?? t.speaker)
         : t.speaker;
     return LiteTurn(speakerName, t.startSec, t.endSec, '');
   }).toList();
+  final diarizedTurnCount = turns.length;
+  turns = splitTurnsForAsr(turns);
+  phaseLog(
+    'Diarizing',
+    'speaker labels resolved turns=$diarizedTurnCount asrSegments=${turns.length}',
+    processedSec: duration,
+    totalSec: duration,
+  );
 
-  // If diarization produced nothing => single pass
+  // If diarization produced nothing => fixed-size single-speaker chunks
   if (turns.isEmpty) {
     debugPrint(
-      '[BG-PIPELINE] No diarization segments. Single speaker fallback.',
+      '[BG-PIPELINE] No diarization segments. Fixed-chunk single speaker fallback.',
     );
 
     await emit('Transcribing', 0.0, duration);
 
-    final text = await _asr.transcribeWav(
-      wavPath: cleaned,
-      translateToEnglish: translate,
-      diarize: false,
-      noTimestamps: false,
-      splitOnWord: true,
-      lang: resultLang,
+    final fallbackTurns = await transcribeInFixedChunks(
+      speaker: 'S1',
+      sourceWavPath: cleaned,
+      totalDuration: duration,
+      language: resultLang,
+      shouldTranslate: translate,
     );
 
     await emit('Finalizing', duration, duration);
+    phaseLog(
+      'Finalizing',
+      'fallback chunks complete turns=${fallbackTurns.length}',
+      processedSec: duration,
+      totalSec: duration,
+    );
 
-    final baseTitle = text.trim();
+    final baseTitle = fallbackTurns.isNotEmpty
+        ? fallbackTurns.first.text.trim()
+        : '';
     final title = (titleHint != null && titleHint.trim().isNotEmpty)
         ? titleHint.trim()
         : (baseTitle.isEmpty
@@ -600,7 +886,7 @@ Future<TranscriptionResult> transcribeToResult({
       lang: resultLang,
       durationSec: duration,
       title: title,
-      turns: [LiteTurn('S1', 0.0, duration, text.trim())],
+      turns: fallbackTurns,
     );
   }
 
@@ -608,6 +894,12 @@ Future<TranscriptionResult> transcribeToResult({
   await emit('Transcribing', 0.0, duration);
   debugPrint(
     '[BG-PIPELINE] Starting transcription of ${turns.length} segments',
+  );
+  phaseLog(
+    'Transcribing',
+    'diarized segment transcription start segments=${turns.length}',
+    processedSec: 0.0,
+    totalSec: duration,
   );
   //onProgress?.call(0, turns.length, 'Transcribing');
 
@@ -629,6 +921,12 @@ Future<TranscriptionResult> transcribeToResult({
     final slice = '${tmpDir.path}/slice_$i.wav';
 
     try {
+      phaseLog(
+        'Transcribing',
+        'segment ${i + 1}/${turns.length} start speaker=${turn.speaker} (${turn.startSec.toStringAsFixed(1)}s-${turn.endSec.toStringAsFixed(1)}s)',
+        processedSec: turn.startSec,
+        totalSec: duration,
+      );
       await trimWav16kMonoPcm(
         inputPath: cleaned,
         startSec: turn.startSec,
@@ -647,10 +945,23 @@ Future<TranscriptionResult> transcribeToResult({
       );
 
       final trimmedText = text.trim();
+      phaseLog(
+        'Transcribing',
+        'segment ${i + 1}/${turns.length} done chars=${trimmedText.length}',
+        processedSec: turn.endSec,
+        totalSec: duration,
+      );
       if (trimmedText.isNotEmpty) {
-        out.add(
-          LiteTurn(turn.speaker, turn.startSec, turn.endSec, trimmedText),
+        final outTurn = LiteTurn(
+          turn.speaker,
+          turn.startSec,
+          turn.endSec,
+          trimmedText,
         );
+        out.add(outTurn);
+        if (onPartialTurn != null) {
+          await onPartialTurn(turn: outTurn, index: i, total: turns.length);
+        }
       }
     } catch (e, st) {
       debugPrint('[BG-PIPELINE] Segment $i error: $e');
@@ -684,6 +995,12 @@ Future<TranscriptionResult> transcribeToResult({
 
   final nonEmpty = out.where((t) => t.text.trim().isNotEmpty).toList();
   await emit('Finalizing', duration, duration);
+  phaseLog(
+    'Finalizing',
+    'segment transcription complete nonEmpty=${nonEmpty.length}',
+    processedSec: duration,
+    totalSec: duration,
+  );
 
   if (nonEmpty.isEmpty) {
     final title = (titleHint != null && titleHint.trim().isNotEmpty)

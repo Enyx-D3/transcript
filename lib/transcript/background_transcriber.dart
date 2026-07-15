@@ -40,6 +40,7 @@ class BackgroundTranscriber {
 
   // ✅ language (always stored as non-null String; default 'auto')
   static const _kLang = 'bg_lang';
+  static const _kDiarizationEnabled = 'bg_diarization_enabled_int';
 
   static const _kProgressProcessedSec = 'progress_processed_sec';
   static const _kProgressTotalSec = 'progress_total_sec';
@@ -50,6 +51,7 @@ class BackgroundTranscriber {
 
   // ✅ SharedPreferences key (must match SettingsPage)
   static const _kPrefTypoFixEnabled = 'pref_typo_fix_enabled';
+  static const _kPrefDiarizationEnabled = 'pref_diarization_enabled';
 
   static Future<void> init() async {
     FlutterForegroundTask.init(
@@ -83,9 +85,13 @@ class BackgroundTranscriber {
     int? existingTranscriptId,
     int? targetSpeakers,
     String lang = 'auto',
+    bool? diarizationEnabledOverride,
   }) async {
     final sp = await SharedPreferences.getInstance();
     final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? false;
+    final diarizationEnabled =
+        diarizationEnabledOverride ??
+        (sp.getBool(_kPrefDiarizationEnabled) ?? true);
 
     await start(
       wavPath: wavPath,
@@ -95,6 +101,7 @@ class BackgroundTranscriber {
       targetSpeakers: targetSpeakers,
       lang: lang,
       typoFixEnabled: typoFix,
+      diarizationEnabled: diarizationEnabled,
     );
   }
 
@@ -109,6 +116,7 @@ class BackgroundTranscriber {
 
     // ✅ MUST be passed (call startFromPrefs from UI)
     required bool typoFixEnabled,
+    required bool diarizationEnabled,
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
     await FlutterForegroundTask.saveData(
@@ -143,6 +151,10 @@ class BackgroundTranscriber {
     await FlutterForegroundTask.saveData(
       key: _kLang,
       value: (lang.trim().isEmpty) ? 'auto' : lang.trim(),
+    );
+    await FlutterForegroundTask.saveData(
+      key: _kDiarizationEnabled,
+      value: diarizationEnabled ? 1 : 0,
     );
 
     // ✅ IMPORTANT: store typo-fix as INT (1/0) to avoid bool deserialization issues
@@ -374,6 +386,26 @@ class _TranscribeTaskHandler extends TaskHandler {
         .toList();
   }
 
+  Future<void> _sendPartialTurn({
+    required int? existingId,
+    required LiteTurn turn,
+    required int index,
+    int? total,
+  }) async {
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'transcribe_partial',
+      'existingId': existingId,
+      'index': index,
+      'total': total,
+      'turn': <String, dynamic>{
+        'speaker': turn.speaker,
+        'startSec': turn.startSec,
+        'endSec': turn.endSec,
+        'text': turn.text,
+      },
+    });
+  }
+
   Future<void> _setStageNotification(String stage, {String? text}) async {
     await FlutterForegroundTask.saveData(
       key: BackgroundTranscriber._kProgressStage,
@@ -448,6 +480,10 @@ class _TranscribeTaskHandler extends TaskHandler {
       key: BackgroundTranscriber._kTypoFixEnabled,
     );
     final typoFixEnabled = _readTypoFixEnabled(rawTypo);
+    final rawDiarization = await FlutterForegroundTask.getData(
+      key: BackgroundTranscriber._kDiarizationEnabled,
+    );
+    final diarizationEnabled = _readTypoFixEnabled(rawDiarization);
 
     if (wavPath == null || wavPath.isEmpty) {
       await FlutterForegroundTask.updateService(
@@ -469,6 +505,16 @@ class _TranscribeTaskHandler extends TaskHandler {
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
         lang: lang,
+        diarizationEnabled: diarizationEnabled,
+        onPartialTurn:
+            ({required LiteTurn turn, required int index, int? total}) async {
+              await _sendPartialTurn(
+                existingId: existingId,
+                turn: turn,
+                index: index,
+                total: total,
+              );
+            },
         onProgress:
             ({
               required String stage,

@@ -300,8 +300,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
           translateToEnglish: false,
           titleHint: null,
           existingTranscriptId: tId,
-          targetSpeakers: targetSpeakers,
+          targetSpeakers: _diarizationEnabled ? targetSpeakers : null,
           lang: lang,
+          diarizationEnabledOverride: _diarizationEnabled,
         );
 
         final job = obx.jobs.get(jobId);

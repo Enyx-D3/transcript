@@ -421,6 +421,7 @@ class _RecordSheetState extends State<RecordSheet> {
         targetSpeakers: targetSpeakers,
         lang: lang,
         typoFixEnabled: typoFix,
+        diarizationEnabled: _diarizationEnabled,
       );
 
       final job = obx.jobs.get(jobId);
