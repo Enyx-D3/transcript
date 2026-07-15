@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:transcript/widgets/icon_pill_button.dart';
 
 import 'qwen_model_service.dart';
-import 'whisper_service.dart';
+import 'model_progress.dart';
 
 // ✅ Glass primitives (match your new system)
 import '../ui/glass/glass_card.dart';
@@ -51,7 +51,10 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
         setState(() => _qwenProgress = p);
 
         final finishedOk =
-            !p.downloading && p.error == null && p.total == 1 && p.received == 1;
+            !p.downloading &&
+            p.error == null &&
+            p.total == 1 &&
+            p.received == 1;
         if (finishedOk) {
           final ok2 = await _qwenService.isModelDownloaded();
           if (!mounted) return;
@@ -101,7 +104,9 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
     final pct = (p.percent * 100).clamp(0, 100).toStringAsFixed(0);
 
     // ✅ progress bar uses received/total
-    final barValue = (p.total <= 0) ? null : (p.received / p.total).clamp(0.0, 1.0);
+    final barValue = (p.total <= 0)
+        ? null
+        : (p.received / p.total).clamp(0.0, 1.0);
 
     final statusText = isDl
         ? (p.error != null ? 'Error: ${p.error}' : 'Downloading…')
@@ -121,7 +126,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                   icon: Icons.close,
                   onTap: () => Navigator.of(context).pop(),
                 ),
-                
+
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(left: 8.0),
@@ -148,7 +153,6 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                     ),
                   ),
                 ),
-                
               ],
             ),
 
@@ -175,10 +179,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                         tintOpacityLight: 0.032,
                         borderOpacityDark: 0.14,
                         borderOpacityLight: 0.18,
-                        child: Icon(
-                          Icons.smart_toy_outlined,
-                          color: fg,
-                        ),
+                        child: Icon(Icons.smart_toy_outlined, color: fg),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -211,8 +212,8 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                                   tone: isReady
                                       ? _PillTone.good
                                       : (p.error != null
-                                          ? _PillTone.bad
-                                          : _PillTone.neutral),
+                                            ? _PillTone.bad
+                                            : _PillTone.neutral),
                                 ),
                                 if (isDl)
                                   _StatusPill(
@@ -250,9 +251,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: p.error != null
-                                  ? Colors.redAccent
-                                  : muted,
+                              color: p.error != null ? Colors.redAccent : muted,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -261,7 +260,10 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                         OutlinedButton(
                           onPressed: _cancelQwen,
                           style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.redAccent, width: 1.2),
+                            side: const BorderSide(
+                              color: Colors.redAccent,
+                              width: 1.2,
+                            ),
                             foregroundColor: Colors.redAccent,
                           ),
                           child: const Text('Cancel'),
@@ -281,8 +283,14 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                         child: isReady
                             ? OutlinedButton.icon(
                                 onPressed: null,
-                                icon: const Icon(Icons.verified,color: Colors.white,),
-                                label: const Text('Downloaded',style: TextStyle(color: Colors.white),),
+                                icon: const Icon(
+                                  Icons.verified,
+                                  color: Colors.white,
+                                ),
+                                label: const Text(
+                                  'Downloaded',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                               )
                             : FilledButton.icon(
                                 onPressed: isDl ? null : _downloadQwen,
@@ -295,7 +303,10 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                                           color: Colors.black,
                                         ),
                                       )
-                                    : const Icon(Icons.download,color: Colors.white,),
+                                    : const Icon(
+                                        Icons.download,
+                                        color: Colors.white,
+                                      ),
                                 label: Text(isDl ? 'Downloading…' : 'Download'),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: Colors.white,

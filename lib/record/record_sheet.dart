@@ -379,7 +379,7 @@ class _RecordSheetState extends State<RecordSheet> {
     final tId = obx.transcripts.put(
       TranscriptEntity(
         title: '',
-        model: 'whisper',
+        model: 'sherpa-onnx-whisper-tiny',
         lang: lang,
         audioPath: wavPath,
         durationSec: placeholderDuration,

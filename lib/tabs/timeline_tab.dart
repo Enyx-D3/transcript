@@ -27,7 +27,7 @@ import '../transcript/youtube_saved_detail_page.dart';
 import '../qwen_model_service.dart';
 
 // ✅ ModelProgress type
-import '../whisper_service.dart' show ModelProgress;
+import '../model_progress.dart';
 import '../paywall/paywall_page.dart';
 
 import '../rate/rate_gate.dart';

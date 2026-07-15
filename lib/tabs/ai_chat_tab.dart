@@ -6,7 +6,7 @@ import 'package:transcript/common/confirm_dialog.dart';
 
 import '../llm_service.dart';
 import '../qwen_model_service.dart';
-import '../whisper_service.dart' show ModelProgress;
+import '../model_progress.dart';
 
 import '../objectbox/objectbox_store.dart';
 
@@ -46,9 +46,9 @@ class _AiChatTabState extends State<AiChatTab> {
   String _pendingAssistantText = '';
 
   late final ReportService _reportService = ReportService(
-  baseUrl: 'https://enyx.app', // e.g. https://xyz.netlify.app
-  authToken: null, // optional
-);
+    baseUrl: 'https://enyx.app', // e.g. https://xyz.netlify.app
+    authToken: null, // optional
+  );
 
   @override
   void initState() {
@@ -242,109 +242,105 @@ class _AiChatTabState extends State<AiChatTab> {
     });
   }
 
-Future<void> _copyText(String text) async {
-  final t = text.trim();
-  if (t.isEmpty) {
+  Future<void> _copyText(String text) async {
+    final t = text.trim();
+    if (t.isEmpty) {
+      if (!mounted) return;
+      await AppFlushbar.error(context, message: 'Nothing to copy.');
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: t));
     if (!mounted) return;
-    await AppFlushbar.error(context, message: 'Nothing to copy.');
-    return;
+    await AppFlushbar.success(context, message: 'Copied.');
   }
 
-  await Clipboard.setData(ClipboardData(text: t));
-  if (!mounted) return;
-  await AppFlushbar.success(context, message: 'Copied.');
-}
+  Future<void> _reportText(String responseText) async {
+    await showReportDialog(
+      outerContext: context,
+      responseText: responseText,
+      sendReport:
+          ({
+            Map<String, dynamic>? meta, // ✅ add this
+            required String reason,
+            required String note,
+            required String response,
+          }) async {
+            // (optional) you can forward meta later if your backend supports it
+            await _reportService.sendReport(
+              reason: reason,
+              note: note,
+              response: response,
+            );
+          },
+    );
+  }
 
-Future<void> _reportText(String responseText) async {
-  await showReportDialog(
-    outerContext: context,
-    responseText: responseText,
-    sendReport: ({
-      Map<String, dynamic>? meta, // ✅ add this
-      required String reason,
-      required String note,
-      required String response,
-    }) async {
-      // (optional) you can forward meta later if your backend supports it
-      await _reportService.sendReport(
-        reason: reason,
-        note: note,
-        response: response,
+  Widget _buildMessageBubble(Map<String, dynamic> msg) {
+    final bool isUser = msg['isUser'] as bool;
+    final String text = (msg['text'] as String?) ?? '';
+
+    // Bubble styles
+    final bubbleColor = isUser
+        ? const Color(0xFF8E7CFF)
+        : const Color(0xFF1E1E26);
+    final textColor = Colors.white;
+
+    final bubble = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      constraints: const BoxConstraints(maxWidth: 320),
+      decoration: BoxDecoration(
+        color: bubbleColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(text, style: TextStyle(color: textColor)),
+    );
+
+    // ✅ AI actions (below bubble)
+    Widget aiActions() {
+      // Don’t show buttons while streaming empty placeholder
+      final canAct = text.trim().isNotEmpty;
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton.icon(
+              onPressed: canAct ? () => _copyText(text) : null,
+              icon: const Icon(Icons.copy, size: 12),
+              label: const Text('Copy', style: TextStyle(fontSize: 12)),
+            ),
+            const SizedBox(width: 6),
+            TextButton.icon(
+              onPressed: canAct ? () => _reportText(text) : null,
+              icon: const Icon(Icons.flag_outlined, size: 12),
+              label: const Text('Report', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
       );
-    },
-  );
-}
+    }
 
-  
-
-Widget _buildMessageBubble(Map<String, dynamic> msg) {
-  final bool isUser = msg['isUser'] as bool;
-  final String text = (msg['text'] as String?) ?? '';
-
-  // Bubble styles
-  final bubbleColor = isUser ? const Color(0xFF8E7CFF) : const Color(0xFF1E1E26);
-  final textColor = Colors.white;
-
-  final bubble = Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    margin: const EdgeInsets.symmetric(vertical: 4),
-    constraints: const BoxConstraints(maxWidth: 320),
-    decoration: BoxDecoration(
-      color: bubbleColor,
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Text(text, style: TextStyle(color: textColor)),
-  );
-
-  // ✅ AI actions (below bubble)
-  Widget aiActions() {
-    // Don’t show buttons while streaming empty placeholder
-    final canAct = text.trim().isNotEmpty;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextButton.icon(
-            onPressed: canAct ? () => _copyText(text) : null,
-            icon: const Icon(Icons.copy, size: 12),
-            label: const Text('Copy',style: TextStyle(fontSize: 12)),
-          ),
-          const SizedBox(width: 6),
-          TextButton.icon(
-            onPressed: canAct ? () => _reportText(text) : null,
-            icon: const Icon(Icons.flag_outlined, size: 12),
-            label: const Text('Report',style: TextStyle(fontSize: 12)),
-          ),
-        ],
-      ),
-    );
+    if (isUser) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [bubble],
+        ),
+      );
+    } else {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [bubble, aiActions()],
+        ),
+      );
+    }
   }
-
-  if (isUser) {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          bubble,
-        ],
-      ),
-    );
-  } else {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          bubble,
-          aiActions(),
-        ],
-      ),
-    );
-  }
-}
 
   @override
   Widget build(BuildContext context) {

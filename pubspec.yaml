@@ -34,7 +34,6 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  whisper_flutter_new: ^1.0.1
   record: ^6.1.2
   path_provider: ^2.1.5
   permission_handler: ^12.0.1
@@ -98,7 +97,7 @@ flutter:
     - assets/models/embedding/nemo_en_titanet_small.onnx
     - assets/instruction/
     - assets/fonts/
-    - assets/models/whisper/ggml-tiny.bin
+    - assets/models/whisper/sherpa-onnx-whisper-tiny/
     - assets/logo/
     - assets/wallpapers/
 
@@ -133,7 +132,3 @@ flutter_launcher_icons:
   image_path: "assets/logo/transcript-black.png"  # Path to your icon image
   adaptive_icon_background: "#FFFFFF" # Optional background color
   # adaptive_icon_foreground: "assets/icon/foreground.png" # Optional foreground
-
-dependency_overrides:
-  whisper_flutter_new:
-    path: third_party/whisper_flutter_new

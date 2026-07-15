@@ -1,6 +1,4 @@
-import 'dart:io';
 import 'dart:ui' show DartPluginRegistrant;
-
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -23,24 +21,21 @@ import 'transcript/transcription_persistence.dart';
 // App gate
 import 'auth/app_gate.dart';
 import 'auth/eligibility_gate.dart';
-// If you still need the global Whisper for ModelPickerPage, keep this:
-import 'whisper_service.dart';
 import 'package:background_downloader/background_downloader.dart';
-
 
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_tokens.dart';
-
-
-final whisper = WhisperService(); // UI-only: downloads & selection
 
 final TranscriptMailService _mailer = TranscriptMailService(
   baseUrl: 'https://enyx.app',
   // authToken: 'optional', // if you use it
 );
 
-Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async {
+Future<void> _normalizeImportAudioPaths(
+  int transcriptId,
+  String wavPath,
+) async {
   final obx = ObjectBox.I;
 
   final t = obx.transcripts.get(transcriptId);
@@ -57,7 +52,9 @@ Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async 
   if (p.isEmpty && a.isNotEmpty && wavPath.trim().isEmpty) return;
 
   // Force import rule
-  t.audioPath = wavPath.trim().isEmpty ? (a.isEmpty ? null : a) : wavPath.trim();
+  t.audioPath = wavPath.trim().isEmpty
+      ? (a.isEmpty ? null : a)
+      : wavPath.trim();
   t.processedAudioPath = null;
 
   // optional timestamp
@@ -65,10 +62,10 @@ Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async 
 
   obx.transcripts.put(t);
 
-  debugPrint('[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)');
+  debugPrint(
+    '[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)',
+  );
 }
-
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -312,8 +309,8 @@ class _SplashGateState extends State<SplashGate> {
                       const SizedBox(height: 8),
 
                       // ---- Status pill ----
-                      StatusPill(text: _status,isError: _failed),
-                      
+                      StatusPill(text: _status, isError: _failed),
+
                       const SizedBox(height: 14),
 
                       // ---- Progress / error card ----
@@ -329,8 +326,9 @@ class _SplashGateState extends State<SplashGate> {
                                 borderRadius: BorderRadius.circular(999),
                                 child: LinearProgressIndicator(
                                   minHeight: 3,
-                                  backgroundColor:
-                                      Colors.white.withValues(alpha: 0.10),
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.10,
+                                  ),
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     GlassTokens.fg(context, alpha: 0.92),
                                   ),
@@ -389,7 +387,6 @@ class _SplashGateState extends State<SplashGate> {
                       ),
 
                       const SizedBox(height: 18),
-
                     ],
                   ),
                 ),
@@ -401,4 +398,3 @@ class _SplashGateState extends State<SplashGate> {
     );
   }
 }
-

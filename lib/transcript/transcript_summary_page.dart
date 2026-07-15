@@ -14,7 +14,7 @@ import '../objectbox.g.dart';
 
 import '../llm_service.dart' show LLMService, qwenMaxContext;
 import '../qwen_model_service.dart';
-import '../whisper_service.dart' show ModelProgress;
+import '../model_progress.dart';
 
 import '../common/app_flushbar.dart';
 
@@ -133,7 +133,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
       final sp = await SharedPreferences.getInstance();
       final v = sp.getInt(_kSummaryLengthPref);
       if (!mounted) return;
-      setState(() => _summaryLengthIndex = (v ?? 1).clamp(0, 2)); // ✅ default Balanced
+      setState(
+        () => _summaryLengthIndex = (v ?? 1).clamp(0, 2),
+      ); // ✅ default Balanced
     } catch (_) {}
   }
 
@@ -298,18 +300,19 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     await showReportDialog(
       outerContext: context,
       responseText: text,
-      sendReport: ({
-        Map<String, dynamic>? meta,
-        required String reason,
-        required String note,
-        required String response,
-      }) async {
-        await _reportService.sendReport(
-          reason: reason,
-          note: note,
-          response: response,
-        );
-      },
+      sendReport:
+          ({
+            Map<String, dynamic>? meta,
+            required String reason,
+            required String note,
+            required String response,
+          }) async {
+            await _reportService.sendReport(
+              reason: reason,
+              note: note,
+              response: response,
+            );
+          },
     );
   }
 
@@ -435,9 +438,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
   }
 
   Future<void> _openModelPicker() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ModelPickerPage()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
     await _initModelState();
   }
 
@@ -718,8 +721,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
             child: Stack(
               children: [
                 LiquidGlass(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(22)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
                   padding: EdgeInsets.zero,
                   shadow: false,
                   blurX: isDark ? 26 : 20,
@@ -784,7 +788,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                                   Text(
                                     'Choose how detailed the summary should be',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.72),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.72,
+                                      ),
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -882,10 +888,10 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                 Text(
                   'Summary',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.2,
-                        color: fg,
-                      ),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.2,
+                    color: fg,
+                  ),
                 ),
                 const Spacer(),
                 IconPillButton(
@@ -982,10 +988,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                     const SizedBox(height: 10),
                     Text(
                       'Generating summary…',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: fg,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.w900, color: fg),
                     ),
                     const SizedBox(height: 4),
                     Text(

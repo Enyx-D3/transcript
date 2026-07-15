@@ -5,7 +5,7 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'whisper_service.dart' show ModelProgress;
+import 'model_progress.dart';
 
 class QwenModelService {
   QwenModelService._internal() {
@@ -109,53 +109,53 @@ class QwenModelService {
   // ==========================================================
   // ✅ 2) Restore last known state from database after restart
   // ==========================================================
-Future<void> _restoreFromDatabase() async {
-  try {
-    if (await isModelDownloaded()) {
-      _emit(const ModelProgress(downloading: false, received: 1, total: 1));
-      return;
+  Future<void> _restoreFromDatabase() async {
+    try {
+      if (await isModelDownloaded()) {
+        _emit(const ModelProgress(downloading: false, received: 1, total: 1));
+        return;
+      }
+
+      final record = await _bd.database.recordForId(_taskId);
+      if (record == null) return; // ✅ FIX
+
+      final status = record.status;
+      final progress = record.progress;
+
+      final isActive =
+          status == TaskStatus.running ||
+          status == TaskStatus.enqueued ||
+          status == TaskStatus.waitingToRetry ||
+          status == TaskStatus.paused;
+
+      if (isActive && progress >= 0) {
+        final fraction = progress.clamp(0.0, 1.0);
+        final received = (fraction * 1000).round();
+        const total = 1000;
+
+        _emit(
+          ModelProgress(downloading: true, received: received, total: total),
+        );
+      }
+
+      if (status == TaskStatus.complete) {
+        _emit(const ModelProgress(downloading: false, received: 1, total: 1));
+      }
+
+      if (status == TaskStatus.failed) {
+        _emit(
+          ModelProgress(
+            downloading: false,
+            received: 0,
+            total: 0,
+            error: 'Model download failed',
+          ),
+        );
+      }
+    } catch (_) {
+      // ignore
     }
-
-    final record = await _bd.database.recordForId(_taskId);
-    if (record == null) return; // ✅ FIX
-
-    final status = record.status;
-    final progress = record.progress;
-
-    final isActive = status == TaskStatus.running ||
-        status == TaskStatus.enqueued ||
-        status == TaskStatus.waitingToRetry ||
-        status == TaskStatus.paused;
-
-    if (isActive && progress >= 0) {
-      final fraction = progress.clamp(0.0, 1.0);
-      final received = (fraction * 1000).round();
-      const total = 1000;
-
-      _emit(ModelProgress(
-        downloading: true,
-        received: received,
-        total: total,
-      ));
-    }
-
-    if (status == TaskStatus.complete) {
-      _emit(const ModelProgress(downloading: false, received: 1, total: 1));
-    }
-
-    if (status == TaskStatus.failed) {
-      _emit(ModelProgress(
-        downloading: false,
-        received: 0,
-        total: 0,
-        error: 'Model download failed',
-      ));
-    }
-  } catch (_) {
-    // ignore
   }
-}
-
 
   // ==========================================================
   // Download / cancel
