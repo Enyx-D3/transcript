@@ -406,6 +406,26 @@ class _TranscribeTaskHandler extends TaskHandler {
     });
   }
 
+  Future<void> _sendSegmentsReady({
+    required int? existingId,
+    required List<LiteTurn> turns,
+  }) async {
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'transcribe_segments_ready',
+      'existingId': existingId,
+      'total': turns.length,
+      'turns': turns
+          .map(
+            (turn) => <String, dynamic>{
+              'speaker': turn.speaker,
+              'startSec': turn.startSec,
+              'endSec': turn.endSec,
+            },
+          )
+          .toList(),
+    });
+  }
+
   Future<void> _setStageNotification(String stage, {String? text}) async {
     await FlutterForegroundTask.saveData(
       key: BackgroundTranscriber._kProgressStage,
@@ -515,6 +535,9 @@ class _TranscribeTaskHandler extends TaskHandler {
                 total: total,
               );
             },
+        onSegmentsReady: (turns) async {
+          await _sendSegmentsReady(existingId: existingId, turns: turns);
+        },
         onProgress:
             ({
               required String stage,

@@ -25,57 +25,79 @@ class WavInfo {
 }
 
 Future<WavInfo> parseWavInfo(String path) async {
-  final f = File(path);
-  final bytes = await f.readAsBytes();
-  final bd = ByteData.sublistView(bytes);
-
-  String tag(int off) => String.fromCharCodes(bytes.sublist(off, off + 4));
-  if (tag(0) != 'RIFF' || tag(8) != 'WAVE') {
-    throw FormatException('Not a RIFF/WAVE file: $path');
-  }
-
-  int fmtSampleRate = 0;
-  int fmtChannels = 0;
-  int fmtBitsPerSample = 0;
-  int dataOffset = -1;
-  int dataLength = -1;
-
-  int p = 12;
-  while (p + 8 <= bytes.length) {
-    final id = tag(p);
-    final size = bd.getUint32(p + 4, Endian.little);
-    final chunkStart = p + 8;
-    if (id == 'fmt ') {
-      final audioFormat = bd.getUint16(chunkStart + 0, Endian.little);
-      fmtChannels = bd.getUint16(chunkStart + 2, Endian.little);
-      fmtSampleRate = bd.getUint32(chunkStart + 4, Endian.little);
-      fmtBitsPerSample = bd.getUint16(chunkStart + 14, Endian.little);
-      if (audioFormat != 1) {
-        throw UnsupportedError('Only PCM (format 1) is supported');
-      }
-    } else if (id == 'data') {
-      dataOffset = chunkStart;
-      dataLength = size;
+  final raf = await File(path).open(mode: FileMode.read);
+  try {
+    final fileLen = await raf.length();
+    if (fileLen < 44) {
+      throw FormatException('File too small to be a WAV file: $path');
     }
-    p = chunkStart + size;
-    if (p.isOdd) p++;
-  }
 
-  if (fmtSampleRate == 0 ||
-      fmtChannels == 0 ||
-      fmtBitsPerSample == 0 ||
-      dataOffset < 0 ||
-      dataLength <= 0) {
-    throw FormatException('Malformed WAV, missing fmt/data chunks');
-  }
+    final header = await raf.read(12);
+    String tag(Uint8List bytes, int off) =>
+        String.fromCharCodes(bytes.sublist(off, off + 4));
+    if (header.length < 12 ||
+        tag(header, 0) != 'RIFF' ||
+        tag(header, 8) != 'WAVE') {
+      throw FormatException('Not a RIFF/WAVE file: $path');
+    }
 
-  return WavInfo(
-    sampleRate: fmtSampleRate,
-    channels: fmtChannels,
-    bitsPerSample: fmtBitsPerSample,
-    dataOffset: dataOffset,
-    dataLength: dataLength,
-  );
+    int fmtSampleRate = 0;
+    int fmtChannels = 0;
+    int fmtBitsPerSample = 0;
+    int dataOffset = -1;
+    int dataLength = -1;
+
+    while (await raf.position() + 8 <= fileLen) {
+      final chunkHeader = await raf.read(8);
+      if (chunkHeader.length < 8) break;
+      final id = String.fromCharCodes(chunkHeader.sublist(0, 4));
+      final size = ByteData.sublistView(
+        chunkHeader,
+      ).getUint32(4, Endian.little);
+      final chunkStart = await raf.position();
+
+      if (id == 'fmt ') {
+        final fmtData = await raf.read(size);
+        if (fmtData.length < 16) {
+          throw FormatException('Malformed WAV fmt chunk: $path');
+        }
+        final bd = ByteData.sublistView(fmtData);
+        final audioFormat = bd.getUint16(0, Endian.little);
+        fmtChannels = bd.getUint16(2, Endian.little);
+        fmtSampleRate = bd.getUint32(4, Endian.little);
+        fmtBitsPerSample = bd.getUint16(14, Endian.little);
+        if (audioFormat != 1) {
+          throw UnsupportedError('Only PCM (format 1) is supported');
+        }
+      } else if (id == 'data') {
+        dataOffset = chunkStart;
+        dataLength = size;
+        await raf.setPosition(chunkStart + size + (size.isOdd ? 1 : 0));
+      } else {
+        await raf.setPosition(chunkStart + size + (size.isOdd ? 1 : 0));
+      }
+
+      if (fmtSampleRate > 0 && dataOffset >= 0) break;
+    }
+
+    if (fmtSampleRate == 0 ||
+        fmtChannels == 0 ||
+        fmtBitsPerSample == 0 ||
+        dataOffset < 0 ||
+        dataLength <= 0) {
+      throw FormatException('Malformed WAV, missing fmt/data chunks');
+    }
+
+    return WavInfo(
+      sampleRate: fmtSampleRate,
+      channels: fmtChannels,
+      bitsPerSample: fmtBitsPerSample,
+      dataOffset: dataOffset,
+      dataLength: dataLength,
+    );
+  } finally {
+    await raf.close();
+  }
 }
 
 Future<double> readWavDuration(String path) async {
@@ -112,8 +134,11 @@ Future<Int16List> readPcm16MonoSamples(String path) async {
   }
 }
 
-Future<void> writePcm16MonoWav(String path,
-    {required int sampleRate, required Int16List samples}) async {
+Future<void> writePcm16MonoWav(
+  String path, {
+  required int sampleRate,
+  required Int16List samples,
+}) async {
   final dataBytes = Uint8List.view(samples.buffer);
   const fmtChunkSize = 16;
   const audioFormat = 1; // PCM
@@ -130,6 +155,7 @@ Future<void> writePcm16MonoWav(String path,
     final bd = ByteData(4)..setUint32(0, v, Endian.little);
     out.add(bd.buffer.asUint8List());
   }
+
   void putU16(int v) {
     final bd = ByteData(2)..setUint16(0, v, Endian.little);
     out.add(bd.buffer.asUint8List());
@@ -174,10 +200,16 @@ Future<void> trimWav16kMonoPcm({
   final totalFrames = info.dataLength ~/ frameSize;
 
   final s = (startSec.isNaN ? 0.0 : startSec).clamp(0.0, info.durationSec);
-  final e = (endSec.isNaN ? info.durationSec : endSec).clamp(0.0, info.durationSec);
+  final e = (endSec.isNaN ? info.durationSec : endSec).clamp(
+    0.0,
+    info.durationSec,
+  );
   if (e <= s) {
-    await writePcm16MonoWav(outputPath,
-        sampleRate: info.sampleRate, samples: Int16List(160));
+    await writePcm16MonoWav(
+      outputPath,
+      sampleRate: info.sampleRate,
+      samples: Int16List(160),
+    );
     return;
   }
 
@@ -193,7 +225,11 @@ Future<void> trimWav16kMonoPcm({
     await raf.setPosition(startByte);
     final slice = await raf.read(bytesToRead);
     final samples = Int16List.view(Uint8List.fromList(slice).buffer);
-    await writePcm16MonoWav(outputPath, sampleRate: info.sampleRate, samples: samples);
+    await writePcm16MonoWav(
+      outputPath,
+      sampleRate: info.sampleRate,
+      samples: samples,
+    );
   } finally {
     await raf.close();
   }
@@ -201,26 +237,26 @@ Future<void> trimWav16kMonoPcm({
 
 Wave readWaveSimple(String path) {
   final raf = File(path).openSync(mode: FileMode.read);
-  
+
   try {
     final fileLen = raf.lengthSync();
     if (fileLen < 44) {
       throw Exception('File too small to be a WAV file');
     }
-    
+
     // Read only the header (first 44 bytes minimum)
     final headerBytes = raf.readSync(44);
-    
+
     // Check for "RIFF" header
     if (String.fromCharCodes(headerBytes.sublist(0, 4)) != 'RIFF') {
       throw Exception('Not a RIFF file');
     }
-    
+
     // Check for "WAVE" format
     if (String.fromCharCodes(headerBytes.sublist(8, 12)) != 'WAVE') {
       throw Exception('Not a WAVE file');
     }
-    
+
     // Find "fmt " chunk - read chunks until we find it
     raf.setPositionSync(12);
     int fmtOffset = -1;
@@ -228,12 +264,14 @@ Wave readWaveSimple(String path) {
     int sampleRate = 0;
     int bitsPerSample = 0;
     int audioFormat = 0;
-    
+
     while (raf.positionSync() < fileLen - 8) {
       final chunkHeader = raf.readSync(8);
       final chunkId = String.fromCharCodes(chunkHeader.sublist(0, 4));
-      final chunkSize = ByteData.view(chunkHeader.buffer).getUint32(4, Endian.little);
-      
+      final chunkSize = ByteData.view(
+        chunkHeader.buffer,
+      ).getUint32(4, Endian.little);
+
       if (chunkId == 'fmt ') {
         fmtOffset = raf.positionSync();
         final fmtData = raf.readSync(chunkSize);
@@ -247,25 +285,27 @@ Wave readWaveSimple(String path) {
         raf.setPositionSync(raf.positionSync() + chunkSize);
       }
     }
-    
+
     if (fmtOffset < 0) {
       throw Exception('fmt chunk not found');
     }
-    
+
     if (audioFormat != 1) {
       throw Exception('Only PCM format is supported');
     }
-    
+
     // Find "data" chunk
     raf.setPositionSync(12);
     int dataOffset = -1;
     int dataSize = 0;
-    
+
     while (raf.positionSync() < fileLen - 8) {
       final chunkHeader = raf.readSync(8);
       final chunkId = String.fromCharCodes(chunkHeader.sublist(0, 4));
-      final chunkSize = ByteData.view(chunkHeader.buffer).getUint32(4, Endian.little);
-      
+      final chunkSize = ByteData.view(
+        chunkHeader.buffer,
+      ).getUint32(4, Endian.little);
+
       if (chunkId == 'data') {
         dataOffset = raf.positionSync();
         dataSize = chunkSize;
@@ -274,33 +314,38 @@ Wave readWaveSimple(String path) {
         raf.setPositionSync(raf.positionSync() + chunkSize);
       }
     }
-    
+
     if (dataOffset < 0) {
       throw Exception('data chunk not found');
     }
-    
+
     // Read audio data in chunks to avoid loading entire raw bytes at once
     final numSamples = dataSize ~/ (numChannels * (bitsPerSample ~/ 8));
     final samples = Float32List(numSamples);
-    
+
     raf.setPositionSync(dataOffset);
-    
+
     // Process in chunks of ~1MB to reduce peak memory
     final bytesPerFrame = numChannels * (bitsPerSample ~/ 8);
     final framesPerChunk = (1024 * 1024) ~/ bytesPerFrame; // ~1MB per chunk
     int sampleIndex = 0;
     int framesRemaining = numSamples;
-    
+
     while (framesRemaining > 0) {
-      final framesToRead = framesRemaining < framesPerChunk ? framesRemaining : framesPerChunk;
+      final framesToRead = framesRemaining < framesPerChunk
+          ? framesRemaining
+          : framesPerChunk;
       final chunkBytes = raf.readSync(framesToRead * bytesPerFrame);
       final bd = ByteData.view(chunkBytes.buffer);
-      
+
       if (bitsPerSample == 16) {
         for (int i = 0; i < framesToRead; i++) {
           double sum = 0;
           for (int c = 0; c < numChannels; c++) {
-            final sample = bd.getInt16((i * numChannels + c) * 2, Endian.little);
+            final sample = bd.getInt16(
+              (i * numChannels + c) * 2,
+              Endian.little,
+            );
             sum += sample / 32768.0;
           }
           samples[sampleIndex++] = sum / numChannels;
@@ -309,7 +354,10 @@ Wave readWaveSimple(String path) {
         for (int i = 0; i < framesToRead; i++) {
           double sum = 0;
           for (int c = 0; c < numChannels; c++) {
-            final sample = bd.getFloat32((i * numChannels + c) * 4, Endian.little);
+            final sample = bd.getFloat32(
+              (i * numChannels + c) * 4,
+              Endian.little,
+            );
             sum += sample;
           }
           samples[sampleIndex++] = sum / numChannels;
@@ -317,10 +365,10 @@ Wave readWaveSimple(String path) {
       } else {
         throw Exception('Unsupported bits per sample: $bitsPerSample');
       }
-      
+
       framesRemaining -= framesToRead;
     }
-    
+
     return Wave(samples: samples, sampleRate: sampleRate);
   } finally {
     raf.closeSync();
@@ -331,6 +379,6 @@ Wave readWaveSimple(String path) {
 class Wave {
   final Float32List samples;
   final int sampleRate;
-  
+
   Wave({required this.samples, required this.sampleRate});
 }

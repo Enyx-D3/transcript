@@ -1158,6 +1158,52 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       return;
     }
 
+    if (type == 'transcribe_segments_ready') {
+      final existingId = data['existingId'] as int?;
+      if (existingId != widget.transcriptId) return;
+
+      final rawTurns = data['turns'];
+      if (rawTurns is! List) return;
+      final total = (data['total'] is int)
+          ? data['total'] as int
+          : int.tryParse('${data['total']}') ?? rawTurns.length;
+
+      for (var i = 0; i < rawTurns.length; i++) {
+        final raw = rawTurns[i];
+        if (raw is! Map) continue;
+        final turn = raw.cast<String, dynamic>();
+        final speaker = (turn['speaker'] ?? 'S1').toString();
+        final startSec = (turn['startSec'] is num)
+            ? (turn['startSec'] as num).toDouble()
+            : double.tryParse('${turn['startSec']}');
+        final endSec = (turn['endSec'] is num)
+            ? (turn['endSec'] as num).toDouble()
+            : double.tryParse('${turn['endSec']}');
+
+        _upsertPartialTurn(
+          key: 'chunk_$i',
+          total: total,
+          turn: _DisplayTurn(
+            speaker,
+            '',
+            startSec: startSec,
+            endSec: endSec,
+            isPlaceholder: true,
+          ),
+        );
+      }
+
+      if (!mounted) return;
+      if (!_busyFlag || _processingFailed || _processingError != null) {
+        setState(() {
+          _busyFlag = true;
+          _processingFailed = false;
+          _processingError = null;
+        });
+      }
+      return;
+    }
+
     if (type != 'transcribe_result') return;
 
     final existingId = data['existingId'] as int?;
@@ -1489,6 +1535,67 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       );
     }
     return items;
+  }
+
+  Widget _buildPeopleSection({required ThemeData theme, required Color fg}) {
+    return ValueListenableBuilder<_PartialTurnsSnapshot>(
+      valueListenable: _partialTurnsNotifier,
+      builder: (context, snapshot, _) {
+        final counts = <String, int>{};
+        if (_turns.isNotEmpty) {
+          for (final u in _turns) {
+            final speaker = u.speakerLabel.trim();
+            if (speaker.isEmpty) continue;
+            counts[speaker] = (counts[speaker] ?? 0) + 1;
+          }
+        } else {
+          for (final u in snapshot.turns) {
+            final speaker = u.turn.speaker.trim();
+            if (speaker.isEmpty || speaker == 'Processing next segment') {
+              continue;
+            }
+            counts[speaker] = (counts[speaker] ?? 0) + 1;
+          }
+        }
+
+        final labels = counts.keys.toList()..sort();
+        if (labels.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'People',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: fg,
+                  ),
+                ),
+                const Spacer(),
+                _MetaPill(text: '${labels.length}'),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: labels.map((name) {
+                final count = counts[name]!;
+                return _GlassPersonChip(
+                  label: name,
+                  count: count,
+                  enabled: !_isTranscribingNow,
+                  onEdit: () => _renameSpeaker(name),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 14),
+          ],
+        );
+      },
+    );
   }
 
   void _upsertPartialTurn({
@@ -2040,9 +2147,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
               ...List.generate(displayTurns.length, (i) {
                 final u = displayTurns[i];
                 if (u.isPlaceholder) {
-                  return const Padding(
-                    padding: EdgeInsets.only(bottom: 10),
-                    child: _TurnPlaceholderCard(),
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _TurnPlaceholderCard(
+                      speaker: u.speaker,
+                      subtitle: _subtitleForTurn(u),
+                    ),
                   );
                 }
 
@@ -2131,12 +2241,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final title = (t.title?.trim().isNotEmpty ?? false)
         ? t.title!.trim()
         : 'Transcript';
-
-    final counts = <String, int>{};
-    for (final u in _turns) {
-      counts[u.speakerLabel] = (counts[u.speakerLabel] ?? 0) + 1;
-    }
-    final labels = counts.keys.toList()..sort();
 
     final isProcessing = _isProcessingNow;
 
@@ -2432,38 +2536,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                 if (isProcessing || _processingFailed)
                   const SizedBox(height: 12),
 
-                if (!isProcessing &&
-                    !_processingFailed &&
-                    labels.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      Text(
-                        'People',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: fg,
-                        ),
-                      ),
-                      const Spacer(),
-                      _MetaPill(text: '${labels.length}'),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: labels.map((name) {
-                      final count = counts[name]!;
-                      return _GlassPersonChip(
-                        label: name,
-                        count: count,
-                        enabled: !_isTranscribingNow,
-                        onEdit: () => _renameSpeaker(name),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 14),
-                ],
+                if (!_processingFailed)
+                  _buildPeopleSection(theme: theme, fg: fg),
 
                 _buildTurnsSection(
                   theme: theme,
@@ -2812,28 +2886,28 @@ class _TurnCard extends StatelessWidget {
                 ),
               ),
               // if (badgeText != null) ...[
-                // const SizedBox(width: 8),
-                // Container(
-                //   padding: const EdgeInsets.symmetric(
-                //     horizontal: 8,
-                //     vertical: 4,
-                //   ),
-                //   decoration: BoxDecoration(
-                //     borderRadius: BorderRadius.circular(999),
-                //     color: Colors.white.withValues(alpha: 0.08),
-                //     border: Border.all(
-                //       color: Colors.white.withValues(alpha: 0.14),
-                //     ),
-                //   ),
-                //   child: Text(
-                //     badgeText!,
-                //     style: const TextStyle(
-                //       color: Colors.white70,
-                //       fontSize: 11,
-                //       fontWeight: FontWeight.w800,
-                //     ),
-                //   ),
-                // ),
+              // const SizedBox(width: 8),
+              // Container(
+              //   padding: const EdgeInsets.symmetric(
+              //     horizontal: 8,
+              //     vertical: 4,
+              //   ),
+              //   decoration: BoxDecoration(
+              //     borderRadius: BorderRadius.circular(999),
+              //     color: Colors.white.withValues(alpha: 0.08),
+              //     border: Border.all(
+              //       color: Colors.white.withValues(alpha: 0.14),
+              //     ),
+              //   ),
+              //   child: Text(
+              //     badgeText!,
+              //     style: const TextStyle(
+              //       color: Colors.white70,
+              //       fontSize: 11,
+              //       fontWeight: FontWeight.w800,
+              //     ),
+              //   ),
+              // ),
               // ],
               const SizedBox(width: 8),
               Container(
@@ -2896,7 +2970,10 @@ class _TurnCard extends StatelessWidget {
 }
 
 class _TurnPlaceholderCard extends StatefulWidget {
-  const _TurnPlaceholderCard();
+  const _TurnPlaceholderCard({this.speaker, this.subtitle});
+
+  final String? speaker;
+  final String? subtitle;
 
   @override
   State<_TurnPlaceholderCard> createState() => _TurnPlaceholderCardState();
@@ -2922,14 +2999,34 @@ class _TurnPlaceholderCardState extends State<_TurnPlaceholderCard>
       child: GlassCard(
         variant: GlassCardVariant.panel,
         padding: const EdgeInsets.all(14),
-        child: const Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                _ShimmerBlock(width: 72, height: 12),
-                Spacer(),
-                _ShimmerBlock(width: 42, height: 24, radius: 999),
+                if (widget.speaker?.trim().isNotEmpty ?? false)
+                  Text(
+                    widget.speaker!.trim(),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.1,
+                      color: Colors.white,
+                    ),
+                  )
+                else
+                  const _ShimmerBlock(width: 72, height: 12),
+                const Spacer(),
+                if (widget.subtitle?.trim().isNotEmpty ?? false)
+                  Text(
+                    widget.subtitle!.trim(),
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  )
+                else
+                  const _ShimmerBlock(width: 42, height: 24, radius: 999),
               ],
             ),
             SizedBox(height: 12),

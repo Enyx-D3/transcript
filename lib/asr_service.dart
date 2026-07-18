@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -31,8 +32,23 @@ class AsrService {
       'assets/models/whisper/sherpa-onnx-whisper-tiny';
 
   static bool _bindingsInitialized = false;
+  Isolate? _workerIsolate;
+  SendPort? _workerSendPort;
+  ReceivePort? _workerReceivePort;
+  int _nextRequestId = 0;
+  int _numThreads = mathMin(2, Platform.numberOfProcessors);
+  final Map<int, Completer<String>> _pendingRequests = {};
 
   AsrModel get currentModel => _defaultModel;
+
+  void configure({int? numThreads}) {
+    if (numThreads == null) return;
+    final clamped = numThreads
+        .clamp(1, mathMin(4, Platform.numberOfProcessors))
+        .toInt();
+    if (_numThreads == clamped) return;
+    _numThreads = clamped;
+  }
 
   Future<String> transcribeWav({
     required String wavPath,
@@ -51,19 +67,93 @@ class AsrService {
         : normalizedLang;
     final whisperTask = translateToEnglish ? 'translate' : 'transcribe';
 
-    return Isolate.run(
-      () => _decodeWavInWorker(
-        wavPath: wavPath,
-        encoder: modelPaths.encoder,
-        decoder: modelPaths.decoder,
-        tokens: modelPaths.tokens,
-        whisperLanguage: whisperLanguage,
-        whisperTask: whisperTask,
-      ),
+    return _decodeWithWorker(
+      wavPath: wavPath,
+      encoder: modelPaths.encoder,
+      decoder: modelPaths.decoder,
+      tokens: modelPaths.tokens,
+      whisperLanguage: whisperLanguage,
+      whisperTask: whisperTask,
+      numThreads: _numThreads,
     );
   }
 
-  void releaseCachedRecognizer() {}
+  Future<String> _decodeWithWorker({
+    required String wavPath,
+    required String encoder,
+    required String decoder,
+    required String tokens,
+    required String whisperLanguage,
+    required String whisperTask,
+    required int numThreads,
+  }) async {
+    final sendPort = await _ensureWorker();
+    final id = _nextRequestId++;
+    final completer = Completer<String>();
+    _pendingRequests[id] = completer;
+    sendPort.send({
+      'type': 'decode',
+      'id': id,
+      'wavPath': wavPath,
+      'encoder': encoder,
+      'decoder': decoder,
+      'tokens': tokens,
+      'whisperLanguage': whisperLanguage,
+      'whisperTask': whisperTask,
+      'numThreads': numThreads,
+    });
+    return completer.future;
+  }
+
+  Future<SendPort> _ensureWorker() async {
+    final existing = _workerSendPort;
+    if (existing != null) return existing;
+
+    final ready = Completer<SendPort>();
+    final receivePort = ReceivePort();
+    _workerReceivePort = receivePort;
+    receivePort.listen((message) {
+      if (message is SendPort) {
+        _workerSendPort = message;
+        if (!ready.isCompleted) ready.complete(message);
+        return;
+      }
+      if (message is! Map) return;
+      final id = message['id'];
+      if (id is! int) return;
+      final completer = _pendingRequests.remove(id);
+      if (completer == null) return;
+      final error = message['error'];
+      if (error != null) {
+        completer.completeError(Exception(error), StackTrace.current);
+      } else {
+        completer.complete((message['result'] ?? '').toString());
+      }
+    });
+
+    _workerIsolate = await Isolate.spawn(
+      _asrWorkerMain,
+      receivePort.sendPort,
+      debugName: 'SherpaAsrWorker',
+    );
+
+    return ready.future;
+  }
+
+  void releaseCachedRecognizer() {
+    _workerSendPort?.send({'type': 'release'});
+    for (final completer in _pendingRequests.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(StateError('ASR worker released.'));
+      }
+    }
+    _pendingRequests.clear();
+    _workerReceivePort?.close();
+    _workerReceivePort = null;
+    _workerSendPort = null;
+    _workerIsolate?.kill(priority: Isolate.immediate);
+    _workerIsolate = null;
+  }
 
   void _ensureBindings() {
     if (_bindingsInitialized) return;
@@ -142,49 +232,120 @@ class AsrService {
 
 int mathMin(int a, int b) => a < b ? a : b;
 
-String _decodeWavInWorker({
-  required String wavPath,
-  required String encoder,
-  required String decoder,
-  required String tokens,
-  required String whisperLanguage,
-  required String whisperTask,
-}) {
+void _asrWorkerMain(SendPort mainSendPort) {
+  final receivePort = ReceivePort();
+  mainSendPort.send(receivePort.sendPort);
+
   initBindings();
+  OfflineRecognizer? recognizer;
+  String? recognizerKey;
 
-  final wave = readWave(wavPath);
-  if (wave.sampleRate != 16000) {
-    throw StateError(
-      'Expected 16 kHz WAV for sherpa-onnx transcription, got ${wave.sampleRate} Hz.',
-    );
-  }
+  OfflineRecognizer recognizerFor({
+    required String encoder,
+    required String decoder,
+    required String tokens,
+    required String whisperLanguage,
+    required String whisperTask,
+    required int numThreads,
+  }) {
+    final key = [
+      encoder,
+      decoder,
+      tokens,
+      whisperLanguage,
+      whisperTask,
+      numThreads,
+    ].join('|');
 
-  final recognizer = OfflineRecognizer(
-    OfflineRecognizerConfig(
-      model: OfflineModelConfig(
-        tokens: tokens,
-        // Keep native ASR from starving Android's UI thread on mid-range phones.
-        numThreads: mathMin(2, Platform.numberOfProcessors),
-        debug: false,
-        provider: 'cpu',
-        whisper: OfflineWhisperModelConfig(
-          encoder: encoder,
-          decoder: decoder,
-          language: whisperLanguage,
-          task: whisperTask,
+    final cached = recognizer;
+    if (cached != null && recognizerKey == key) return cached;
+
+    recognizer?.free();
+    recognizer = OfflineRecognizer(
+      OfflineRecognizerConfig(
+        model: OfflineModelConfig(
+          tokens: tokens,
+          // Keep native ASR from starving Android's UI thread on mid-range phones.
+          numThreads: numThreads.clamp(1, Platform.numberOfProcessors).toInt(),
+          debug: false,
+          provider: 'cpu',
+          whisper: OfflineWhisperModelConfig(
+            encoder: encoder,
+            decoder: decoder,
+            language: whisperLanguage,
+            task: whisperTask,
+          ),
         ),
       ),
-    ),
-  );
-
-  final stream = recognizer.createStream();
-  try {
-    stream.acceptWaveform(samples: wave.samples, sampleRate: wave.sampleRate);
-    recognizer.decode(stream);
-    final result = recognizer.getResult(stream);
-    return result.text.trim();
-  } finally {
-    stream.free();
-    recognizer.free();
+    );
+    recognizerKey = key;
+    return recognizer!;
   }
+
+  String decode({
+    required String wavPath,
+    required String encoder,
+    required String decoder,
+    required String tokens,
+    required String whisperLanguage,
+    required String whisperTask,
+    required int numThreads,
+  }) {
+    final wave = readWave(wavPath);
+    if (wave.sampleRate != 16000) {
+      throw StateError(
+        'Expected 16 kHz WAV for sherpa-onnx transcription, got ${wave.sampleRate} Hz.',
+      );
+    }
+
+    final activeRecognizer = recognizerFor(
+      encoder: encoder,
+      decoder: decoder,
+      tokens: tokens,
+      whisperLanguage: whisperLanguage,
+      whisperTask: whisperTask,
+      numThreads: numThreads,
+    );
+
+    final stream = activeRecognizer.createStream();
+    try {
+      stream.acceptWaveform(samples: wave.samples, sampleRate: wave.sampleRate);
+      activeRecognizer.decode(stream);
+      final result = activeRecognizer.getResult(stream);
+      return result.text.trim();
+    } finally {
+      stream.free();
+    }
+  }
+
+  receivePort.listen((message) {
+    if (message is! Map) return;
+    final type = message['type'];
+    if (type == 'release') {
+      recognizer?.free();
+      recognizer = null;
+      recognizerKey = null;
+      receivePort.close();
+      Isolate.exit();
+    }
+    if (type != 'decode') return;
+    final id = message['id'];
+    if (id is! int) return;
+    try {
+      final text = decode(
+        wavPath: (message['wavPath'] ?? '').toString(),
+        encoder: (message['encoder'] ?? '').toString(),
+        decoder: (message['decoder'] ?? '').toString(),
+        tokens: (message['tokens'] ?? '').toString(),
+        whisperLanguage: (message['whisperLanguage'] ?? '').toString(),
+        whisperTask: (message['whisperTask'] ?? '').toString(),
+        numThreads: (message['numThreads'] is int)
+            ? message['numThreads'] as int
+            : 1,
+      );
+      mainSendPort.send({'id': id, 'result': text});
+    } catch (e, st) {
+      mainSendPort.send({'id': id, 'error': '$e\n$st'});
+    }
+  });
 }

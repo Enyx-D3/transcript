@@ -32,6 +32,8 @@ typedef PartialTurnCallback =
       int? total,
     });
 
+typedef SegmentsReadyCallback = Future<void> Function(List<LiteTurn> turns);
+
 // ---------------- Internal merged turn structure ----------------
 
 class _Turn {
@@ -360,6 +362,7 @@ Future<TranscriptionResult> transcribeToResult({
   int? targetSpeakers,
   bool? diarizationEnabled,
   PartialTurnCallback? onPartialTurn,
+  SegmentsReadyCallback? onSegmentsReady,
   // ✅ Future callback so background can await saveData()
   Future<void> Function({
     required String stage,
@@ -378,6 +381,7 @@ Future<TranscriptionResult> transcribeToResult({
       targetSpeakers: targetSpeakers,
       diarizationEnabled: diarizationEnabled,
       onPartialTurn: onPartialTurn,
+      onSegmentsReady: onSegmentsReady,
       onProgress: onProgress,
     );
   } finally {
@@ -394,6 +398,7 @@ Future<TranscriptionResult> _transcribeToResultInner({
   int? targetSpeakers,
   bool? diarizationEnabled,
   PartialTurnCallback? onPartialTurn,
+  SegmentsReadyCallback? onSegmentsReady,
   Future<void> Function({
     required String stage,
     required double processedSec,
@@ -403,7 +408,8 @@ Future<TranscriptionResult> _transcribeToResultInner({
 }) async {
   String? lastLoggedStage;
   final pipelineWatch = Stopwatch()..start();
-  const double kSingleSpeakerChunkSec = 25.0;
+  const double kLongAudioSafeModeSec = 30 * 60;
+  const double kSingleSpeakerChunkSec = 28.0;
   const double kSingleSpeakerChunkOverlapSec = 0.35;
 
   void phaseLog(
@@ -463,6 +469,9 @@ Future<TranscriptionResult> _transcribeToResultInner({
     final out = <LiteTurn>[];
     double processedSec = 0.0;
     int chunkIndex = 0;
+    final chunkCooldown = Duration(
+      milliseconds: totalDuration >= kLongAudioSafeModeSec ? 90 : 35,
+    );
     final totalChunks = totalDuration > 0
         ? (totalDuration / kSingleSpeakerChunkSec).ceil()
         : 0;
@@ -541,7 +550,7 @@ Future<TranscriptionResult> _transcribeToResultInner({
         }
 
         chunkIndex++;
-        await Future.delayed(const Duration(milliseconds: 35));
+        await Future.delayed(chunkCooldown);
       }
     } finally {
       try {
@@ -616,11 +625,15 @@ Future<TranscriptionResult> _transcribeToResultInner({
 
   final cleaned = await preprocessWav16kMono(wavPath);
   final duration = await readWavDuration(cleaned);
+  final longAudioSafeMode = duration >= kLongAudioSafeModeSec;
+  final asrThreads = longAudioSafeMode ? 1 : 2;
+  final segmentCooldown = Duration(milliseconds: longAudioSafeMode ? 90 : 35);
+  _asr.configure(numThreads: asrThreads);
 
   await emit('Preparing', 0.0, duration);
   phaseLog(
     'Preparing',
-    'preprocess done',
+    'preprocess done safeMode=$longAudioSafeMode asrThreads=$asrThreads chunkCooldownMs=${segmentCooldown.inMilliseconds}',
     processedSec: 0.0,
     totalSec: duration,
   );
@@ -839,6 +852,9 @@ Future<TranscriptionResult> _transcribeToResultInner({
   }).toList();
   final diarizedTurnCount = turns.length;
   turns = splitTurnsForAsr(turns);
+  if (onSegmentsReady != null) {
+    await onSegmentsReady(turns);
+  }
   phaseLog(
     'Diarizing',
     'speaker labels resolved turns=$diarizedTurnCount asrSegments=${turns.length}',
@@ -975,10 +991,7 @@ Future<TranscriptionResult> _transcribeToResultInner({
         File(slice).deleteSync();
       } catch (_) {}
 
-      // Periodic memory relief - yield every 10 segments to allow GC
-      if ((i + 1) % 10 == 0) {
-        await Future.delayed(const Duration(milliseconds: 20));
-      }
+      await Future.delayed(segmentCooldown);
     }
   }
 
