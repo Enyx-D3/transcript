@@ -1,4 +1,5 @@
 // lib/record/record_sheet.dart
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../transcript/transcript_detail_page.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
 import '../transcript/background_transcriber.dart';
+import 'live_vosk_preview_service.dart';
 
 // ✅ Glass primitives (same language as ImportAudioSheet)
 import '../ui/glass/liquid_glass.dart';
@@ -71,6 +73,9 @@ class _RecordSheetState extends State<RecordSheet> {
   double _seconds = 0.0;
   double _level = 0.0;
   late final void Function(Object) _fgListener;
+  late final LiveVoskPreviewService _livePreviewService;
+  StreamSubscription<LiveVoskPreview>? _livePreviewSub;
+  LiveVoskPreview _livePreview = LiveVoskPreview.idle();
 
   static const String _kBusyTranscribing = 'busy_transcribing';
   static const String _kActiveTranscriptId = 'bg_active_transcript_id';
@@ -106,6 +111,11 @@ class _RecordSheetState extends State<RecordSheet> {
   @override
   void initState() {
     super.initState();
+    _livePreviewService = LiveVoskPreviewService();
+    _livePreviewSub = _livePreviewService.updates.listen((preview) {
+      if (!mounted) return;
+      setState(() => _livePreview = preview);
+    });
 
     _fgListener = (Object data) async {
       if (!mounted) return;
@@ -155,6 +165,7 @@ class _RecordSheetState extends State<RecordSheet> {
           _paused = false;
           _starting = false;
         });
+        await _livePreviewService.stop();
 
         if (wavPath == null || wavPath.trim().isEmpty) {
           if (!mounted) return;
@@ -177,6 +188,8 @@ class _RecordSheetState extends State<RecordSheet> {
   @override
   void dispose() {
     _targetSpeakersCtrl.dispose();
+    _livePreviewSub?.cancel();
+    _livePreviewService.dispose();
     RecordingService.removeListener(_fgListener);
     super.dispose();
   }
@@ -270,6 +283,7 @@ class _RecordSheetState extends State<RecordSheet> {
         _starting = true;
         _seconds = 0.0;
         _level = 0.0;
+        _livePreview = LiveVoskPreview.idle();
       });
 
       final path = await RecordingService.start(targetSpeakers: targetSpeakers);
@@ -285,6 +299,7 @@ class _RecordSheetState extends State<RecordSheet> {
         _recording = true;
         _paused = false;
       });
+      unawaited(_livePreviewService.start(path));
     } catch (e) {
       if (!mounted) return;
       setState(() => _starting = false);
@@ -299,6 +314,7 @@ class _RecordSheetState extends State<RecordSheet> {
     if (!_recording || _paused) return;
     try {
       RecordingService.pause();
+      await _livePreviewService.pause();
       if (!mounted) return;
       setState(() => _paused = true);
     } catch (_) {
@@ -311,6 +327,7 @@ class _RecordSheetState extends State<RecordSheet> {
     if (!_recording || !_paused) return;
     try {
       RecordingService.resume();
+      await _livePreviewService.resume();
       if (!mounted) return;
       setState(() => _paused = false);
     } catch (_) {
@@ -341,6 +358,7 @@ class _RecordSheetState extends State<RecordSheet> {
       _handledStop = true;
 
       final p = await RecordingService.stop();
+      await _livePreviewService.stop(finalize: false);
 
       if (!mounted) return;
       setState(() {
@@ -349,6 +367,7 @@ class _RecordSheetState extends State<RecordSheet> {
         _starting = false;
         _seconds = 0.0;
         _level = 0.0;
+        _livePreview = LiveVoskPreview.idle();
       });
 
       if (p != null) {
@@ -615,6 +634,11 @@ class _RecordSheetState extends State<RecordSheet> {
 
                         const SizedBox(height: 12),
 
+                        if (_recording || _livePreview.text.isNotEmpty) ...[
+                          _LiveTranscriptCard(preview: _livePreview),
+                          const SizedBox(height: 12),
+                        ],
+
                         // ===== Options =====
                         GlassCard(
                           variant: GlassCardVariant.tile,
@@ -851,6 +875,92 @@ class _RecordSheetState extends State<RecordSheet> {
     final mm = (s ~/ 60).toString().padLeft(2, '0');
     final ss = (s % 60).toStringAsFixed(1).padLeft(4, '0');
     return '$mm:$ss';
+  }
+}
+
+class _LiveTranscriptCard extends StatelessWidget {
+  const _LiveTranscriptCard({required this.preview});
+
+  final LiveVoskPreview preview;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = Colors.white.withValues(alpha: 0.90);
+    final muted = Colors.white.withValues(alpha: 0.58);
+    final lines = preview.text.trim();
+    final partial = preview.partial.trim();
+
+    return GlassCard(
+      variant: GlassCardVariant.tile,
+      padding: const EdgeInsets.all(16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 104, maxHeight: 220),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.subtitles_rounded,
+                  size: 18,
+                  color: preview.available ? textColor : muted,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Live transcript',
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: SingleChildScrollView(
+                reverse: true,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      if (lines.isNotEmpty)
+                        TextSpan(
+                          text: lines,
+                          style: TextStyle(
+                            color: textColor,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      if (lines.isNotEmpty && partial.isNotEmpty)
+                        const TextSpan(text: '\n'),
+                      if (partial.isNotEmpty)
+                        TextSpan(
+                          text: partial,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.62),
+                            height: 1.35,
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      if (lines.isEmpty && partial.isEmpty)
+                        TextSpan(
+                          text: preview.status,
+                          style: TextStyle(
+                            color: muted,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

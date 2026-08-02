@@ -121,3 +121,9 @@
 -dontwarn io.flutter.plugins.pathprovider.**
 -keep class dev.flutter.pigeon.path_provider_android.** { *; }
 -dontwarn dev.flutter.pigeon.path_provider_android.**
+
+############################################################
+# Vosk / JNA
+############################################################
+-keep class com.sun.jna.** { *; }
+-keepclassmembers class * extends com.sun.jna.** { public *; }
