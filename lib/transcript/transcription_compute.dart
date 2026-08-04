@@ -752,6 +752,13 @@ Future<TranscriptionResult> _transcribeToResultInner({
             matchSpeakers: matchWithEnrolledSpeakers,
             matchThreshold: 0.67,
             speakerMemoryData: speakerMemoryData,
+            onProgress:
+                ({
+                  required double processedSec,
+                  required double totalSec,
+                }) async {
+                  await emit('Diarizing', processedSec, totalSec);
+                },
           );
       speakerMemoryData = {}; // free enrolled embeddings
 
