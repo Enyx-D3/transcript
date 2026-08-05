@@ -409,8 +409,40 @@ Future<TranscriptionResult> _transcribeToResultInner({
   String? lastLoggedStage;
   final pipelineWatch = Stopwatch()..start();
   const double kLongAudioSafeModeSec = 30 * 60;
-  const double kSingleSpeakerChunkSec = 28.0;
-  const double kSingleSpeakerChunkOverlapSec = 0.35;
+  const double kSingleSpeakerChunkSec = 60.0;
+  const double kSingleSpeakerChunkOverlapSec = 1.25;
+  const double kMinAsrSegmentSec = 1.0;
+
+  String mergeTextWithOverlap(String a, String b) {
+    final left = a.trim();
+    final right = b.trim();
+    if (left.isEmpty) return right;
+    if (right.isEmpty) return left;
+
+    final leftWords = left.split(RegExp(r'\s+'));
+    final rightWords = right.split(RegExp(r'\s+'));
+    final maxOverlap = math.min(
+      16,
+      math.min(leftWords.length, rightWords.length),
+    );
+
+    String norm(String s) =>
+        s.toLowerCase().replaceAll(RegExp(r'^[^\w]+|[^\w]+$'), '');
+
+    // ponytail: word-overlap heuristic; replace with token timestamps if Sherpa exposes them.
+    for (int n = maxOverlap; n > 0; n--) {
+      var same = true;
+      for (int i = 0; i < n; i++) {
+        if (norm(leftWords[leftWords.length - n + i]) != norm(rightWords[i])) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return [...leftWords, ...rightWords.skip(n)].join(' ');
+    }
+
+    return '$left $right';
+  }
 
   void phaseLog(
     String stage,
@@ -490,7 +522,7 @@ Future<TranscriptionResult> _transcribeToResultInner({
           totalDuration,
           startSec + kSingleSpeakerChunkSec + kSingleSpeakerChunkOverlapSec,
         );
-        if ((safeEnd - safeStart) < 0.1) continue;
+        if ((safeEnd - safeStart) < kMinAsrSegmentSec) continue;
 
         final slice = '${tmpDir.path}/slice_$chunkIndex.wav';
         try {
@@ -573,7 +605,7 @@ Future<TranscriptionResult> _transcribeToResultInner({
           cur.speaker,
           cur.startSec,
           t.endSec,
-          '${cur.text} ${t.text}'.trim(),
+          mergeTextWithOverlap(cur.text, t.text),
         );
       } else {
         merged.add(cur);
@@ -597,8 +629,16 @@ Future<TranscriptionResult> _transcribeToResultInner({
       var start = turn.startSec;
       while (start < turn.endSec) {
         final end = math.min(turn.endSec, start + kSingleSpeakerChunkSec);
-        if (end - start >= 0.1) {
-          out.add(LiteTurn(turn.speaker, start, end, turn.text));
+        final safeStart = math.max(
+          turn.startSec,
+          start - kSingleSpeakerChunkOverlapSec,
+        );
+        final safeEnd = math.min(
+          turn.endSec,
+          end + kSingleSpeakerChunkOverlapSec,
+        );
+        if (safeEnd - safeStart >= kMinAsrSegmentSec) {
+          out.add(LiteTurn(turn.speaker, safeStart, safeEnd, turn.text));
         }
         start = end;
       }
@@ -939,7 +979,7 @@ Future<TranscriptionResult> _transcribeToResultInner({
   for (int i = 0; i < turns.length; i++) {
     final turn = turns[i];
 
-    if ((turn.endSec - turn.startSec) < 0.1) continue;
+    if ((turn.endSec - turn.startSec) < kMinAsrSegmentSec) continue;
 
     final slice = '${tmpDir.path}/slice_$i.wav';
 
@@ -1052,7 +1092,7 @@ Future<TranscriptionResult> _transcribeToResultInner({
         cur.speaker,
         cur.startSec,
         t.endSec,
-        '${cur.text} ${t.text}'.trim(),
+        mergeTextWithOverlap(cur.text, t.text),
       );
     } else {
       mergedTurns.add(cur);
