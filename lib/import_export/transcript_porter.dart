@@ -166,17 +166,18 @@ class TranscriptPorter {
     return zipPath;
   }
 
-/// Export ZIP then open share sheet (Drive / Gmail / etc).
-static Future<void> exportZipAndShare({bool includeAudio = true}) async {
-  final path = await exportAllToZipFile(includeAudio: includeAudio);
+  /// Export ZIP then open share sheet (Drive / Gmail / etc).
+  static Future<void> exportZipAndShare({bool includeAudio = true}) async {
+    final path = await exportAllToZipFile(includeAudio: includeAudio);
 
-  final params = ShareParams(
-    files: [XFile(path)],
-    text: 'Transcripts export (ZIP)',
-  );
+    final params = ShareParams(
+      files: [XFile(path)],
+      text: 'Transcripts export (ZIP)',
+    );
 
-  await SharePlus.instance.share(params);
-}
+    await SharePlus.instance.share(params);
+  }
+
   /// Pick a ZIP file (device or cloud provider) and import everything into DB.
   /// Returns number of imported transcripts.
   static Future<int> pickAndImportZip() async {
@@ -296,14 +297,17 @@ static Future<void> exportZipAndShare({bool includeAudio = true}) async {
 
             if (existing != null) {
               existing
-                ..inputUrl = (ytMetaMap['inputUrl'] ?? existing.inputUrl).toString()
+                ..inputUrl = (ytMetaMap['inputUrl'] ?? existing.inputUrl)
+                    .toString()
                 ..canonicalUrl =
-                    (ytMetaMap['canonicalUrl'] ?? existing.canonicalUrl).toString()
+                    (ytMetaMap['canonicalUrl'] ?? existing.canonicalUrl)
+                        .toString()
                 ..title = (ytMetaMap['title'] as String?) ?? existing.title
-                ..channel = (ytMetaMap['channel'] as String?) ?? existing.channel
+                ..channel =
+                    (ytMetaMap['channel'] as String?) ?? existing.channel
                 ..updatedAtMs =
                     (ytMetaMap['updatedAtMs'] as num?)?.toInt() ??
-                        DateTime.now().millisecondsSinceEpoch;
+                    DateTime.now().millisecondsSinceEpoch;
 
               metaId = ytMetaBox.put(existing);
             } else {
@@ -481,15 +485,15 @@ static Future<void> exportZipAndShare({bool includeAudio = true}) async {
       "turns": isYoutube
           ? const []
           : turns
-              .map(
-                (u) => {
-                  "speakerLabel": u.speakerLabel,
-                  "startSec": u.startSec,
-                  "endSec": u.endSec,
-                  "text": u.text,
-                },
-              )
-              .toList(),
+                .map(
+                  (u) => {
+                    "speakerLabel": u.speakerLabel,
+                    "startSec": u.startSec,
+                    "endSec": u.endSec,
+                    "text": u.text,
+                  },
+                )
+                .toList(),
 
       // ✅ youtube payload (youtube only)
       "youtubeMeta": isYoutube ? youtubeMeta : null,

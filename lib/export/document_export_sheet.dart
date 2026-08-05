@@ -58,10 +58,7 @@ Future<void> showDocumentExportSheet({
                   const SizedBox(height: 6),
                   Text(
                     'Choose a format and export the file.',
-                    style: TextStyle(
-                      color: muted,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(color: muted, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 16),
                   Wrap(
@@ -84,7 +81,9 @@ Future<void> showDocumentExportSheet({
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(999),
                           side: BorderSide(
-                            color: Colors.white.withValues(alpha: active ? 0 : 0.14),
+                            color: Colors.white.withValues(
+                              alpha: active ? 0 : 0.14,
+                            ),
                           ),
                         ),
                       );
@@ -97,7 +96,9 @@ Future<void> showDocumentExportSheet({
                         child: GlassButton(
                           kind: GlassButtonKind.secondary,
                           label: 'Cancel',
-                          onPressed: busy ? null : () => Navigator.of(sheetContext).pop(),
+                          onPressed: busy
+                              ? null
+                              : () => Navigator.of(sheetContext).pop(),
                         ),
                       ),
                       const SizedBox(width: 10),

@@ -467,10 +467,10 @@ class _FavouritesTabState extends State<FavouritesTab> {
                               final leadingIcon = isYoutube
                                   ? Icons.subtitles
                                   : (isAudio
-                                      ? Icons.audio_file
-                                      : (isVideo
-                                          ? Icons.video_file
-                                          : Icons.article_outlined));
+                                        ? Icons.audio_file
+                                        : (isVideo
+                                              ? Icons.video_file
+                                              : Icons.article_outlined));
 
                               return ListTile(
                                 contentPadding: const EdgeInsets.symmetric(

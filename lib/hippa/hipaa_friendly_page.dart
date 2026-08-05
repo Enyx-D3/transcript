@@ -15,10 +15,9 @@ class HipaaFriendlyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-  
 
     final fg = GlassTokens.fg(context, alpha: 0.92);
- 
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: GlassBackground(

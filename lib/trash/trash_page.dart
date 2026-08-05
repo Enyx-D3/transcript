@@ -117,7 +117,9 @@ class _TrashPageState extends State<TrashPage> {
         }
 
         final chatQ = chatsBox
-            .query(TranscriptChatMessageEntity_.transcriptId.equals(transcriptId))
+            .query(
+              TranscriptChatMessageEntity_.transcriptId.equals(transcriptId),
+            )
             .build();
         try {
           final ids = chatQ.findIds();
@@ -148,7 +150,8 @@ class _TrashPageState extends State<TrashPage> {
     final ok = await showConfirmDeleteDialog(
       context,
       title: 'Delete permanently?',
-      message: 'This will permanently delete the transcript and its related data.',
+      message:
+          'This will permanently delete the transcript and its related data.',
     );
     if (!ok) return;
 
@@ -344,7 +347,9 @@ class _TrashPageState extends State<TrashPage> {
                               subtitle: 'Deleted: $when',
                               badge: isYoutube
                                   ? 'YouTube'
-                                  : (isAudio ? 'Audio' : (isVideo ? 'Video' : 'Voice')),
+                                  : (isAudio
+                                        ? 'Audio'
+                                        : (isVideo ? 'Video' : 'Voice')),
                               onRestore: () => _restore(t.id),
                               onDeleteNow: () => _deleteNow(t.id),
                             ),
@@ -413,7 +418,8 @@ class _HeaderGlassButton extends StatelessWidget {
                     label,
                     maxLines: 1,
                     softWrap: false,
-                    overflow: TextOverflow.visible, // avoid debug overflow yellows
+                    overflow:
+                        TextOverflow.visible, // avoid debug overflow yellows
                     style: TextStyle(
                       color: fg,
                       fontWeight: FontWeight.w900,
@@ -511,10 +517,7 @@ class _TrashCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: TextStyle(
-              color: muted,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: muted, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
 
@@ -591,7 +594,8 @@ class _CompactRowButton extends StatelessWidget {
                     label,
                     maxLines: 1,
                     softWrap: false,
-                    overflow: TextOverflow.visible, // stops yellow overflow warnings
+                    overflow:
+                        TextOverflow.visible, // stops yellow overflow warnings
                     style: TextStyle(
                       color: fg,
                       fontWeight: FontWeight.w900,

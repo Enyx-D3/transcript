@@ -33,7 +33,10 @@ Future<bool?> showReportDialog({
         builder: (ctx, setState) {
           return AlertDialog(
             backgroundColor: Colors.black87,
-            title: const Text('Report response',style: TextStyle(color: Colors.white,fontSize: 16),),
+            title: const Text(
+              'Report response',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -74,7 +77,10 @@ Future<bool?> showReportDialog({
             actions: [
               TextButton(
                 onPressed: sending ? null : () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel',style: TextStyle(color: Colors.white),),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
               FilledButton.icon(
                 onPressed: sending

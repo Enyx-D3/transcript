@@ -9,8 +9,7 @@ class GlassChip extends StatelessWidget {
     required this.label,
     this.icon,
     this.onTap,
-    this.padding =
-        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    this.padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     this.borderRadius,
     this.tintLight,
     this.tintDark,
@@ -88,10 +87,7 @@ class GlassChip extends StatelessWidget {
 
 /// Very subtle top highlight (Apple micro-detail)
 class _InnerChrome extends StatelessWidget {
-  const _InnerChrome({
-    required this.child,
-    required this.borderRadius,
-  });
+  const _InnerChrome({required this.child, required this.borderRadius});
 
   final Widget child;
   final BorderRadius borderRadius;

@@ -7,8 +7,7 @@ class GlassDock extends StatelessWidget {
   const GlassDock({
     super.key,
     required this.child,
-    this.padding =
-        const EdgeInsets.fromLTRB(12, 10, 12, 12),
+    this.padding = const EdgeInsets.fromLTRB(12, 10, 12, 12),
     this.innerPadding = EdgeInsets.zero,
     this.radius,
     this.blur,

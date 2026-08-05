@@ -85,7 +85,8 @@ class PreprocessOptions {
 // ---------------- DSP helpers ----------------
 
 double _dbToAmp(double db) => math.pow(10.0, db / 20.0).toDouble();
-double _ampToDb(double amp) => 20.0 * math.log(amp.clamp(1e-12, 1e12)) / math.ln10;
+double _ampToDb(double amp) =>
+    20.0 * math.log(amp.clamp(1e-12, 1e12)) / math.ln10;
 
 double _rms(Float32List x) {
   double s = 0;
@@ -264,7 +265,9 @@ Future<String> preprocessWav16kMono(
   String? outPath,
 }) async {
   final info = await parseWavInfo(inputPath);
-  if (info.channels != 1 || info.bitsPerSample != 16 || info.sampleRate != 16000) {
+  if (info.channels != 1 ||
+      info.bitsPerSample != 16 ||
+      info.sampleRate != 16000) {
     throw UnsupportedError('Expected PCM16 mono 16 kHz WAV');
   }
 
@@ -286,8 +289,10 @@ Future<String> preprocessWav16kMono(
       final bytes = raf.readSync(toRead * 2);
       final bd = ByteData.view(bytes.buffer);
       for (int i = 0; i < toRead; i++) {
-        x[offset++] =
-            (bd.getInt16(i * 2, Endian.little) / 32768.0).clamp(-1.0, 1.0);
+        x[offset++] = (bd.getInt16(i * 2, Endian.little) / 32768.0).clamp(
+          -1.0,
+          1.0,
+        );
       }
       remaining -= toRead;
     }
@@ -469,7 +474,8 @@ Future<String> preprocessWav16kMono(
   }
 
   // ── Write output in chunks to avoid a second large allocation ──
-  final tmp = outPath ??
+  final tmp =
+      outPath ??
       '${(await getTemporaryDirectory()).path}/pre_${DateTime.now().millisecondsSinceEpoch}.wav';
 
   await _writePcm16MonoWavChunked(tmp, sampleRate: fs, floatSamples: y);
@@ -498,6 +504,7 @@ Future<void> _writePcm16MonoWavChunked(
       final bd = ByteData(4)..setUint32(0, v, Endian.little);
       raf.writeFromSync(bd.buffer.asUint8List());
     }
+
     void putU16(int v) {
       final bd = ByteData(2)..setUint16(0, v, Endian.little);
       raf.writeFromSync(bd.buffer.asUint8List());

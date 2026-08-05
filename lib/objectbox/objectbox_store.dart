@@ -130,7 +130,8 @@ class ObjectBox {
       final existing = q.findFirst();
       q.close();
 
-      final meta = existing ??
+      final meta =
+          existing ??
           YoutubeTranscriptMetaEntity(
             videoId: videoId,
             inputUrl: inputUrl,
@@ -173,7 +174,10 @@ class ObjectBox {
   /// Load saved videos (newest first)
   List<YoutubeTranscriptMetaEntity> loadYoutubeMetas({int limit = 200}) {
     final qb = ytMeta.query()
-      ..order(YoutubeTranscriptMetaEntity_.updatedAtMs, flags: Order.descending);
+      ..order(
+        YoutubeTranscriptMetaEntity_.updatedAtMs,
+        flags: Order.descending,
+      );
     final q = qb.build();
     q.limit = limit;
     final res = q.find();
@@ -183,8 +187,7 @@ class ObjectBox {
 
   /// Load transcript texts for a saved video metaId
   List<YoutubeTranscriptTextEntity> loadYoutubeTexts(int metaId) {
-    final qb = ytTexts
-        .query(YoutubeTranscriptTextEntity_.meta.equals(metaId))
+    final qb = ytTexts.query(YoutubeTranscriptTextEntity_.meta.equals(metaId))
       ..order(YoutubeTranscriptTextEntity_.isGenerated)
       ..order(YoutubeTranscriptTextEntity_.languageCode);
     final q = qb.build();

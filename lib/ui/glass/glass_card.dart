@@ -4,7 +4,7 @@ import 'glass_tokens.dart';
 
 enum GlassCardVariant {
   panel, // big shared surfaces
-  tile,  // small components
+  tile, // small components
 }
 
 class GlassCard extends StatelessWidget {
@@ -67,7 +67,7 @@ class GlassCard extends StatelessWidget {
     const panelBorderLight = 0.16;
 
     // ✅ Reduce blur a bit (huge perf gain, minimal visual change)
-    const panelBlurDark = 14.0;  // perf
+    const panelBlurDark = 14.0; // perf
     const panelBlurLight = 10.0; // perf
 
     // Tiles = slightly more visible
@@ -78,7 +78,8 @@ class GlassCard extends StatelessWidget {
     const tileBlurDark = 0.0;
     const tileBlurLight = 0.0; // perf: no per-tile blur (use screen blur)
 
-    final presetBlur = blur ??
+    final presetBlur =
+        blur ??
         (isDark
             ? (isPanel ? panelBlurDark : tileBlurDark)
             : (isPanel ? panelBlurLight : tileBlurLight));
@@ -94,11 +95,15 @@ class GlassCard extends StatelessWidget {
       blurX: presetBlur,
       blurY: presetBlur,
 
-      tintOpacityDark: tintOpacityDark ?? (isPanel ? panelTintDark : tileTintDark),
-      tintOpacityLight: tintOpacityLight ?? (isPanel ? panelTintLight : tileTintLight),
+      tintOpacityDark:
+          tintOpacityDark ?? (isPanel ? panelTintDark : tileTintDark),
+      tintOpacityLight:
+          tintOpacityLight ?? (isPanel ? panelTintLight : tileTintLight),
 
-      borderOpacityDark: borderOpacityDark ?? (isPanel ? panelBorderDark : tileBorderDark),
-      borderOpacityLight: borderOpacityLight ?? (isPanel ? panelBorderLight : tileBorderLight),
+      borderOpacityDark:
+          borderOpacityDark ?? (isPanel ? panelBorderDark : tileBorderDark),
+      borderOpacityLight:
+          borderOpacityLight ?? (isPanel ? panelBorderLight : tileBorderLight),
 
       shadow: shadow ?? defaultShadow,
       shadowBlur: shadowBlur ?? 24,

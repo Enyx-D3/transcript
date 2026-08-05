@@ -32,7 +32,7 @@ import '../widgets/icon_pill_button.dart';
 class EnrollmentFlowPage extends StatefulWidget {
   final List<EnrollmentPrompt> prompts;
   const EnrollmentFlowPage({super.key, List<EnrollmentPrompt>? prompts})
-      : prompts = prompts ?? kDefaultEnrollmentPrompts;
+    : prompts = prompts ?? kDefaultEnrollmentPrompts;
 
   @override
   State<EnrollmentFlowPage> createState() => _EnrollmentFlowPageState();
@@ -233,7 +233,10 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   Future<void> _next() async {
     if (_busy) return;
     if (_vectors[_index] == null) {
-      await AppFlushbar.error(context, message: 'Please record this step first.');
+      await AppFlushbar.error(
+        context,
+        message: 'Please record this step first.',
+      );
       return;
     }
     if (_index + 1 < widget.prompts.length) {
@@ -247,10 +250,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   Future<void> _askAndSaveName() async {
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => _GlassNameDialog(
-        controller: _nameCtrl,
-        busy: _busy,
-      ),
+      builder: (ctx) => _GlassNameDialog(controller: _nameCtrl, busy: _busy),
     );
     if (name == null || name.isEmpty) return;
 
@@ -320,7 +320,10 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
   Future<void> _togglePlayMyRecording() async {
     final clip = _clips[_index];
     if (clip == null || !File(clip).existsSync()) {
-      await AppFlushbar.error(context, message: 'No recording for this step yet.');
+      await AppFlushbar.error(
+        context,
+        message: 'No recording for this step yet.',
+      );
       return;
     }
 
@@ -337,7 +340,10 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
       setState(() => _playingUser = true);
     } catch (_) {
       if (!mounted) return;
-      await AppFlushbar.error(context, message: 'Could not play your recording');
+      await AppFlushbar.error(
+        context,
+        message: 'Could not play your recording',
+      );
     }
   }
 
@@ -397,7 +403,9 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                     IconPillButton(
                       tooltip: 'Stop audio',
                       icon: Icons.stop_circle_outlined,
-                      onTap: (_playingGuide || _playingUser) ? _stopPlayback : null,
+                      onTap: (_playingGuide || _playingUser)
+                          ? _stopPlayback
+                          : null,
                     ),
                   ],
                 ),
@@ -407,7 +415,10 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                 // ---------- Progress ----------
                 LiquidGlass(
                   borderRadius: BorderRadius.circular(999),
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 12,
+                  ),
                   // ✅ page already glass: keep crisp (avoid double blur)
                   blurX: 0,
                   blurY: 0,
@@ -571,7 +582,9 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                               ),
                               const SizedBox(width: 8),
                               GlassButton(
-                                label: _playingGuide ? 'Stop guide' : 'Play guide',
+                                label: _playingGuide
+                                    ? 'Stop guide'
+                                    : 'Play guide',
                                 icon: _playingGuide
                                     ? Icons.pause_circle_filled
                                     : Icons.volume_up,
@@ -588,7 +601,9 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                               ),
                               const SizedBox(width: 8),
                               GlassButton(
-                                label: _playingUser ? 'Stop my clip' : 'Play my clip',
+                                label: _playingUser
+                                    ? 'Stop my clip'
+                                    : 'Play my clip',
                                 icon: _playingUser
                                     ? Icons.pause_circle_filled
                                     : Icons.graphic_eq,
@@ -598,8 +613,9 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                                   horizontal: 12,
                                   vertical: 10,
                                 ),
-                                onPressed:
-                                    (_clips[_index] == null || _busy) ? null : _togglePlayMyRecording,
+                                onPressed: (_clips[_index] == null || _busy)
+                                    ? null
+                                    : _togglePlayMyRecording,
                                 innerChrome: false,
                               ),
                             ],
@@ -679,7 +695,9 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
                     child: Text(
                       _recording
                           ? 'Recording… release to finish'
-                          : (done ? 'Recorded — hold to replace' : 'Hold to record'),
+                          : (done
+                                ? 'Recorded — hold to replace'
+                                : 'Hold to record'),
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       softWrap: false,
@@ -723,11 +741,7 @@ class _EnrollmentFlowPageState extends State<EnrollmentFlowPage> {
 enum _ChipTone { neutral, good, bad }
 
 class _ToneChip extends StatelessWidget {
-  const _ToneChip({
-    required this.label,
-    required this.tone,
-    this.icon,
-  });
+  const _ToneChip({required this.label, required this.tone, this.icon});
 
   final String label;
   final _ChipTone tone;
@@ -782,8 +796,8 @@ class _ToneChip extends StatelessWidget {
                 (tone == _ChipTone.good
                     ? Icons.check_circle_outline
                     : (tone == _ChipTone.bad
-                        ? Icons.error_outline
-                        : Icons.info_outline)),
+                          ? Icons.error_outline
+                          : Icons.info_outline)),
             size: 16,
             color: fg,
           ),
@@ -806,10 +820,7 @@ class _ToneChip extends StatelessWidget {
 }
 
 class _GlassNameDialog extends StatelessWidget {
-  const _GlassNameDialog({
-    required this.controller,
-    required this.busy,
-  });
+  const _GlassNameDialog({required this.controller, required this.busy});
 
   final TextEditingController controller;
   final bool busy;
@@ -852,18 +863,23 @@ class _GlassNameDialog extends StatelessWidget {
               style: TextStyle(color: fg, fontWeight: FontWeight.w700),
               decoration: InputDecoration(
                 labelText: 'Display name (e.g., Alex)',
-                labelStyle: TextStyle(color: muted, fontWeight: FontWeight.w600),
+                labelStyle: TextStyle(
+                  color: muted,
+                  fontWeight: FontWeight.w600,
+                ),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.04),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide:
-                      BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide:
-                      BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),

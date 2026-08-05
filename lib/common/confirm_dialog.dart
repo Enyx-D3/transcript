@@ -78,10 +78,16 @@ Future<bool> showConfirmDeleteDialog(
                                         width: 38,
                                         height: 38,
                                         decoration: BoxDecoration(
-                                          color: Colors.red.withValues(alpha: 0.14),
-                                          borderRadius: BorderRadius.circular(12),
+                                          color: Colors.red.withValues(
+                                            alpha: 0.14,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                           border: Border.all(
-                                            color: Colors.red.withValues(alpha: 0.28),
+                                            color: Colors.red.withValues(
+                                              alpha: 0.28,
+                                            ),
                                           ),
                                         ),
                                         child: Icon(
@@ -96,12 +102,15 @@ Future<bool> showConfirmDeleteDialog(
                                           title,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: parentTheme.textTheme.titleMedium?.copyWith(
-                                            color: fg,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: -0.1,
-                                            height: 1.1,
-                                          ),
+                                          style: parentTheme
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                color: fg,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: -0.1,
+                                                height: 1.1,
+                                              ),
                                         ),
                                       ),
                                     ],
@@ -118,17 +127,20 @@ Future<bool> showConfirmDeleteDialog(
                                       color: Colors.red.withValues(alpha: 0.07),
                                       borderRadius: BorderRadius.circular(14),
                                       border: Border.all(
-                                        color: Colors.red.withValues(alpha: 0.20),
+                                        color: Colors.red.withValues(
+                                          alpha: 0.20,
+                                        ),
                                       ),
                                     ),
                                     child: Text(
                                       message,
-                                      style: parentTheme.textTheme.bodyMedium?.copyWith(
-                                        color: sub,
-                                        height: 1.28,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14, // pinned
-                                      ),
+                                      style: parentTheme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: sub,
+                                            height: 1.28,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14, // pinned
+                                          ),
                                     ),
                                   ),
 
@@ -143,8 +155,10 @@ Future<bool> showConfirmDeleteDialog(
                                         width: double.infinity,
                                         child: _GlassActionButton(
                                           label: cancelText,
-                                          kind: _GlassActionButtonKind.secondary,
-                                          onPressed: () => Navigator.of(ctx).pop(false),
+                                          kind:
+                                              _GlassActionButtonKind.secondary,
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(false),
                                         ),
                                       ),
                                       SizedBox(
@@ -152,7 +166,8 @@ Future<bool> showConfirmDeleteDialog(
                                         child: _GlassActionButton(
                                           label: confirmText,
                                           kind: _GlassActionButtonKind.danger,
-                                          onPressed: () => Navigator.of(ctx).pop(true),
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(true),
                                         ),
                                       ),
                                     ],
@@ -194,17 +209,23 @@ class _GlassActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDanger = kind == _GlassActionButtonKind.danger;
 
-    final tintDark =
-        isDanger ? 0.10 : (kind == _GlassActionButtonKind.primary ? 0.12 : 0.085);
-    final tintLight =
-        isDanger ? 0.10 : (kind == _GlassActionButtonKind.primary ? 0.10 : 0.070);
+    final tintDark = isDanger
+        ? 0.10
+        : (kind == _GlassActionButtonKind.primary ? 0.12 : 0.085);
+    final tintLight = isDanger
+        ? 0.10
+        : (kind == _GlassActionButtonKind.primary ? 0.10 : 0.070);
 
-    final borderDark =
-        isDanger ? 0.26 : (kind == _GlassActionButtonKind.primary ? 0.22 : 0.18);
-    final borderLight =
-        isDanger ? 0.24 : (kind == _GlassActionButtonKind.primary ? 0.20 : 0.16);
+    final borderDark = isDanger
+        ? 0.26
+        : (kind == _GlassActionButtonKind.primary ? 0.22 : 0.18);
+    final borderLight = isDanger
+        ? 0.24
+        : (kind == _GlassActionButtonKind.primary ? 0.20 : 0.16);
 
-    final fg = isDanger ? Colors.redAccent : Colors.white.withValues(alpha: 0.92);
+    final fg = isDanger
+        ? Colors.redAccent
+        : Colors.white.withValues(alpha: 0.92);
 
     return LayoutBuilder(
       builder: (_, c) {
@@ -233,12 +254,12 @@ class _GlassActionButton extends StatelessWidget {
               softWrap: false,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: fg,
-                    fontWeight: FontWeight.w900,
-                    fontSize: small ? 13.0 : 14.5,
-                    letterSpacing: 0.2,
-                    height: 1.05,
-                  ),
+                color: fg,
+                fontWeight: FontWeight.w900,
+                fontSize: small ? 13.0 : 14.5,
+                letterSpacing: 0.2,
+                height: 1.05,
+              ),
             ),
           ),
         );

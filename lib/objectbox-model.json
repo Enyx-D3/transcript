@@ -73,7 +73,7 @@
     },
     {
       "id": "3:8951984836733702572",
-      "lastPropertyId": "17:6726383822376668723",
+      "lastPropertyId": "21:6733838700427619238",
       "name": "TranscriptEntity",
       "properties": [
         {
@@ -173,13 +173,33 @@
           "indexId": "15:3109755727906842626",
           "type": 1,
           "flags": 8
+        },
+        {
+          "id": "18:4975714019875427724",
+          "name": "rawText",
+          "type": 9
+        },
+        {
+          "id": "19:718917222356364283",
+          "name": "calibratedText",
+          "type": 9
+        },
+        {
+          "id": "20:3425474144734317165",
+          "name": "calibrationAuditJson",
+          "type": 9
+        },
+        {
+          "id": "21:6733838700427619238",
+          "name": "instrumentationJson",
+          "type": 9
         }
       ],
       "relations": []
     },
     {
       "id": "4:5744334615254339933",
-      "lastPropertyId": "6:3684531645536754636",
+      "lastPropertyId": "10:4202995744098454170",
       "name": "TranscriptTurnEntity",
       "properties": [
         {
@@ -215,13 +235,33 @@
           "id": "6:3684531645536754636",
           "name": "text",
           "type": 9
+        },
+        {
+          "id": "7:1293349720794098201",
+          "name": "rawText",
+          "type": 9
+        },
+        {
+          "id": "8:8204094049119297834",
+          "name": "calibratedText",
+          "type": 9
+        },
+        {
+          "id": "9:2695629432942572327",
+          "name": "originalSpeakerLabel",
+          "type": 9
+        },
+        {
+          "id": "10:4202995744098454170",
+          "name": "calibrationAuditJson",
+          "type": 9
         }
       ],
       "relations": []
     },
     {
       "id": "5:7831950910300597404",
-      "lastPropertyId": "8:8262934732911788997",
+      "lastPropertyId": "14:194023092146562780",
       "name": "TranscriptionJobEntity",
       "properties": [
         {
@@ -248,7 +288,9 @@
         {
           "id": "5:7581930211408447811",
           "name": "status",
-          "type": 9
+          "indexId": "25:6599390134305837761",
+          "type": 9,
+          "flags": 2048
         },
         {
           "id": "6:8125824377358247077",
@@ -263,6 +305,40 @@
         {
           "id": "8:8262934732911788997",
           "name": "createdAt",
+          "type": 10
+        },
+        {
+          "id": "9:7972836315890259791",
+          "name": "stage",
+          "indexId": "26:5598207281465091467",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "10:4256821127720930085",
+          "name": "totalChunks",
+          "type": 6
+        },
+        {
+          "id": "11:890777727236836568",
+          "name": "processedChunks",
+          "type": 6
+        },
+        {
+          "id": "12:2216172399637515800",
+          "name": "currentChunkIndex",
+          "type": 6
+        },
+        {
+          "id": "13:5869265893742675458",
+          "name": "isRecording",
+          "indexId": "27:5092901125198291191",
+          "type": 1,
+          "flags": 8
+        },
+        {
+          "id": "14:194023092146562780",
+          "name": "updatedAt",
           "type": 10
         }
       ],
@@ -461,10 +537,181 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "11:7193293475155126178",
+      "lastPropertyId": "16:4734506791500094008",
+      "name": "CorrectionMappingEntity",
+      "properties": [
+        {
+          "id": "1:4383885988908703937",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:51140920058862662",
+          "name": "transcriptId",
+          "indexId": "16:8050101399052823499",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "3:8191844259293580023",
+          "name": "turnId",
+          "type": 6
+        },
+        {
+          "id": "4:6479418215129619824",
+          "name": "observed",
+          "type": 9
+        },
+        {
+          "id": "5:7485797597347264821",
+          "name": "replacement",
+          "type": 9
+        },
+        {
+          "id": "6:401319987969508956",
+          "name": "leftContext",
+          "type": 9
+        },
+        {
+          "id": "7:2506957229754190267",
+          "name": "rightContext",
+          "type": 9
+        },
+        {
+          "id": "8:7855716918651636423",
+          "name": "speaker",
+          "type": 9
+        },
+        {
+          "id": "9:4944152431261344789",
+          "name": "language",
+          "indexId": "17:4427974952564008238",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "10:8087612358141973882",
+          "name": "scope",
+          "indexId": "18:8623748844783602992",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "11:4455750127218659223",
+          "name": "confirmationCount",
+          "type": 6
+        },
+        {
+          "id": "12:25287546665070939",
+          "name": "rejectionCount",
+          "type": 6
+        },
+        {
+          "id": "13:8538185770121637695",
+          "name": "enabled",
+          "indexId": "19:7602969619321553839",
+          "type": 1,
+          "flags": 8
+        },
+        {
+          "id": "14:6178920124093699419",
+          "name": "requiresExplicitRemember",
+          "type": 1
+        },
+        {
+          "id": "15:1446775557735047094",
+          "name": "createdAt",
+          "type": 10
+        },
+        {
+          "id": "16:4734506791500094008",
+          "name": "updatedAt",
+          "type": 10
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "12:4797247648525836748",
+      "lastPropertyId": "11:65413416784866350",
+      "name": "PersonalDictionaryEntryEntity",
+      "properties": [
+        {
+          "id": "1:6149196888543758980",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:6563961039880981596",
+          "name": "canonicalForm",
+          "indexId": "20:6033664809959279446",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "3:2497815029846411250",
+          "name": "aliasesJson",
+          "type": 9
+        },
+        {
+          "id": "4:2691399625747035470",
+          "name": "language",
+          "indexId": "21:5244185754367991968",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "5:6658844578923098534",
+          "name": "category",
+          "indexId": "22:6651492247262801721",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "6:8860627359289381180",
+          "name": "scope",
+          "indexId": "23:638500039337594605",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "7:8839076184099455892",
+          "name": "confirmationCount",
+          "type": 6
+        },
+        {
+          "id": "8:6261737924904945671",
+          "name": "rejectionCount",
+          "type": 6
+        },
+        {
+          "id": "9:4884077554482468746",
+          "name": "enabled",
+          "indexId": "24:8512808218002374740",
+          "type": 1,
+          "flags": 8
+        },
+        {
+          "id": "10:8603447884795765859",
+          "name": "createdAt",
+          "type": 10
+        },
+        {
+          "id": "11:65413416784866350",
+          "name": "updatedAt",
+          "type": 10
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "10:6743079949151911291",
-  "lastIndexId": "15:3109755727906842626",
+  "lastEntityId": "12:4797247648525836748",
+  "lastIndexId": "27:5092901125198291191",
   "lastRelationId": "1:2617604582228853530",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

@@ -155,9 +155,7 @@ class _InnerChrome extends StatelessWidget {
             top: 0,
             height: 1,
             child: IgnorePointer(
-              child: Container(
-                color: Colors.white.withValues(alpha: topA),
-              ),
+              child: Container(color: Colors.white.withValues(alpha: topA)),
             ),
           ),
 

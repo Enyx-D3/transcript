@@ -90,7 +90,11 @@ class _PaywallPageState extends State<PaywallPage> {
         elevation: 0,
         leading: Padding(
           padding: const EdgeInsets.all(10),
-          child: IconPillButton(tooltip: 'close',onTap: _busy ? null : _close,icon: Icons.close,),
+          child: IconPillButton(
+            tooltip: 'close',
+            onTap: _busy ? null : _close,
+            icon: Icons.close,
+          ),
         ),
       ),
       body: GlassBackground(
@@ -170,7 +174,8 @@ class _PaywallPageState extends State<PaywallPage> {
                         child: Text(
                           'GET PRO ACCESS\nGO UNLIMITED',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: -0.4,
                                 color: fg,
@@ -203,12 +208,16 @@ class _PaywallPageState extends State<PaywallPage> {
                       _Panel(
                         child: Row(
                           children: [
-                            const Icon(Icons.check_circle, color: Colors.lightGreenAccent),
+                            const Icon(
+                              Icons.check_circle,
+                              color: Colors.lightGreenAccent,
+                            ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 '1-day trial enabled',
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
                                       fontWeight: FontWeight.w800,
                                       color: fg,
                                     ),
@@ -216,7 +225,8 @@ class _PaywallPageState extends State<PaywallPage> {
                             ),
                             Text(
                               'FREE',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
                                     color: Colors.white.withValues(alpha: 0.70),
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 0.2,
@@ -274,7 +284,8 @@ class _PaywallPageState extends State<PaywallPage> {
                       Center(
                         child: Text(
                           'Cancel anytime',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.60),
                                 fontWeight: FontWeight.w700,
                               ),
@@ -373,11 +384,16 @@ class _PlanDisplayRow extends StatelessWidget {
                     if (badge != null) ...[
                       const SizedBox(width: 10),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.blue.withValues(alpha: 0.20),
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.blue.withValues(alpha: 0.45)),
+                          border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.45),
+                          ),
                         ),
                         child: Text(
                           badge!,

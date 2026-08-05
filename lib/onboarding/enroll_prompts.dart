@@ -3,11 +3,11 @@ import 'package:flutter/foundation.dart';
 
 @immutable
 class EnrollmentPrompt {
-  final String id;          // stable key, e.g. "neutral", "loud"
-  final String title;       // UI header
-  final String subtitle;    // short instruction
-  final String script;      // what to say (displayed)
-  final double minSec;      // require at least this much audio
+  final String id; // stable key, e.g. "neutral", "loud"
+  final String title; // UI header
+  final String subtitle; // short instruction
+  final String script; // what to say (displayed)
+  final double minSec; // require at least this much audio
   final String? audioAsset; // can be an asset path OR a full URL
   const EnrollmentPrompt({
     required this.id,

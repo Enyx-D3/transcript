@@ -388,10 +388,10 @@ class _YoutubeSavedTranscriptPageState
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.2,
-                  color: fg,
-                ),
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.2,
+              color: fg,
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -553,7 +553,6 @@ class _YoutubeSavedTranscriptPageState
                     label: _regenerating ? 'Generating…' : 'Generate again',
                     icon: Icons.auto_fix_high,
                     onPressed: _regenerating ? null : _regenerate,
-          
                   ),
 
                   const SizedBox(height: 12),
@@ -576,11 +575,15 @@ class _YoutubeSavedTranscriptPageState
             // ================= Manual section =================
             _SectionHeader(
               title: 'Manual transcripts',
-              subtitle: _manual.isEmpty ? 'None' : '${_manual.length} available',
+              subtitle: _manual.isEmpty
+                  ? 'None'
+                  : '${_manual.length} available',
             ),
             const SizedBox(height: 10),
             _manual.isEmpty
-                ? const _EmptySmall(text: 'No manual transcripts for this video.')
+                ? const _EmptySmall(
+                    text: 'No manual transcripts for this video.',
+                  )
                 : _DbTranscriptList(items: _manual),
 
             const SizedBox(height: 18),
@@ -672,13 +675,18 @@ class _DbTranscriptCard extends StatelessWidget {
               Expanded(
                 child: LiquidGlass(
                   borderRadius: BorderRadius.circular(999),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   shadow: false,
                   child: Row(
                     children: [
-                      const Icon(Icons.language,
-                          size: 16, color: Colors.white70),
+                      const Icon(
+                        Icons.language,
+                        size: 16,
+                        color: Colors.white70,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -704,7 +712,10 @@ class _DbTranscriptCard extends StatelessWidget {
                 onTap: () async {
                   await Clipboard.setData(ClipboardData(text: item.text));
                   if (!context.mounted) return;
-                  await AppFlushbar.success(context, message: 'Copied transcript');
+                  await AppFlushbar.success(
+                    context,
+                    message: 'Copied transcript',
+                  );
                 },
               ),
             ],
@@ -743,7 +754,7 @@ class _GenTag extends StatelessWidget {
     final label = isGenerated ? 'AUTO' : 'MANUAL';
 
     final color = Colors.white;
-    final border = color.withValues(alpha:  isDark ? 0.50 : 0.35);
+    final border = color.withValues(alpha: isDark ? 0.50 : 0.35);
     final bg = color.withValues(alpha: isDark ? 0.16 : 0.10);
 
     return Container(
@@ -756,10 +767,10 @@ class _GenTag extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.2,
-              color: color,
-            ),
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.2,
+          color: color,
+        ),
       ),
     );
   }
@@ -817,11 +828,7 @@ class _MiniPill extends StatelessWidget {
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-        ),
+        style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 12),
       ),
     );
   }
@@ -963,9 +970,13 @@ class _GlassIconPill extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+            color: (isDark ? Colors.white : Colors.black).withValues(
+              alpha: 0.06,
+            ),
             border: Border.all(
-              color: (isDark ? Colors.white : Colors.black).withValues(alpha:  0.10),
+              color: (isDark ? Colors.white : Colors.black).withValues(
+                alpha: 0.10,
+              ),
             ),
           ),
           child: Icon(

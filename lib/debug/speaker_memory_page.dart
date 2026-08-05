@@ -54,8 +54,9 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
 
       rows.add(_Row(name: name, count: count, dim: dim));
 
-      jsonMap[name] =
-          protos.map((emb) => emb.map((e) => e.toDouble()).toList()).toList();
+      jsonMap[name] = protos
+          .map((emb) => emb.map((e) => e.toDouble()).toList())
+          .toList();
     });
 
     rows.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -153,8 +154,9 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                       label: protos.isEmpty
                           ? 'No vectors'
                           : '${protos.length} vectors • dim ${protos.first.length}',
-                      icon:
-                          protos.isEmpty ? Icons.info_outline : Icons.graphic_eq,
+                      icon: protos.isEmpty
+                          ? Icons.info_outline
+                          : Icons.graphic_eq,
                       onTap: null,
                     ),
                   ],
@@ -172,8 +174,9 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                         itemBuilder: (_, i) {
                           final v = protos[i];
                           return ListTile(
-                            leading:
-                                const LeadingPillIcon(icon: Icons.graphic_eq),
+                            leading: const LeadingPillIcon(
+                              icon: Icons.graphic_eq,
+                            ),
                             title: Text(
                               'Vector ${i + 1}',
                               style: TextStyle(
@@ -242,11 +245,12 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                               children: [
                                 Text(
                                   'Speaker memory',
-                                  style: theme.textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.2,
-                                    color: GlassTokens.fg(context),
-                                  ),
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.2,
+                                        color: GlassTokens.fg(context),
+                                      ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
@@ -321,12 +325,15 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                                       LayoutBuilder(
                                         builder: (ctx, c) {
                                           final maxH =
-                                              MediaQuery.of(context).size.height *
-                                                  0.48;
+                                              MediaQuery.of(
+                                                context,
+                                              ).size.height *
+                                              0.48;
 
                                           return ConstrainedBox(
-                                            constraints:
-                                                BoxConstraints(maxHeight: maxH),
+                                            constraints: BoxConstraints(
+                                              maxHeight: maxH,
+                                            ),
                                             // ✅ NOTE: keep just ONE card surface here
                                             child: LiquidGlass(
                                               borderRadius:
@@ -347,23 +354,24 @@ class _SpeakerMemoryPageState extends State<SpeakerMemoryPage> {
                                                   itemCount: _rows.length,
                                                   separatorBuilder: (_, _) =>
                                                       const GlassDivider(
-                                                    height: 1,
-                                                    thickness: 0.8,
-                                                    indent: 14,
-                                                    endIndent: 14,
-                                                  ),
+                                                        height: 1,
+                                                        thickness: 0.8,
+                                                        indent: 14,
+                                                        endIndent: 14,
+                                                      ),
                                                   itemBuilder: (_, i) =>
                                                       _ProfileRow(
-                                                    name: _rows[i].name,
-                                                    meta:
-                                                        'vectors: ${_rows[i].count} • dim: ${_rows[i].dim}',
-                                                    onOpen: () => _openVectors(
-                                                      _rows[i].name,
-                                                    ),
-                                                    onDelete: () => _delete(
-                                                      _rows[i].name,
-                                                    ),
-                                                  ),
+                                                        name: _rows[i].name,
+                                                        meta:
+                                                            'vectors: ${_rows[i].count} • dim: ${_rows[i].dim}',
+                                                        onOpen: () =>
+                                                            _openVectors(
+                                                              _rows[i].name,
+                                                            ),
+                                                        onDelete: () => _delete(
+                                                          _rows[i].name,
+                                                        ),
+                                                      ),
                                                 ),
                                               ),
                                             ),
@@ -520,8 +528,6 @@ class _GlassIconButton extends StatelessWidget {
     );
   }
 }
-
-
 
 class _GlassBottomSheet extends StatelessWidget {
   const _GlassBottomSheet({required this.child});

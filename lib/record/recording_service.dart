@@ -55,7 +55,9 @@ class RecordingService {
       final maxMinutes = prefs.getInt(_kPrefMaxRecordingMinutes) ?? 60;
 
       // Safety clamp (matches your settings options)
-      final safeMinutes = _kMaxMinutesOptions.contains(maxMinutes) ? maxMinutes : 60;
+      final safeMinutes = _kMaxMinutesOptions.contains(maxMinutes)
+          ? maxMinutes
+          : 60;
 
       await FlutterForegroundTask.saveData(key: _kFilePath, value: filePath);
       await FlutterForegroundTask.saveData(
@@ -168,7 +170,7 @@ const String _kPrefMaxRecordingMinutes = 'pref_max_recording_minutes';
 const String _kMaxMinutesRuntime = 'rec_max_recording_minutes_runtime';
 
 // ✅ allowed options (same as SettingsPage)
-const List<int> _kMaxMinutesOptions = [30, 60, 90, 120,6000];
+const List<int> _kMaxMinutesOptions = [30, 60, 90, 120, 6000];
 
 @pragma('vm:entry-point')
 void recordingStartCallback() {
@@ -214,7 +216,9 @@ class _RecordingTaskHandler extends TaskHandler {
     final mm = await FlutterForegroundTask.getData(key: _kMaxMinutesRuntime);
 
     // ✅ read target speakers (stored int; 0 => null)
-    final ts = await FlutterForegroundTask.getData(key: _kTargetSpeakersRuntime);
+    final ts = await FlutterForegroundTask.getData(
+      key: _kTargetSpeakersRuntime,
+    );
 
     _path = (p is String) ? p : null;
     _startEpochMs = (s is int) ? s : DateTime.now().millisecondsSinceEpoch;
@@ -229,7 +233,8 @@ class _RecordingTaskHandler extends TaskHandler {
 
     if (_path == null) {
       final docs = await getApplicationDocumentsDirectory();
-      final dir = Directory('${docs.path}/recordings')..createSync(recursive: true);
+      final dir = Directory('${docs.path}/recordings')
+        ..createSync(recursive: true);
       final tss = DateTime.now().toIso8601String().replaceAll(':', '-');
       _path = '${dir.path}/rec_$tss.wav';
     }
@@ -421,8 +426,9 @@ class _RecordingTaskHandler extends TaskHandler {
   }
 
   int _elapsedSeconds(int nowMs) {
-    final pausedExtra =
-        (_pauseStartedMs == null) ? 0 : (nowMs - _pauseStartedMs!);
+    final pausedExtra = (_pauseStartedMs == null)
+        ? 0
+        : (nowMs - _pauseStartedMs!);
     final effectiveMs = (nowMs - _startEpochMs) - _pausedAccumMs - pausedExtra;
 
     final sec = Duration(milliseconds: effectiveMs).inSeconds;

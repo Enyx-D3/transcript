@@ -128,6 +128,7 @@ const List<String> _fixes = [
   'Improved background transcription stability',
   'Minor performance improvements and bug fixes',
 ];
+
 // ------------------------
 // UI widgets
 // ------------------------

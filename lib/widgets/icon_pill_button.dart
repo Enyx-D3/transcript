@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../ui/glass/liquid_glass.dart';
 
-
 class IconPillButton extends StatelessWidget {
   const IconPillButton({
     super.key,
@@ -30,8 +29,8 @@ class IconPillButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
           padding: const EdgeInsets.all(8),
           shadow: false,
-          blurX: 12 ,
-          blurY:12,
+          blurX: 12,
+          blurY: 12,
           tintOpacityDark: 0.040,
           tintOpacityLight: 0.032,
           borderOpacityDark: 0.14,

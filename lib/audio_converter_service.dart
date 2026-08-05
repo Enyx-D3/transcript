@@ -4,17 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Native audio converter service.
-/// 
+///
 /// Uses platform-specific implementations to convert audio/video files
 /// to 16kHz mono PCM WAV format suitable for Whisper transcription.
 class AudioConverterService {
   static const _channel = MethodChannel('com.enyxd.transcript/audio_converter');
 
   /// Convert audio/video file to 16kHz mono WAV.
-  /// 
+  ///
   /// [inputPath] - Path to input audio or video file
   /// [outputPath] - Optional custom output path. If null, generates one.
-  /// 
+  ///
   /// Returns path to the converted WAV file.
   /// Throws [AudioConversionException] on failure.
   static Future<String> convertToWav16kMono(
@@ -31,12 +31,15 @@ class AudioConverterService {
     }
   }
 
-  static Future<String> _convertNative(String inputPath, String outputPath) async {
+  static Future<String> _convertNative(
+    String inputPath,
+    String outputPath,
+  ) async {
     try {
-      final result = await _channel.invokeMethod<String>('convertToWav16kMono', {
-        'inputPath': inputPath,
-        'outputPath': outputPath,
-      });
+      final result = await _channel.invokeMethod<String>(
+        'convertToWav16kMono',
+        {'inputPath': inputPath, 'outputPath': outputPath},
+      );
 
       if (result == null) {
         throw AudioConversionException('Conversion returned null');

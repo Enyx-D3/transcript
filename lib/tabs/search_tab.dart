@@ -16,7 +16,6 @@ import '../ui/glass/liquid_glass.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_divider.dart';
 
-
 class SearchTab extends StatefulWidget {
   const SearchTab({super.key});
 
@@ -120,7 +119,7 @@ class _SearchTabState extends State<SearchTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-   
+
     final titleStyle = theme.textTheme.headlineSmall?.copyWith(
       fontWeight: FontWeight.w900,
       letterSpacing: -0.2,
@@ -260,90 +259,84 @@ class _SearchTabState extends State<SearchTab> {
                           icon: Icons.search,
                         )
                       : _loading
-                          ? const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(18),
-                                child: CircularProgressIndicator(),
-                              ),
-                            )
-                          : _results.isEmpty
-                              ? EmptyState(
-                                  title: 'No results for “$_q”.',
-                                  subtitle: '',
-                                  icon: Icons.search,
-                                )
-                              : GlassCard(
-                                  variant: GlassCardVariant.tile,
-                                  padding: EdgeInsets.zero,
-                                  child: ListView.separated(
-                                    controller: _listCtrl,
-                                    physics:
-                                        const AlwaysScrollableScrollPhysics(),
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(18),
+                            child: CircularProgressIndicator(),
+                          ),
+                        )
+                      : _results.isEmpty
+                      ? EmptyState(
+                          title: 'No results for “$_q”.',
+                          subtitle: '',
+                          icon: Icons.search,
+                        )
+                      : GlassCard(
+                          variant: GlassCardVariant.tile,
+                          padding: EdgeInsets.zero,
+                          child: ListView.separated(
+                            controller: _listCtrl,
+                            physics: const AlwaysScrollableScrollPhysics(),
 
-                                    // ✅ PERF: keeps compositing stable
-                                    addRepaintBoundaries: false,
-                                    addAutomaticKeepAlives: false,
+                            // ✅ PERF: keeps compositing stable
+                            addRepaintBoundaries: false,
+                            addAutomaticKeepAlives: false,
 
-                                    itemCount: _results.length,
-                                    separatorBuilder: (_, _) =>
-                                        const GlassDivider(height: 1),
-                                    itemBuilder: (ctx, i) {
-                                      final t = _results[i];
-                                      final title =
-                                          (t.title?.trim().isNotEmpty ?? false)
-                                              ? t.title!.trim()
-                                              : 'Untitled transcript';
-                                      final sub =
-                                          '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
+                            itemCount: _results.length,
+                            separatorBuilder: (_, _) =>
+                                const GlassDivider(height: 1),
+                            itemBuilder: (ctx, i) {
+                              final t = _results[i];
+                              final title =
+                                  (t.title?.trim().isNotEmpty ?? false)
+                                  ? t.title!.trim()
+                                  : 'Untitled transcript';
+                              final sub =
+                                  '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
 
-                                      return ListTile(
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 4,
-                                        ),
-                                        leading: const LeadingPillIcon(
-                                          icon: Icons.article_outlined,
-                                        ),
-                                        title: Text(
-                                          title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.92),
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        subtitle: Text(
-                                          sub,
-                                          style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.65),
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        trailing: Icon(
-                                          Icons.chevron_right,
-                                          color:
-                                              Colors.white.withValues(alpha: 0.55),
-                                        ),
-                                        onTap: () async {
-                                          _unfocus();
-                                          await Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  TranscriptDetailPage(
-                                                transcriptId: t.id,
-                                              ),
-                                            ),
-                                          );
-                                          _unfocus();
-                                        },
-                                      );
-                                    },
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 4,
+                                ),
+                                leading: const LeadingPillIcon(
+                                  icon: Icons.article_outlined,
+                                ),
+                                title: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.92),
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
+                                subtitle: Text(
+                                  sub,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.65),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                trailing: Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.white.withValues(alpha: 0.55),
+                                ),
+                                onTap: () async {
+                                  _unfocus();
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => TranscriptDetailPage(
+                                        transcriptId: t.id,
+                                      ),
+                                    ),
+                                  );
+                                  _unfocus();
+                                },
+                              );
+                            },
+                          ),
+                        ),
                 ),
 
                 const SizedBox(height: 20), // space for bottom dock

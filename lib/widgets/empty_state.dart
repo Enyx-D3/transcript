@@ -6,7 +6,7 @@ class EmptyState extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
-    required this.icon, 
+    required this.icon,
     this.iconSize = 26,
     this.padding = const EdgeInsets.fromLTRB(16, 18, 16, 18),
   });

@@ -15,7 +15,6 @@ import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_tokens.dart';
 
-
 class AppGate extends StatefulWidget {
   const AppGate({super.key, required this.initialEligibility});
 
@@ -169,11 +168,7 @@ class _AppGateState extends State<AppGate> {
 
 /// A lightweight splash UI used by AppGate (NOT your main SplashGate boot screen)
 class _GateSplash extends StatelessWidget {
-  const _GateSplash({
-    required this.status,
-    this.failed = false,
-    this.onRetry,
-  });
+  const _GateSplash({required this.status, this.failed = false, this.onRetry});
 
   final String status;
 
@@ -201,7 +196,7 @@ class _GateSplash extends StatelessWidget {
                   children: [
                     // ---- Brand header ----
                     BrandLogo(),
-                    
+
                     const SizedBox(height: 16),
 
                     Text(
@@ -215,7 +210,7 @@ class _GateSplash extends StatelessWidget {
                     const SizedBox(height: 8),
 
                     // ---- Status pill ----
-                    StatusPill(text: status,isError: failed),
+                    StatusPill(text: status, isError: failed),
 
                     const SizedBox(height: 14),
 
@@ -231,8 +226,9 @@ class _GateSplash extends StatelessWidget {
                               borderRadius: BorderRadius.circular(999),
                               child: LinearProgressIndicator(
                                 minHeight: 3,
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.10),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.10,
+                                ),
                                 valueColor: AlwaysStoppedAnimation<Color>(
                                   GlassTokens.fg(context, alpha: 0.92),
                                 ),
@@ -285,7 +281,6 @@ class _GateSplash extends StatelessWidget {
                     ),
 
                     const SizedBox(height: 18),
-
                   ],
                 ),
               ),

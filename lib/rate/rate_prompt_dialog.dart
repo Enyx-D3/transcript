@@ -200,7 +200,9 @@ class _GlassCardSurface extends StatelessWidget {
                   height: 1,
                   child: IgnorePointer(
                     child: Container(
-                      color: Colors.white.withValues(alpha: isDark ? 0.22 : 0.30),
+                      color: Colors.white.withValues(
+                        alpha: isDark ? 0.22 : 0.30,
+                      ),
                     ),
                   ),
                 ),
@@ -214,7 +216,9 @@ class _GlassCardSurface extends StatelessWidget {
                           center: const Alignment(-0.85, -0.9),
                           radius: 1.2,
                           colors: [
-                            Colors.white.withValues(alpha: isDark ? 0.10 : 0.12),
+                            Colors.white.withValues(
+                              alpha: isDark ? 0.10 : 0.12,
+                            ),
                             Colors.transparent,
                           ],
                         ),
@@ -287,7 +291,9 @@ class _GlassActionButton extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withValues(alpha: bgA + (isDark ? 0.04 : 0.05)),
+                    Colors.white.withValues(
+                      alpha: bgA + (isDark ? 0.04 : 0.05),
+                    ),
                     Colors.white.withValues(alpha: bgA),
                     Colors.black.withValues(alpha: isDark ? 0.08 : 0.04),
                   ],
@@ -308,8 +314,7 @@ class _GlassActionButton extends StatelessWidget {
                     child: IgnorePointer(
                       child: Container(
                         color: Colors.white.withValues(
-                          alpha: 
-                          kind == _GlassActionButtonKind.primary
+                          alpha: kind == _GlassActionButtonKind.primary
                               ? (isDark ? 0.22 : 0.28)
                               : (isDark ? 0.18 : 0.24),
                         ),

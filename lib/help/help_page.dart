@@ -17,7 +17,6 @@ class HelpPage extends StatelessWidget {
   static const String supportEmail = 'contact@enyx.app';
   static const String appName = 'Unlimited Meeting Transcription';
 
-
   @override
   Widget build(BuildContext context) {
     final fg = Colors.white.withValues(alpha: 0.92);
@@ -44,7 +43,6 @@ class HelpPage extends StatelessWidget {
           //     ),
           //   ),
           // ),
-
           SafeArea(
             child: Column(
               children: [
@@ -53,12 +51,12 @@ class HelpPage extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   child: Row(
                     children: [
-                       IconPillButton(
+                      IconPillButton(
                         tooltip: 'back',
                         icon: Icons.arrow_back,
-                        onTap:  () => Navigator.of(context).maybePop(),
+                        onTap: () => Navigator.of(context).maybePop(),
                       ),
-                      
+
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -88,9 +86,7 @@ class HelpPage extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
                     child: Column(
                       children: [
-                        _SendMessageCard(
-                          onTap: () => _contactSupport(context),
-                        ),
+                        _SendMessageCard(onTap: () => _contactSupport(context)),
                         const SizedBox(height: 12),
 
                         Expanded(
@@ -105,54 +101,40 @@ class HelpPage extends StatelessWidget {
                               _FaqPanel(
                                 items: [
                                   _FaqItem(
-                                    q:
-                                        'Do I need internet for audio recording and transcription?',
-                                    a:
-                                        'No. Audio recording and transcription work fully offline on your device. An internet connection is only required for account verification, purchases, or restoring subscriptions.',
+                                    q: 'Do I need internet for audio recording and transcription?',
+                                    a: 'No. Audio recording and transcription work fully offline on your device. An internet connection is only required for account verification, purchases, or restoring subscriptions.',
                                   ),
                                   _FaqItem(
                                     q: 'Where are my transcripts stored?',
-                                    a:
-                                        'Your transcripts are stored locally on your device. If you export or share them, they will also exist wherever you send them.',
+                                    a: 'Your transcripts are stored locally on your device. If you export or share them, they will also exist wherever you send them.',
                                   ),
                                   _FaqItem(
                                     q: 'How do I restore a deleted transcript?',
-                                    a:
-                                        'Deleted transcripts go to Trash first. Open Settings → Support → Trash and restore it within 3 days.',
+                                    a: 'Deleted transcripts go to Trash first. Open Settings → Support → Trash and restore it within 3 days.',
                                   ),
                                   _FaqItem(
                                     q: 'Why does transcription take time?',
-                                    a:
-                                        'Transcription speed depends on audio length, your device performance, and whether diarization/translation are enabled.',
+                                    a: 'Transcription speed depends on audio length, your device performance, and whether diarization/translation are enabled.',
                                   ),
                                   _FaqItem(
-                                    q:
-                                        'Can the app identify different speakers in a recording?',
-                                    a:
-                                        'Yes. The app can identify different speakers using on-device processing. Because all analysis happens locally, speaker detection may not always be perfectly accurate.',
+                                    q: 'Can the app identify different speakers in a recording?',
+                                    a: 'Yes. The app can identify different speakers using on-device processing. Because all analysis happens locally, speaker detection may not always be perfectly accurate.',
                                   ),
                                   _FaqItem(
                                     q: 'How accurate is the AI transcription?',
-                                    a:
-                                        'Transcription accuracy typically ranges from around 80% up to near 100%. Accuracy depends on language, audio quality, background noise, accents, and speaking clarity.',
+                                    a: 'Transcription accuracy typically ranges from around 80% up to near 100%. Accuracy depends on language, audio quality, background noise, accents, and speaking clarity.',
                                   ),
                                   _FaqItem(
-                                    q:
-                                        'Does the AI add words that were not spoken?',
-                                    a:
-                                        'No. The AI does not intentionally add words that were not spoken. Any errors usually result from unclear or overlapping audio.',
+                                    q: 'Does the AI add words that were not spoken?',
+                                    a: 'No. The AI does not intentionally add words that were not spoken. Any errors usually result from unclear or overlapping audio.',
                                   ),
                                   _FaqItem(
-                                    q:
-                                        'My Pro purchase didn’t unlock. What should I do?',
-                                    a:
-                                        'Go to Account and click Get Pro and use Restore Purchases. If it still doesn’t unlock, contact support and include your account email.',
+                                    q: 'My Pro purchase didn’t unlock. What should I do?',
+                                    a: 'Go to Account and click Get Pro and use Restore Purchases. If it still doesn’t unlock, contact support and include your account email.',
                                   ),
                                   _FaqItem(
-                                    q:
-                                        'Is this recorder suitable for legal or forensic use?',
-                                    a:
-                                        'This app is designed for meetings, lectures, interviews, and personal use. It is not intended to replace certified legal or forensic transcription services where absolute precision or official certification is required.',
+                                    q: 'Is this recorder suitable for legal or forensic use?',
+                                    a: 'This app is designed for meetings, lectures, interviews, and personal use. It is not intended to replace certified legal or forensic transcription services where absolute precision or official certification is required.',
                                   ),
                                 ],
                               ),
@@ -220,7 +202,9 @@ class _SendMessageCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
                   color: Colors.white.withValues(alpha: 0.06),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                  ),
                 ),
                 child: Icon(Icons.mail_outline, color: fg),
               ),
@@ -273,7 +257,9 @@ class _SectionHeader extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.2,
-              color: isDark ? Colors.white.withValues(alpha: 0.92) : Colors.black87,
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.92)
+                  : Colors.black87,
             ),
           ),
           const SizedBox(height: 3),

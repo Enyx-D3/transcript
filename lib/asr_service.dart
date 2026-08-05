@@ -7,6 +7,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart';
 
+import 'transcript/transcription_models.dart';
+
 enum AsrModel {
   sherpaOnnxTiny('sherpa-onnx-whisper-tiny');
 
@@ -37,7 +39,7 @@ class AsrService {
   ReceivePort? _workerReceivePort;
   int _nextRequestId = 0;
   int _numThreads = mathMin(2, Platform.numberOfProcessors);
-  final Map<int, Completer<String>> _pendingRequests = {};
+  final Map<int, Completer<AsrDecodeResult>> _pendingRequests = {};
 
   AsrModel get currentModel => _defaultModel;
 
@@ -51,6 +53,25 @@ class AsrService {
   }
 
   Future<String> transcribeWav({
+    required String wavPath,
+    required String lang,
+    bool translateToEnglish = false,
+    bool noTimestamps = false,
+    bool splitOnWord = true,
+    bool diarize = true,
+  }) async {
+    final result = await transcribeWavStructured(
+      wavPath: wavPath,
+      lang: lang,
+      translateToEnglish: translateToEnglish,
+      noTimestamps: noTimestamps,
+      splitOnWord: splitOnWord,
+      diarize: diarize,
+    );
+    return result.text;
+  }
+
+  Future<AsrDecodeResult> transcribeWavStructured({
     required String wavPath,
     required String lang,
     bool translateToEnglish = false,
@@ -78,7 +99,7 @@ class AsrService {
     );
   }
 
-  Future<String> _decodeWithWorker({
+  Future<AsrDecodeResult> _decodeWithWorker({
     required String wavPath,
     required String encoder,
     required String decoder,
@@ -89,7 +110,7 @@ class AsrService {
   }) async {
     final sendPort = await _ensureWorker();
     final id = _nextRequestId++;
-    final completer = Completer<String>();
+    final completer = Completer<AsrDecodeResult>();
     _pendingRequests[id] = completer;
     sendPort.send({
       'type': 'decode',
@@ -127,7 +148,7 @@ class AsrService {
       if (error != null) {
         completer.completeError(Exception(error), StackTrace.current);
       } else {
-        completer.complete((message['result'] ?? '').toString());
+        completer.complete(AsrDecodeResult.fromJson(message['result']));
       }
     });
 
@@ -282,7 +303,7 @@ void _asrWorkerMain(SendPort mainSendPort) {
     return recognizer!;
   }
 
-  String decode({
+  Map<String, dynamic> decode({
     required String wavPath,
     required String encoder,
     required String decoder,
@@ -312,7 +333,11 @@ void _asrWorkerMain(SendPort mainSendPort) {
       stream.acceptWaveform(samples: wave.samples, sampleRate: wave.sampleRate);
       activeRecognizer.decode(stream);
       final result = activeRecognizer.getResult(stream);
-      return result.text.trim();
+      return {
+        'text': result.text.trim(),
+        'tokens': result.tokens,
+        'timestamps': result.timestamps,
+      };
     } finally {
       stream.free();
     }

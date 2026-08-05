@@ -1,14 +1,14 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 class RateGate {
-  static const _kFirstUseAtKey = 'rate_first_use_at_ms';        // ✅ NEW
+  static const _kFirstUseAtKey = 'rate_first_use_at_ms'; // ✅ NEW
   static const _kLastPromptAtKey = 'rate_last_prompt_at_ms';
   static const _kHasRatedKey = 'rate_has_rated';
   static const _kDismissKey = 'rate_dismiss_count';
 
   // ✅ rules
   static const int delayFirstPromptDays = 2; // ✅ don't show first 2 days
-  static const int cooldownDays = 3;        // ✅ then at most once every 3 days
+  static const int cooldownDays = 3; // ✅ then at most once every 3 days
   static const int maxDismissBeforeStop = 2;
 
   static Future<void> _ensureFirstUseSaved(SharedPreferences prefs) async {
@@ -61,7 +61,10 @@ class RateGate {
   /// ✅ Call ONLY when you actually show the dialog.
   static Future<void> recordPromptShown() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_kLastPromptAtKey, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(
+      _kLastPromptAtKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   static Future<void> onDismiss() async {

@@ -96,7 +96,9 @@ class _LoginPageState extends State<LoginPage> {
     if (_busy) return;
 
     if (!Platform.isAndroid) {
-      setState(() => _error = 'This login flow is configured for Android only.');
+      setState(
+        () => _error = 'This login flow is configured for Android only.',
+      );
       return;
     }
 
@@ -110,9 +112,7 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final GoogleSignIn signIn = GoogleSignIn.instance;
 
-      await signIn.initialize(
-        serverClientId: _serverClientId,
-      );
+      await signIn.initialize(serverClientId: _serverClientId);
 
       final googleAccount = await signIn.authenticate();
       final googleAuthentication = googleAccount.authentication;
@@ -243,7 +243,9 @@ class _LoginPageState extends State<LoginPage> {
                     bottom: MediaQuery.of(context).viewInsets.bottom,
                   ),
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 420),
@@ -283,12 +285,15 @@ class _LoginPageState extends State<LoginPage> {
                                 variant: GlassCardVariant.panel,
                                 padding: const EdgeInsets.all(16),
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     // ✅ Google (glass button)
                                     GlassButton(
                                       kind: GlassButtonKind.primary,
-                                      onPressed: _busy ? null : _signInWithGoogle,
+                                      onPressed: _busy
+                                          ? null
+                                          : _signInWithGoogle,
                                       label: _busy
                                           ? 'Signing in…'
                                           : 'Continue with Google',
@@ -297,13 +302,15 @@ class _LoginPageState extends State<LoginPage> {
                                     ),
 
                                     const SizedBox(height: 12),
-                                    const GlassDivider(height: 1, thickness: 0.8),
+                                    const GlassDivider(
+                                      height: 1,
+                                      thickness: 0.8,
+                                    ),
                                     const SizedBox(height: 12),
 
                                     // ✅ Keep the email/password section commented for now (unchanged)
                                     // If you later enable it, wrap fields in GlassCard tile
                                     // and use GlassButton for submit.
-
                                     RichText(
                                       textAlign: TextAlign.center,
                                       text: TextSpan(
@@ -314,13 +321,15 @@ class _LoginPageState extends State<LoginPage> {
                                         ),
                                         children: [
                                           const TextSpan(
-                                            text: 'By continuing you agree to our ',
+                                            text:
+                                                'By continuing you agree to our ',
                                           ),
                                           TextSpan(
                                             text: 'Terms and Privacy Policy',
                                             style: TextStyle(
                                               color: fg,
-                                              decoration: TextDecoration.underline,
+                                              decoration:
+                                                  TextDecoration.underline,
                                               fontWeight: FontWeight.w800,
                                             ),
                                             recognizer: TapGestureRecognizer()

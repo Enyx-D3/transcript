@@ -7,6 +7,7 @@ import '../objectbox/objectbox_store.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/liquid_glass.dart';
+import 'correction_learning.dart';
 
 class TranscriptEditorPage extends StatefulWidget {
   const TranscriptEditorPage({
@@ -171,6 +172,13 @@ class _TranscriptEditorPageState extends State<TranscriptEditorPage> {
       latest.searchText = normalized.isNotEmpty
           ? normalized
           : (fallback.isEmpty ? null : fallback);
+
+      const CorrectionLearningService().captureTranscriptEdit(
+        transcriptId: widget.transcriptId,
+        previousText: _lastSavedText,
+        editedText: normalized,
+        language: latest.lang,
+      );
 
       obx.transcripts.put(latest);
 

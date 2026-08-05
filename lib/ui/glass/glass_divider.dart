@@ -25,15 +25,10 @@ class GlassDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
 
-    final c = Colors.white.withValues(
-      alpha: isDark ? alphaDark : alphaLight,
-    );
+    final c = Colors.white.withValues(alpha: isDark ? alphaDark : alphaLight);
 
     return Padding(
-      padding: EdgeInsetsDirectional.only(
-        start: indent,
-        end: endIndent,
-      ),
+      padding: EdgeInsetsDirectional.only(start: indent, end: endIndent),
       child: SizedBox(
         height: height,
         child: Center(

@@ -341,131 +341,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   bool get _isTranscribingNow => _isProcessingNow;
 
   // ============================================================
-  // ✅ APPLY BACKGROUND RESULT TO OBJECTBOX  (FIXES YOUR BUG)
-  // ============================================================
-
-  String _firstFiveWords(String s) {
-    final words = s
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((e) => e.trim().isNotEmpty)
-        .toList();
-    if (words.isEmpty) return '';
-    final firstFive = words.take(5).join(' ');
-    return words.length > 5 ? '$firstFive…' : firstFive;
-  }
-
-  void _applyBgResultToDb({
-    required int transcriptId,
-    required String wavPath,
-    required Map<String, dynamic> payload,
-  }) {
-    final obx = ObjectBox.I;
-
-    // 1) Update transcript entity (metadata)
-    final t = obx.transcripts.get(transcriptId);
-    if (t != null) {
-      final lang = (payload['lang'] ?? payload['language'] ?? t.lang ?? 'auto')
-          .toString();
-      t.lang = lang;
-
-      final durRaw =
-          payload['durationSec'] ??
-          payload['duration_sec'] ??
-          payload['duration'];
-      if (durRaw is num) {
-        t.durationSec = durRaw.toDouble();
-      } else {
-        final dd = double.tryParse('$durRaw');
-        if (dd != null) t.durationSec = dd;
-      }
-
-      // If title empty, try to build from first 5 words of transcript
-      final currentTitle = (t.title ?? '').trim();
-      if (currentTitle.isEmpty) {
-        String seed = '';
-
-        // prefer payload full text if exists, else from first non-empty turn
-        final fullText = (payload['text'] ?? payload['fullText'] ?? '')
-            .toString()
-            .trim();
-        if (fullText.isNotEmpty) {
-          seed = fullText;
-        } else {
-          final turns = payload['turns'];
-          if (turns is List) {
-            for (final it in turns) {
-              if (it is Map) {
-                final txt = (it['text'] ?? '').toString().trim();
-                if (txt.isNotEmpty) {
-                  seed = txt;
-                  break;
-                }
-              }
-            }
-          }
-        }
-
-        final suggested = _firstFiveWords(seed);
-        if (suggested.isNotEmpty) {
-          t.title = suggested;
-        }
-      }
-
-      // Ensure audioPath is at least set if empty
-      final ap = (t.audioPath ?? '').trim();
-      if (ap.isEmpty) {
-        t.audioPath = wavPath;
-      }
-
-      obx.transcripts.put(t);
-      _t = t;
-    }
-
-    // 2) Replace turns for this transcript
-    final turnsRaw = payload['turns'];
-    if (turnsRaw is List) {
-      // delete existing turns
-      final qbDel = obx.turns.query(
-        TranscriptTurnEntity_.transcript.equals(transcriptId),
-      );
-      final qDel = qbDel.build();
-      final existing = qDel.find();
-      qDel.close();
-      for (final u in existing) {
-        obx.turns.remove(u.id);
-      }
-
-      // insert new turns
-      for (final it in turnsRaw) {
-        if (it is! Map) continue;
-        final m = it.cast<String, dynamic>();
-
-        final spk = (m['speaker'] ?? m['spk'] ?? 'Speaker').toString().trim();
-        final txt = (m['text'] ?? '').toString();
-
-        final s0 = m['startSec'] ?? m['start_sec'] ?? m['start'] ?? 0.0;
-        final s1 = m['endSec'] ?? m['end_sec'] ?? m['end'] ?? 0.0;
-
-        final start = (s0 is num)
-            ? s0.toDouble()
-            : double.tryParse('$s0') ?? 0.0;
-        final end = (s1 is num) ? s1.toDouble() : double.tryParse('$s1') ?? 0.0;
-
-        obx.turns.put(
-          TranscriptTurnEntity(
-            id: 0,
-            speakerLabel: spk.isEmpty ? 'Speaker' : spk,
-            startSec: start,
-            endSec: end,
-            text: txt,
-          )..transcript.targetId = transcriptId,
-        );
-      }
-    }
-  }
-
-  // ============================================================
   // Playback gating
   // ============================================================
 
@@ -1209,20 +1084,6 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final existingId = data['existingId'] as int?;
     if (existingId != widget.transcriptId) return;
 
-    final payloadRaw = data['payload'];
-    final wavPath = (data['wavPath'] ?? '').toString();
-
-    if (payloadRaw is Map) {
-      final payload = payloadRaw.cast<String, dynamic>();
-
-      // ✅ persist result turns into ObjectBox
-      _applyBgResultToDb(
-        transcriptId: widget.transcriptId,
-        wavPath: wavPath,
-        payload: payload,
-      );
-    }
-
     try {
       await FlutterForegroundTask.saveData(
         key: _kBusyTranscribing,
@@ -1237,6 +1098,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     _persistJobDone();
 
     // reload turns and update caches
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     await _refreshTick();
 
     if (mounted) {

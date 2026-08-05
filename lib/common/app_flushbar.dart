@@ -69,8 +69,8 @@ class AppFlushbar {
       icon: icon == null
           ? null
           : Padding(
-            padding: const EdgeInsets.all(4.0),
-            child: Container(
+              padding: const EdgeInsets.all(4.0),
+              child: Container(
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
@@ -80,7 +80,7 @@ class AppFlushbar {
                 ),
                 child: Icon(icon, color: iconColor, size: 20),
               ),
-          ),
+            ),
 
       // ✅ Close button: dismiss THIS flushbar (not routes)
       mainButton: showClose
@@ -105,7 +105,7 @@ class AppFlushbar {
       margin: EdgeInsets.fromLTRB(18, topMargin, 14, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       borderRadius: BorderRadius.circular(16),
-      backgroundColor:  const Color.fromARGB(100, 0, 0, 0),
+      backgroundColor: const Color.fromARGB(100, 0, 0, 0),
       borderColor: Colors.white.withValues(alpha: 0.08),
       borderWidth: 1,
 
@@ -145,39 +145,36 @@ class AppFlushbar {
     BuildContext context, {
     required String message,
     String? title,
-  }) =>
-      show(
-        context,
-        title: title ?? 'Success',
-        message: message,
-        icon: Icons.check_circle_outline,
-        iconColor: Colors.greenAccent,
-      );
+  }) => show(
+    context,
+    title: title ?? 'Success',
+    message: message,
+    icon: Icons.check_circle_outline,
+    iconColor: Colors.greenAccent,
+  );
 
   static Future<void> error(
     BuildContext context, {
     required String message,
     String? title,
-  }) =>
-      show(
-        context,
-        title: title ?? 'Error',
-        message: message,
-        icon: Icons.error_outline,
-        duration: const Duration(seconds: 3),
-        iconColor: Colors.redAccent,
-      );
+  }) => show(
+    context,
+    title: title ?? 'Error',
+    message: message,
+    icon: Icons.error_outline,
+    duration: const Duration(seconds: 3),
+    iconColor: Colors.redAccent,
+  );
 
   static Future<void> info(
     BuildContext context, {
     required String message,
     String? title,
-  }) =>
-      show(
-        context,
-        title: title ?? 'Info',
-        message: message,
-        icon: Icons.info_outline,
-        iconColor: const Color(0xFF65D6FF),
-      );
+  }) => show(
+    context,
+    title: title ?? 'Info',
+    message: message,
+    icon: Icons.info_outline,
+    iconColor: const Color(0xFF65D6FF),
+  );
 }

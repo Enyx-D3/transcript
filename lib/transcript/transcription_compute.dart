@@ -11,6 +11,7 @@ import '../audio_utils.dart';
 import '../model_bootstrap.dart';
 import '../speaker_embedding.dart';
 import '../asr_service.dart';
+import 'transcription_calibration.dart';
 import 'transcription_models.dart';
 import 'isolated_embedding_diarization.dart'
     show
@@ -372,7 +373,7 @@ Future<TranscriptionResult> transcribeToResult({
   onProgress,
 }) async {
   try {
-    return await _transcribeToResultInner(
+    final raw = await _transcribeToResultInner(
       wavPath: wavPath,
       titleHint: titleHint,
       useIsolatedDiarization: useIsolatedDiarization,
@@ -384,6 +385,16 @@ Future<TranscriptionResult> transcribeToResult({
       onSegmentsReady: onSegmentsReady,
       onProgress: onProgress,
     );
+    try {
+      if (onProgress != null) {
+        await onProgress(
+          stage: 'Calibrating',
+          processedSec: raw.durationSec,
+          totalSec: raw.durationSec,
+        );
+      }
+    } catch (_) {}
+    return TranscriptionCalibrator().calibrate(input: raw).result;
   } finally {
     _asr.releaseCachedRecognizer();
   }

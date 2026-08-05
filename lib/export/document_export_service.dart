@@ -11,22 +11,22 @@ enum DocumentExportFormat { txt, doc, pdf }
 
 extension DocumentExportFormatX on DocumentExportFormat {
   String get label => switch (this) {
-        DocumentExportFormat.txt => 'TXT',
-        DocumentExportFormat.doc => 'DOC',
-        DocumentExportFormat.pdf => 'PDF',
-      };
+    DocumentExportFormat.txt => 'TXT',
+    DocumentExportFormat.doc => 'DOC',
+    DocumentExportFormat.pdf => 'PDF',
+  };
 
   String get extension => switch (this) {
-        DocumentExportFormat.txt => 'txt',
-        DocumentExportFormat.doc => 'doc',
-        DocumentExportFormat.pdf => 'pdf',
-      };
+    DocumentExportFormat.txt => 'txt',
+    DocumentExportFormat.doc => 'doc',
+    DocumentExportFormat.pdf => 'pdf',
+  };
 
   String get mimeType => switch (this) {
-        DocumentExportFormat.txt => 'text/plain',
-        DocumentExportFormat.doc => 'application/msword',
-        DocumentExportFormat.pdf => 'application/pdf',
-      };
+    DocumentExportFormat.txt => 'text/plain',
+    DocumentExportFormat.doc => 'application/msword',
+    DocumentExportFormat.pdf => 'application/pdf',
+  };
 }
 
 class DocumentExportService {
@@ -82,13 +82,21 @@ class DocumentExportService {
     switch (format) {
       case DocumentExportFormat.txt:
         await file.writeAsString(
-          _buildPlainText(title: title, content: content, documentLabel: documentLabel),
+          _buildPlainText(
+            title: title,
+            content: content,
+            documentLabel: documentLabel,
+          ),
           flush: true,
         );
         return file;
       case DocumentExportFormat.doc:
         await file.writeAsString(
-          _buildDocHtml(title: title, content: content, documentLabel: documentLabel),
+          _buildDocHtml(
+            title: title,
+            content: content,
+            documentLabel: documentLabel,
+          ),
           flush: true,
         );
         return file;
@@ -106,13 +114,7 @@ class DocumentExportService {
               icons: regularFont,
             ),
             build: (_) => [
-              pw.Text(
-                title,
-                style: pw.TextStyle(
-                  fontSize: 22,
-                  font: boldFont,
-                ),
-              ),
+              pw.Text(title, style: pw.TextStyle(fontSize: 22, font: boldFont)),
               pw.SizedBox(height: 8),
               pw.Text(
                 documentLabel,
@@ -155,7 +157,9 @@ class DocumentExportService {
   }) {
     final escapedTitle = const HtmlEscape().convert(title);
     final escapedLabel = const HtmlEscape().convert(documentLabel);
-    final escapedBody = const HtmlEscape().convert(content).replaceAll('\n', '<br>');
+    final escapedBody = const HtmlEscape()
+        .convert(content)
+        .replaceAll('\n', '<br>');
 
     return '''
 <!DOCTYPE html>
@@ -197,11 +201,7 @@ class DocumentExportService {
       widgets.add(
         pw.Text(
           line,
-          style: pw.TextStyle(
-            fontSize: 12,
-            lineSpacing: 3,
-            font: regularFont,
-          ),
+          style: pw.TextStyle(fontSize: 12, lineSpacing: 3, font: regularFont),
         ),
       );
       widgets.add(pw.SizedBox(height: 6));
@@ -211,11 +211,7 @@ class DocumentExportService {
       widgets.add(
         pw.Text(
           content,
-          style: pw.TextStyle(
-            fontSize: 12,
-            lineSpacing: 3,
-            font: regularFont,
-          ),
+          style: pw.TextStyle(fontSize: 12, lineSpacing: 3, font: regularFont),
         ),
       );
     }

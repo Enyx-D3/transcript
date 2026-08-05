@@ -127,9 +127,7 @@ class LiquidGlass extends StatelessWidget {
         // ✅ Grain overlay (optimized)
         if (grain)
           Positioned.fill(
-            child: IgnorePointer(
-              child: _GlassGrainFast(opacity: grainOpacity),
-            ),
+            child: IgnorePointer(child: _GlassGrainFast(opacity: grainOpacity)),
           ),
 
         // Specular top line highlight
@@ -201,32 +199,32 @@ class _GlassGrainFast extends StatelessWidget {
     _makeNoiseTile(size: 128, seed: 1337).then((img) => _tile = img);
   }
 
-static Future<ui.Image> _makeNoiseTile({
-  required int size,
-  required int seed,
-}) async {
-  final rng = math.Random(seed);
-  final bytes = Uint8List(size * size * 4);
+  static Future<ui.Image> _makeNoiseTile({
+    required int size,
+    required int seed,
+  }) async {
+    final rng = math.Random(seed);
+    final bytes = Uint8List(size * size * 4);
 
-  for (int i = 0; i < size * size; i++) {
-    final v = 180 + rng.nextInt(76);
-    final o = i * 4;
-    bytes[o + 0] = v; // R
-    bytes[o + 1] = v; // G
-    bytes[o + 2] = v; // B
-    bytes[o + 3] = 255; // A
+    for (int i = 0; i < size * size; i++) {
+      final v = 180 + rng.nextInt(76);
+      final o = i * 4;
+      bytes[o + 0] = v; // R
+      bytes[o + 1] = v; // G
+      bytes[o + 2] = v; // B
+      bytes[o + 3] = 255; // A
+    }
+
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromPixels(
+      bytes,
+      size,
+      size,
+      ui.PixelFormat.rgba8888,
+      (ui.Image img) => completer.complete(img),
+    );
+    return completer.future;
   }
-
-  final completer = Completer<ui.Image>();
-  ui.decodeImageFromPixels(
-    bytes,
-    size,
-    size,
-    ui.PixelFormat.rgba8888,
-    (ui.Image img) => completer.complete(img),
-  );
-  return completer.future;
-}
 
   @override
   Widget build(BuildContext context) {
@@ -252,8 +250,7 @@ class _NoiseShaderPainterFast extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // Slight scale makes the repetition less visible with less shader pressure.
-    final m = Matrix4.identity()
-      ..scaleByDouble(0.75, 0.75,0.75,0.75);
+    final m = Matrix4.identity()..scaleByDouble(0.75, 0.75, 0.75, 0.75);
 
     final paint = Paint()
       ..filterQuality = FilterQuality.low
@@ -271,5 +268,6 @@ class _NoiseShaderPainterFast extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _NoiseShaderPainterFast oldDelegate) => oldDelegate.opacity != opacity;
+  bool shouldRepaint(covariant _NoiseShaderPainterFast oldDelegate) =>
+      oldDelegate.opacity != opacity;
 }

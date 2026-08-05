@@ -220,13 +220,13 @@ class _BottomDockNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
 
-    Color iconColor(Set<WidgetState > states) {
+    Color iconColor(Set<WidgetState> states) {
       final selected = states.contains(WidgetState.selected);
       if (selected) return Colors.white.withValues(alpha: 0.96);
       return Colors.white.withValues(alpha: 0.70);
     }
 
-    TextStyle labelStyle(Set<WidgetState > states) {
+    TextStyle labelStyle(Set<WidgetState> states) {
       final selected = states.contains(WidgetState.selected);
       return TextStyle(
         fontSize: 12,
@@ -271,7 +271,7 @@ class _BottomDockNav extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
             ),
             labelTextStyle: WidgetStateProperty.resolveWith(labelStyle),
-            iconTheme: WidgetStateProperty .resolveWith(
+            iconTheme: WidgetStateProperty.resolveWith(
               (states) => IconThemeData(size: 22, color: iconColor(states)),
             ),
           ),
@@ -351,8 +351,10 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
                     tintOpacityLight: 0.040,
                     borderOpacityDark: 0.14,
                     borderOpacityLight: 0.18,
-                    child: Icon(Icons.lock_outline,
-                        color: Colors.white.withValues(alpha: 0.92)),
+                    child: Icon(
+                      Icons.lock_outline,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -385,10 +387,7 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
               Text(
                 'Upgrade to continue using the app.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: subColor,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(color: subColor, fontWeight: FontWeight.w600),
               ),
 
               if (error != null && error!.trim().isNotEmpty) ...[

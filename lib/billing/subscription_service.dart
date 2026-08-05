@@ -29,8 +29,8 @@ class SubscriptionService {
   SupabaseClient get _sb => Supabase.instance.client;
 
   // ✅ NEW: expose last server result for UI
-  String? lastVerifyCode;   // e.g. TOKEN_ALREADY_CLAIMED
-  String? lastVerifyError;  // human readable
+  String? lastVerifyCode; // e.g. TOKEN_ALREADY_CLAIMED
+  String? lastVerifyError; // human readable
 
   // ✅ IMPORTANT: must match your deployed edge function name
   static const String _fnVerify = 'verify-play-subscription';
@@ -152,7 +152,9 @@ class SubscriptionService {
   }
 
   /// Immediate reconcile: query past purchases and verify tokens.
-  Future<bool> reconcileNow({Duration timeout = const Duration(seconds: 25)}) async {
+  Future<bool> reconcileNow({
+    Duration timeout = const Duration(seconds: 25),
+  }) async {
     await initialize();
 
     // reset last verify info
@@ -169,8 +171,8 @@ class SubscriptionService {
     try {
       // Android: query past purchases + verify them
       if (Platform.isAndroid) {
-        final addition =
-            _iap.getPlatformAddition<InAppPurchaseAndroidPlatformAddition>();
+        final addition = _iap
+            .getPlatformAddition<InAppPurchaseAndroidPlatformAddition>();
         final resp = await addition.queryPastPurchases();
 
         for (final p in resp.pastPurchases) {
@@ -276,10 +278,7 @@ class SubscriptionService {
       // ✅ Supabase client automatically includes Authorization for the signed-in user.
       final res = await _sb.functions.invoke(
         _fnVerify,
-        body: {
-          'product_id': p.productID,
-          'purchase_token': token,
-        },
+        body: {'product_id': p.productID, 'purchase_token': token},
       );
 
       final data = res.data;
