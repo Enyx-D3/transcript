@@ -10,7 +10,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   record_windows
   share_plus
   url_launcher_windows
-  vosk_flutter
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

@@ -64,9 +64,6 @@ dependencies:
   in_app_review: ^2.0.11
   uuid: ^4.5.2
   pdf: ^3.11.3
-  vosk_flutter:
-    path: third_party/vosk_flutter
-
   
 dev_dependencies:
   flutter_test:
@@ -100,7 +97,6 @@ flutter:
     - assets/instruction/
     - assets/fonts/
     - assets/models/whisper/sherpa-onnx-whisper-tiny/
-    - assets/models/vosk/
     - assets/logo/
     - assets/wallpapers/
 

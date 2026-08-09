@@ -2361,6 +2361,16 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           ],
                         ),
                         const SizedBox(height: 8),
+                        if (_turns.isNotEmpty) ...[
+                          const Text(
+                            'Showing draft preview while the final transcript is processing.',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         const Text(
                           'Keep the app open to finish faster.',
                           style: TextStyle(

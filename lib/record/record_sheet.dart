@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:objectbox/objectbox.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:transcript/common/app_flushbar.dart';
@@ -15,7 +16,7 @@ import '../transcript/transcript_detail_page.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
 import '../transcript/background_transcriber.dart';
-import 'live_vosk_preview_service.dart';
+import 'live_whisper_preview_service.dart';
 
 // ✅ Glass primitives (same language as ImportAudioSheet)
 import '../ui/glass/liquid_glass.dart';
@@ -73,9 +74,9 @@ class _RecordSheetState extends State<RecordSheet> {
   double _seconds = 0.0;
   double _level = 0.0;
   late final void Function(Object) _fgListener;
-  late final LiveVoskPreviewService _livePreviewService;
-  StreamSubscription<LiveVoskPreview>? _livePreviewSub;
-  LiveVoskPreview _livePreview = LiveVoskPreview.idle();
+  late final LiveWhisperPreviewService _livePreviewService;
+  StreamSubscription<LiveWhisperPreview>? _livePreviewSub;
+  late final ValueNotifier<LiveWhisperPreview> _livePreview;
 
   static const String _kBusyTranscribing = 'busy_transcribing';
   static const String _kActiveTranscriptId = 'bg_active_transcript_id';
@@ -111,10 +112,10 @@ class _RecordSheetState extends State<RecordSheet> {
   @override
   void initState() {
     super.initState();
-    _livePreviewService = LiveVoskPreviewService();
+    _livePreview = ValueNotifier<LiveWhisperPreview>(LiveWhisperPreview.idle());
+    _livePreviewService = LiveWhisperPreviewService();
     _livePreviewSub = _livePreviewService.updates.listen((preview) {
-      if (!mounted) return;
-      setState(() => _livePreview = preview);
+      _livePreview.value = preview;
     });
 
     _fgListener = (Object data) async {
@@ -165,6 +166,9 @@ class _RecordSheetState extends State<RecordSheet> {
           _paused = false;
           _starting = false;
         });
+        final draftText = _livePreviewService.currentText.isNotEmpty
+            ? _livePreviewService.currentText
+            : _livePreview.value.text.trim();
         await _livePreviewService.stop();
 
         if (wavPath == null || wavPath.trim().isEmpty) {
@@ -177,6 +181,7 @@ class _RecordSheetState extends State<RecordSheet> {
           wavPath: wavPath,
           targetSpeakers: _diarizationEnabled ? targetSpeakers : null,
           lang: _selectedLang,
+          draftText: draftText,
         );
       }
     };
@@ -189,6 +194,7 @@ class _RecordSheetState extends State<RecordSheet> {
   void dispose() {
     _targetSpeakersCtrl.dispose();
     _livePreviewSub?.cancel();
+    _livePreview.dispose();
     _livePreviewService.dispose();
     RecordingService.removeListener(_fgListener);
     super.dispose();
@@ -283,8 +289,8 @@ class _RecordSheetState extends State<RecordSheet> {
         _starting = true;
         _seconds = 0.0;
         _level = 0.0;
-        _livePreview = LiveVoskPreview.idle();
       });
+      _livePreview.value = LiveWhisperPreview.idle();
 
       final path = await RecordingService.start(targetSpeakers: targetSpeakers);
       if (path == null) {
@@ -299,7 +305,7 @@ class _RecordSheetState extends State<RecordSheet> {
         _recording = true;
         _paused = false;
       });
-      unawaited(_livePreviewService.start(path));
+      unawaited(_livePreviewService.start(path, lang: _selectedLang));
     } catch (e) {
       if (!mounted) return;
       setState(() => _starting = false);
@@ -367,8 +373,8 @@ class _RecordSheetState extends State<RecordSheet> {
         _starting = false;
         _seconds = 0.0;
         _level = 0.0;
-        _livePreview = LiveVoskPreview.idle();
       });
+      _livePreview.value = LiveWhisperPreview.idle();
 
       if (p != null) {
         try {
@@ -388,6 +394,7 @@ class _RecordSheetState extends State<RecordSheet> {
     required String wavPath,
     int? targetSpeakers,
     required String lang,
+    required String draftText,
   }) async {
     final placeholderDuration = (_seconds.isFinite && _seconds >= 0)
         ? _seconds
@@ -395,16 +402,46 @@ class _RecordSheetState extends State<RecordSheet> {
 
     final obx = ObjectBox.I;
 
-    final tId = obx.transcripts.put(
-      TranscriptEntity(
+    final draftLines = _draftLines(draftText);
+    final draftCache = draftLines.isEmpty ? null : draftLines.join('\n');
+
+    final tId = obx.store.runInTransaction(TxMode.write, () {
+      final transcript = TranscriptEntity(
         title: '',
         model: 'sherpa-onnx-whisper-tiny',
         lang: lang,
         audioPath: wavPath,
         durationSec: placeholderDuration,
         createdAt: DateTime.now(),
-      ),
-    );
+        rawText: draftCache,
+        calibratedText: draftCache,
+        fullTextCache: draftCache,
+        searchText: draftCache,
+      );
+      final id = obx.transcripts.put(transcript);
+
+      if (draftLines.isNotEmpty) {
+        final chunkSec = placeholderDuration > 0
+            ? placeholderDuration / draftLines.length
+            : 8.0;
+        obx.turns.putMany(
+          List.generate(draftLines.length, (i) {
+            final start = i * chunkSec;
+            return TranscriptTurnEntity(
+              speakerLabel: 'Draft',
+              startSec: start,
+              endSec: start + chunkSec,
+              text: draftLines[i],
+              rawText: draftLines[i],
+              calibratedText: draftLines[i],
+              originalSpeakerLabel: 'Draft',
+            )..transcript.targetId = id;
+          }),
+        );
+      }
+
+      return id;
+    });
 
     final jobId = obx.jobs.put(
       TranscriptionJobEntity(
@@ -465,6 +502,12 @@ class _RecordSheetState extends State<RecordSheet> {
       await AppFlushbar.error(context, message: 'Processing Error: $e');
     }
   }
+
+  List<String> _draftLines(String value) => value
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
 
   @override
   Widget build(BuildContext context) {
@@ -634,10 +677,20 @@ class _RecordSheetState extends State<RecordSheet> {
 
                         const SizedBox(height: 12),
 
-                        if (_recording || _livePreview.text.isNotEmpty) ...[
-                          _LiveTranscriptCard(preview: _livePreview),
-                          const SizedBox(height: 12),
-                        ],
+                        ValueListenableBuilder<LiveWhisperPreview>(
+                          valueListenable: _livePreview,
+                          builder: (context, preview, _) {
+                            if (!_recording && preview.text.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return Column(
+                              children: [
+                                _LiveTranscriptCard(preview: preview),
+                                const SizedBox(height: 12),
+                              ],
+                            );
+                          },
+                        ),
 
                         // ===== Options =====
                         GlassCard(
@@ -881,7 +934,7 @@ class _RecordSheetState extends State<RecordSheet> {
 class _LiveTranscriptCard extends StatelessWidget {
   const _LiveTranscriptCard({required this.preview});
 
-  final LiveVoskPreview preview;
+  final LiveWhisperPreview preview;
 
   @override
   Widget build(BuildContext context) {
