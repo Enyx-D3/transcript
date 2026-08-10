@@ -525,6 +525,7 @@ class _TranscribeTaskHandler extends TaskHandler {
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
         lang: lang,
+        translateToEnglish: translate,
         diarizationEnabled: diarizationEnabled,
         onPartialTurn:
             ({required LiteTurn turn, required int index, int? total}) async {

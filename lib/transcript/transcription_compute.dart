@@ -361,6 +361,7 @@ Future<TranscriptionResult> transcribeToResult({
   bool matchWithEnrolledSpeakers = true,
   String lang = 'auto',
   int? targetSpeakers,
+  bool? translateToEnglish,
   bool? diarizationEnabled,
   PartialTurnCallback? onPartialTurn,
   SegmentsReadyCallback? onSegmentsReady,
@@ -380,6 +381,7 @@ Future<TranscriptionResult> transcribeToResult({
       matchWithEnrolledSpeakers: matchWithEnrolledSpeakers,
       lang: lang,
       targetSpeakers: targetSpeakers,
+      translateToEnglish: translateToEnglish,
       diarizationEnabled: diarizationEnabled,
       onPartialTurn: onPartialTurn,
       onSegmentsReady: onSegmentsReady,
@@ -407,6 +409,7 @@ Future<TranscriptionResult> _transcribeToResultInner({
   bool matchWithEnrolledSpeakers = true,
   String lang = 'auto',
   int? targetSpeakers,
+  bool? translateToEnglish,
   bool? diarizationEnabled,
   PartialTurnCallback? onPartialTurn,
   SegmentsReadyCallback? onSegmentsReady,
@@ -657,16 +660,18 @@ Future<TranscriptionResult> _transcribeToResultInner({
     return out;
   }
 
-  bool translate = false;
+  bool translate = translateToEnglish ?? false;
   bool diarEnabled = diarizationEnabled ?? true;
 
   try {
     final prefs = await SharedPreferences.getInstance();
-    translate = prefs.getBool(_kPrefTranslateToEnglish) ?? false;
+    translate =
+        translateToEnglish ??
+        (prefs.getBool(_kPrefTranslateToEnglish) ?? false);
     diarEnabled =
         diarizationEnabled ?? (prefs.getBool(_kPrefDiarizationEnabled) ?? true);
   } catch (_) {
-    translate = false;
+    translate = translateToEnglish ?? false;
     diarEnabled = diarizationEnabled ?? true;
   }
 
