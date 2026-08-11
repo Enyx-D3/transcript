@@ -101,6 +101,9 @@ class _CalendarPageState extends State<CalendarPage> {
 
     final isDark = GlassTokens.isDark(context);
 
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -124,7 +127,7 @@ class _CalendarPageState extends State<CalendarPage> {
                               ?.copyWith(
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -0.2,
-                                color: Colors.white.withValues(alpha: 0.92),
+                                color: fg,
                               ),
                         ),
                         const SizedBox(height: 2),
@@ -134,7 +137,7 @@ class _CalendarPageState extends State<CalendarPage> {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.70),
+                                color: muted,
                                 fontWeight: FontWeight.w600,
                               ),
                         ),
@@ -150,7 +153,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   ),
                   const SizedBox(width: 6),
 
-                  // Month pill (NO blur)
+                  // Month pill
                   Flexible(
                     child: LiquidGlass(
                       borderRadius: BorderRadius.circular(999),
@@ -158,25 +161,18 @@ class _CalendarPageState extends State<CalendarPage> {
                         horizontal: 10,
                         vertical: 9,
                       ),
+                      backgroundColor: isDark
+                          ? GlassTokens.surfaceDark
+                          : GlassTokens.surfaceLight,
                       shadow: false,
-
-                      // ✅ PERF: no blur/grain for small controls
-                      blurX: 0,
-                      blurY: 0,
-                      grain: false,
-
-                      tintOpacityDark: 0.060,
-                      tintOpacityLight: 0.050,
-                      borderOpacityDark: 0.14,
-                      borderOpacityLight: 0.18,
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.center,
                         child: Text(
                           _monthLabel(_monthAnchor),
                           style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.92),
+                            fontWeight: FontWeight.w700,
+                            color: fg,
                             letterSpacing: 0.1,
                           ),
                         ),
@@ -256,6 +252,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
   // Monday-first labels
   Widget _weekHeader() {
+    final muted = GlassTokens.muted(context);
     const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return Row(
       children: labels
@@ -265,7 +262,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 t,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.70),
+                  color: muted,
                   fontSize: 12,
                   letterSpacing: 0.2,
                   fontWeight: FontWeight.w600,
@@ -279,9 +276,13 @@ class _CalendarPageState extends State<CalendarPage> {
 
   // Two-color legend (no intensity scale)
   Widget _legendTwoColor() {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
     Widget box({
-      required double tint,
-      required double borderA,
+      required Color bg,
+      required Color border,
       bool showDot = false,
     }) {
       return Container(
@@ -290,9 +291,9 @@ class _CalendarPageState extends State<CalendarPage> {
         margin: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(6),
-          color: Colors.white.withValues(alpha: tint),
+          color: bg,
           border: Border.all(
-            color: Colors.white.withValues(alpha: borderA),
+            color: border,
             width: 1,
           ),
         ),
@@ -302,7 +303,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   width: 6,
                   height: 6,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.85),
+                    color: fg,
                     borderRadius: BorderRadius.circular(99),
                   ),
                 ),
@@ -312,18 +313,18 @@ class _CalendarPageState extends State<CalendarPage> {
     }
 
     Widget item({
-      required double tint,
-      required double borderA,
+      required Color bg,
+      required Color border,
       required String label,
       required bool showDot,
     }) {
       return Row(
         children: [
-          box(tint: tint, borderA: borderA, showDot: showDot),
+          box(bg: bg, border: border, showDot: showDot),
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.60),
+              color: muted,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -332,17 +333,19 @@ class _CalendarPageState extends State<CalendarPage> {
       );
     }
 
-    // Match your day-cell tuning:
-    // No transcript: tint 0.08, border 0.12
-    // Has transcripts: tint 0.20, border 0.26 (and dot)
+    final noBg = isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight;
+    final noBorder = isDark ? GlassTokens.borderDark : GlassTokens.borderLight;
+    final hasBg = isDark ? const Color(0xFF282832) : const Color(0xFFE2E2EA);
+    final hasBorder = isDark ? const Color(0xFF383844) : const Color(0xFFCCCCD8);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        item(tint: 0.08, borderA: 0.12, label: 'No transcript', showDot: false),
+        item(bg: noBg, border: noBorder, label: 'No transcript', showDot: false),
         const SizedBox(width: 16),
         item(
-          tint: 0.20,
-          borderA: 0.26,
+          bg: hasBg,
+          border: hasBorder,
           label: 'Has transcripts',
           showDot: true,
         ),
@@ -401,6 +404,10 @@ class _CalendarPageState extends State<CalendarPage> {
       showDragHandle: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        final isDark = GlassTokens.isDark(ctx);
+
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -415,7 +422,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     children: [
                       Icon(
                         Icons.calendar_month,
-                        color: Colors.white.withValues(alpha: 0.88),
+                        color: fg,
                       ),
                       const SizedBox(width: 10),
                       Text(
@@ -423,30 +430,26 @@ class _CalendarPageState extends State<CalendarPage> {
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
-                          color: Colors.white.withValues(alpha: 0.92),
+                          color: fg,
                         ),
                       ),
                       const Spacer(),
 
-                      // Count pill (NO blur)
+                      // Count pill
                       LiquidGlass(
                         borderRadius: BorderRadius.circular(999),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 6,
                         ),
+                        backgroundColor: isDark
+                            ? GlassTokens.surfaceDark
+                            : GlassTokens.surfaceLight,
                         shadow: false,
-                        blurX: 0,
-                        blurY: 0,
-                        grain: false,
-                        tintOpacityDark: 0.060,
-                        tintOpacityLight: 0.050,
-                        borderOpacityDark: 0.14,
-                        borderOpacityLight: 0.18,
                         child: Text(
                           '${items.length} item${items.length == 1 ? '' : 's'}',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.70),
+                            color: muted,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -457,13 +460,13 @@ class _CalendarPageState extends State<CalendarPage> {
                   const SizedBox(height: 12),
 
                   if (items.isEmpty)
-                    const SizedBox(
+                    SizedBox(
                       height: 120,
                       child: Center(
                         child: Text(
                           'No transcripts on this day.',
                           style: TextStyle(
-                            color: Colors.white70,
+                            color: muted,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -474,11 +477,8 @@ class _CalendarPageState extends State<CalendarPage> {
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: items.length,
-
-                        // ✅ PERF: keep compositing stable
                         addRepaintBoundaries: false,
                         addAutomaticKeepAlives: false,
-
                         separatorBuilder: (_, _) => const GlassDivider(),
                         itemBuilder: (_, i) {
                           final t = items[i];
@@ -498,20 +498,20 @@ class _CalendarPageState extends State<CalendarPage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.92),
+                                color: fg,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                             subtitle: Text(
                               '$hh:$mm • ${_fmtDuration(t.durationSec)}',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.70),
+                                color: muted,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                             trailing: Icon(
                               Icons.chevron_right,
-                              color: Colors.white.withValues(alpha: 0.72),
+                              color: muted,
                             ),
                             onTap: () {
                               unfocus();
@@ -569,124 +569,97 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dayNum = date.day.toString();
+    final fg = GlassTokens.fg(context);
 
-    // ✅ Make transcript-days visibly “filled”
-    final baseTint = inMonth ? 1.0 : 0.45;
-    final tint = (hasTranscripts ? 0.20 : 0.08) * baseTint;
+    final bg = hasTranscripts
+        ? (isDark ? const Color(0xFF282832) : const Color(0xFFE2E2EA))
+        : (isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight);
 
-    // ✅ Stronger border when transcripts exist
-    final borderA = hasTranscripts ? 0.26 : 0.12;
+    final borderColor = isToday
+        ? (isDark ? Colors.white : Colors.black)
+        : (isDark ? GlassTokens.borderDark : GlassTokens.borderLight);
 
-    const borderW = 1.2; // today outline thickness
     const r = 10.0;
-
     final outerRadius = BorderRadius.circular(r);
-    final innerRadius = BorderRadius.circular(r - borderW);
 
-    final glassCell = InkWell(
+    return InkWell(
       borderRadius: outerRadius,
       onTap: onTap,
-      child: Padding(
-        padding: isToday ? const EdgeInsets.all(borderW) : EdgeInsets.zero,
-        child: LiquidGlass(
-          borderRadius: isToday ? innerRadius : outerRadius,
-          padding: const EdgeInsets.all(6),
-          shadow: false,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: outerRadius,
+          color: bg,
+          border: Border.all(
+            color: borderColor,
+            width: isToday ? 1.5 : 1.0,
+          ),
+        ),
+        padding: const EdgeInsets.all(6),
+        child: Stack(
+          children: [
+            // Day number
+            Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                dayNum,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: hasTranscripts
+                      ? FontWeight.w800
+                      : FontWeight.w600,
+                  color: inMonth
+                      ? fg
+                      : fg.withValues(alpha: 0.35),
+                ),
+              ),
+            ),
 
-          // ✅ PERF: NO blur/grain per cell
-          blurX: 0,
-          blurY: 0,
-          grain: false,
-
-          tintOpacityDark: tint,
-          tintOpacityLight: tint * 0.80,
-          borderOpacityDark: borderA,
-          borderOpacityLight: borderA + 0.02,
-
-          child: Stack(
-            children: [
-              // Day number
+            // Dot indicator
+            if (hasTranscripts)
               Align(
-                alignment: Alignment.topLeft,
-                child: Text(
-                  dayNum,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: hasTranscripts
-                        ? FontWeight.w800
-                        : FontWeight.w600,
-                    color: inMonth
-                        ? Colors.white.withValues(alpha: 0.92)
-                        : Colors.white.withValues(alpha: 0.35),
+                alignment: Alignment.bottomLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 2, bottom: 2),
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: fg,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
                   ),
                 ),
               ),
 
-              // ✅ Dot indicator (Apple-ish)
-              if (hasTranscripts)
-                Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 2, bottom: 2),
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(99),
-                      ),
+            // Count badge
+            if (count > 0)
+              Align(
+                alignment: Alignment.bottomRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    color: isDark
+                        ? const Color(0xFF383844)
+                        : const Color(0xFFCCCCD8),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: fg,
+                      letterSpacing: 0.2,
                     ),
                   ),
                 ),
-
-              // Count badge (kept)
-              if (count > 0)
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: LiquidGlass(
-                    borderRadius: BorderRadius.circular(8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    shadow: false,
-                    blurX: 0,
-                    blurY: 0,
-                    grain: false,
-
-                    tintOpacityDark: 0.10,
-                    tintOpacityLight: 0.08,
-                    borderOpacityDark: 0.14,
-                    borderOpacityLight: 0.16,
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white.withValues(alpha: 0.92),
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
-    );
-
-    if (!isToday) return glassCell;
-
-    // Today outline
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: outerRadius,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.70),
-          width: borderW,
-        ),
-      ),
-      child: glassCell,
     );
   }
 }

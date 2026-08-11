@@ -236,10 +236,9 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                       child: LinearProgressIndicator(
                         minHeight: 8,
                         value: barValue,
-                        backgroundColor: Colors.white.withValues(alpha: 0.16),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white.withValues(alpha: 0.92),
-                        ),
+                        backgroundColor: (isDark ? Colors.white : Colors.black)
+                            .withValues(alpha: 0.16),
+                        valueColor: AlwaysStoppedAnimation<Color>(fg),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -283,34 +282,48 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
                         child: isReady
                             ? OutlinedButton.icon(
                                 onPressed: null,
-                                icon: const Icon(
-                                  Icons.verified,
-                                  color: Colors.white,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: fg,
+                                  side: BorderSide(
+                                    color: isDark
+                                        ? GlassTokens.borderDark
+                                        : GlassTokens.borderLight,
+                                  ),
                                 ),
-                                label: const Text(
+                                icon: Icon(
+                                  Icons.verified,
+                                  color: fg,
+                                ),
+                                label: Text(
                                   'Downloaded',
-                                  style: TextStyle(color: Colors.white),
+                                  style: TextStyle(color: fg),
                                 ),
                               )
                             : FilledButton.icon(
                                 onPressed: isDl ? null : _downloadQwen,
                                 icon: isDl
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                         width: 18,
                                         height: 18,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          color: Colors.black,
+                                          color: isDark
+                                              ? Colors.black
+                                              : Colors.white,
                                         ),
                                       )
-                                    : const Icon(
+                                    : Icon(
                                         Icons.download,
-                                        color: Colors.white,
+                                        color: isDark
+                                            ? Colors.black
+                                            : Colors.white,
                                       ),
                                 label: Text(isDl ? 'Downloading…' : 'Download'),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: Colors.black,
+                                  backgroundColor: fg,
+                                  foregroundColor: isDark
+                                      ? Colors.black
+                                      : Colors.white,
                                 ),
                               ),
                       ),
@@ -355,12 +368,11 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
-    // ✅ black/white only (remove orange)
     Color? accent;
-    if (tone == _PillTone.good) {
-      accent = Colors.white;
-    } else if (tone == _PillTone.bad) {
+    if (tone == _PillTone.bad) {
       accent = Colors.redAccent;
     }
 
@@ -383,8 +395,8 @@ class _StatusPill extends StatelessWidget {
           fontSize: 11.5,
           fontWeight: FontWeight.w800,
           color: tone == _PillTone.good
-              ? Colors.white.withValues(alpha: 0.85)
-              : (tone == _PillTone.bad ? Colors.redAccent : Colors.white70),
+              ? fg
+              : (tone == _PillTone.bad ? Colors.redAccent : muted),
         ),
       ),
     );

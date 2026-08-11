@@ -23,6 +23,7 @@ import '../ui/glass/liquid_glass.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class RecordSheet extends StatefulWidget {
   const RecordSheet({super.key});
@@ -517,21 +518,18 @@ class _RecordSheetState extends State<RecordSheet> {
         ? (_paused ? 'Paused' : (_starting ? 'Starting…' : 'Recording…'))
         : 'Record';
 
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
-    // ✅ close pill = tint-only (same as ImportAudioSheet preferred)
+    // ✅ close pill
     Widget closePill() {
       return LiquidGlass(
         borderRadius: BorderRadius.circular(999),
         padding: const EdgeInsets.all(8),
+        backgroundColor:
+            isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
         shadow: false,
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-        tintOpacityDark: 0.070,
-        tintOpacityLight: 0.055,
-        borderOpacityDark: 0.16,
-        borderOpacityLight: 0.20,
         onTap: _starting ? null : () => Navigator.of(context).pop(),
         child: Icon(Icons.close, color: fg, size: 20),
       );
@@ -543,20 +541,14 @@ class _RecordSheetState extends State<RecordSheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
         child: Stack(
           children: [
-            // ✅ sheet backdrop (moderate blur + stronger tint for readability)
             LiquidGlass(
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(22),
               ),
               padding: EdgeInsets.zero,
+              backgroundColor:
+                  isDark ? GlassTokens.backgroundDark : GlassTokens.backgroundLight,
               shadow: false,
-              blurX: 9.0,
-              blurY: 9.0,
-              grain: false,
-              tintOpacityDark: 0.10,
-              tintOpacityLight: 0.08,
-              borderOpacityDark: 0.18,
-              borderOpacityLight: 0.22,
               child: const SizedBox.expand(),
             ),
 
@@ -710,7 +702,7 @@ class _RecordSheetState extends State<RecordSheet> {
                               Text(
                                 'Set before recording',
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.65),
+                                  color: muted,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -724,9 +716,7 @@ class _RecordSheetState extends State<RecordSheet> {
                                     child: Text(
                                       'Language',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.72,
-                                        ),
+                                        color: muted,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -738,9 +728,10 @@ class _RecordSheetState extends State<RecordSheet> {
                                       child: DropdownButtonFormField<String>(
                                         initialValue: _selectedLang,
                                         isDense: true,
-                                        iconEnabledColor: Colors.white
-                                            .withValues(alpha: 0.80),
-                                        dropdownColor: const Color(0xFF0B0C10),
+                                        iconEnabledColor: fg,
+                                        dropdownColor: isDark
+                                            ? const Color(0xFF1E1E26)
+                                            : const Color(0xFFFFFFFF),
                                         items: _langOptions.entries
                                             .map(
                                               (e) => DropdownMenuItem<String>(
@@ -750,10 +741,7 @@ class _RecordSheetState extends State<RecordSheet> {
                                                   overflow:
                                                       TextOverflow.ellipsis,
                                                   style: TextStyle(
-                                                    color: Colors.white
-                                                        .withValues(
-                                                          alpha: 0.92,
-                                                        ),
+                                                    color: fg,
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
@@ -791,9 +779,7 @@ class _RecordSheetState extends State<RecordSheet> {
                                     child: Text(
                                       'Speaker diarization',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.72,
-                                        ),
+                                        color: muted,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -803,16 +789,8 @@ class _RecordSheetState extends State<RecordSheet> {
                                     onChanged: (_recording || _starting)
                                         ? null
                                         : _setDiarizationEnabledLocal,
-                                    activeThumbColor: Colors.black,
-                                    activeTrackColor: Colors.white.withValues(
-                                      alpha: 0.55,
-                                    ),
-                                    inactiveThumbColor: Colors.white.withValues(
-                                      alpha: 0.70,
-                                    ),
-                                    inactiveTrackColor: Colors.white.withValues(
-                                      alpha: 0.18,
-                                    ),
+                                    activeThumbColor: isDark ? Colors.black : Colors.white,
+                                    activeTrackColor: fg,
                                   ),
                                 ],
                               ),
@@ -825,9 +803,7 @@ class _RecordSheetState extends State<RecordSheet> {
                                       child: Text(
                                         'Target speakers',
                                         style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.72,
-                                          ),
+                                          color: muted,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -838,20 +814,17 @@ class _RecordSheetState extends State<RecordSheet> {
                                         data: Theme.of(context).copyWith(
                                           textSelectionTheme:
                                               TextSelectionThemeData(
-                                                selectionHandleColor: Colors
-                                                    .white
-                                                    .withValues(alpha: 0.90),
-                                                cursorColor: Colors.white
-                                                    .withValues(alpha: 0.90),
-                                                selectionColor: Colors.white
-                                                    .withValues(alpha: 0.18),
+                                                selectionHandleColor: fg,
+                                                cursorColor: fg,
+                                                selectionColor: isDark
+                                                    ? Colors.white.withValues(alpha: 0.18)
+                                                    : Colors.black.withValues(alpha: 0.18),
                                               ),
                                         ),
                                         child: _GlassField(
                                           enabled: !_recording && !_starting,
                                           child: TextField(
-                                            cursorColor: Colors.white
-                                                .withValues(alpha: 0.90),
+                                            cursorColor: fg,
                                             controller: _targetSpeakersCtrl,
                                             enabled: !_recording && !_starting,
                                             keyboardType: TextInputType.number,
@@ -860,17 +833,13 @@ class _RecordSheetState extends State<RecordSheet> {
                                                   .digitsOnly,
                                             ],
                                             style: TextStyle(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.92,
-                                              ),
+                                              color: fg,
                                               fontWeight: FontWeight.w600,
                                             ),
                                             decoration: InputDecoration(
                                               hintText: '0',
                                               hintStyle: TextStyle(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.45,
-                                                ),
+                                                color: muted,
                                                 fontWeight: FontWeight.w600,
                                               ),
                                               isDense: true,
@@ -891,7 +860,7 @@ class _RecordSheetState extends State<RecordSheet> {
                                 Text(
                                   'Use 0 for auto-detect.',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.55),
+                                    color: muted,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -906,7 +875,7 @@ class _RecordSheetState extends State<RecordSheet> {
                         Text(
                           'Tip: keep the phone close and speak clearly. You can rename speakers later in the transcript view.',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.65),
+                            color: muted,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -938,8 +907,8 @@ class _LiveTranscriptCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Colors.white.withValues(alpha: 0.90);
-    final muted = Colors.white.withValues(alpha: 0.58);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
     final lines = preview.text.trim();
     final partial = preview.partial.trim();
 
@@ -956,13 +925,13 @@ class _LiveTranscriptCard extends StatelessWidget {
                 Icon(
                   Icons.subtitles_rounded,
                   size: 18,
-                  color: preview.available ? textColor : muted,
+                  color: preview.available ? fg : muted,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   'Live transcript',
                   style: TextStyle(
-                    color: textColor,
+                    color: fg,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -979,7 +948,7 @@ class _LiveTranscriptCard extends StatelessWidget {
                         TextSpan(
                           text: lines,
                           style: TextStyle(
-                            color: textColor,
+                            color: fg,
                             height: 1.35,
                             fontWeight: FontWeight.w600,
                           ),
@@ -990,7 +959,7 @@ class _LiveTranscriptCard extends StatelessWidget {
                         TextSpan(
                           text: partial,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.62),
+                            color: muted,
                             height: 1.35,
                             fontStyle: FontStyle.italic,
                             fontWeight: FontWeight.w600,
@@ -1017,7 +986,6 @@ class _LiveTranscriptCard extends StatelessWidget {
   }
 }
 
-/// ✅ your preferred: tint-only interactive field container
 class _GlassField extends StatelessWidget {
   const _GlassField({required this.child, required this.enabled});
 
@@ -1026,20 +994,14 @@ class _GlassField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+
     Widget field = LiquidGlass(
       borderRadius: BorderRadius.circular(14),
       padding: EdgeInsets.zero,
+      backgroundColor:
+          isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
       shadow: false,
-
-      // ✅ PERF: interactive => tint-only
-      blurX: 0,
-      blurY: 0,
-      grain: false,
-
-      tintOpacityDark: 0.075,
-      tintOpacityLight: 0.060,
-      borderOpacityDark: 0.16,
-      borderOpacityLight: 0.20,
       child: child,
     );
 
@@ -1061,9 +1023,9 @@ class _TimerRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ringColor = paused
-        ? Colors.white.withValues(alpha: 0.25)
-        : (active ? Colors.white : Colors.white.withValues(alpha: 0.20));
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final ringColor = paused ? muted : (active ? fg : muted);
 
     return Container(
       width: 124,
@@ -1082,7 +1044,11 @@ class _TimerRing extends StatelessWidget {
       child: Center(
         child: Text(
           timeText,
-          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: fg,
+          ),
         ),
       ),
     );
@@ -1103,6 +1069,8 @@ class LevelBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+
     final weights = List<double>.generate(barCount, (i) {
       final x = (i / (barCount - 1)) * 2 - 1;
       final bell = 1 - (x * x);
@@ -1129,7 +1097,7 @@ class LevelBars extends StatelessWidget {
                   child: Container(
                     height: barH,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.90),
+                      color: fg.withValues(alpha: 0.90),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),

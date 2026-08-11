@@ -15,6 +15,7 @@ import '../transcript/transcript_detail_page.dart';
 import '../ui/glass/liquid_glass.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class SearchTab extends StatefulWidget {
   const SearchTab({super.key});
@@ -119,38 +120,32 @@ class _SearchTabState extends State<SearchTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final isDark = GlassTokens.isDark(context);
 
     final titleStyle = theme.textTheme.headlineSmall?.copyWith(
       fontWeight: FontWeight.w900,
       letterSpacing: -0.2,
-      color: Colors.white.withValues(alpha: 0.92),
+      color: fg,
     );
 
     final subStyle = theme.textTheme.bodySmall?.copyWith(
-      color: Colors.white.withValues(alpha: 0.70),
+      color: muted,
       fontWeight: FontWeight.w600,
     );
 
-    // ✅ shared: small close pill should be tint-only (no blur)
     Widget closePill({double iconSize = 18}) {
       return LiquidGlass(
         borderRadius: BorderRadius.circular(999),
         padding: const EdgeInsets.all(8),
+        backgroundColor:
+            isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
         shadow: false,
-
-        // ✅ PERF: small interactive control
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-
-        tintOpacityDark: 0.070,
-        tintOpacityLight: 0.055,
-        borderOpacityDark: 0.16,
-        borderOpacityLight: 0.20,
         onTap: _clear,
         child: Icon(
           Icons.close,
-          color: Colors.white.withValues(alpha: 0.92),
+          color: fg,
           size: iconSize,
         ),
       );
@@ -182,7 +177,6 @@ class _SearchTabState extends State<SearchTab> {
                       ],
                     ),
                     const Spacer(),
-                    // if (_ctrl.text.trim().isNotEmpty) closePill(iconSize: 20),
                   ],
                 ),
 
@@ -196,12 +190,12 @@ class _SearchTabState extends State<SearchTab> {
                     children: [
                       Icon(
                         Icons.search,
-                        color: Colors.white.withValues(alpha: 0.85),
+                        color: fg,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: TextField(
-                          cursorColor: Colors.white.withValues(alpha: 0.90),
+                          cursorColor: fg,
                           controller: _ctrl,
                           focusNode: _focus,
                           autofocus: false,
@@ -209,13 +203,13 @@ class _SearchTabState extends State<SearchTab> {
                           onSubmitted: (_) => _unfocus(),
                           onChanged: _onChanged,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.92),
+                            color: fg,
                             fontWeight: FontWeight.w600,
                           ),
                           decoration: InputDecoration(
                             hintText: 'Search transcripts…',
                             hintStyle: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.45),
+                              color: muted,
                               fontWeight: FontWeight.w600,
                             ),
                             border: InputBorder.none,
@@ -235,9 +229,7 @@ class _SearchTabState extends State<SearchTab> {
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white.withValues(alpha: 0.80),
-                            ),
+                            valueColor: AlwaysStoppedAnimation<Color>(fg),
                           ),
                         ),
                       ] else if (_ctrl.text.trim().isNotEmpty) ...[
@@ -253,7 +245,7 @@ class _SearchTabState extends State<SearchTab> {
                 // ---------- Results ----------
                 Expanded(
                   child: _q.isEmpty
-                      ? EmptyState(
+                      ? const EmptyState(
                           title: 'Type something to search.',
                           subtitle: '',
                           icon: Icons.search,
@@ -277,11 +269,8 @@ class _SearchTabState extends State<SearchTab> {
                           child: ListView.separated(
                             controller: _listCtrl,
                             physics: const AlwaysScrollableScrollPhysics(),
-
-                            // ✅ PERF: keeps compositing stable
                             addRepaintBoundaries: false,
                             addAutomaticKeepAlives: false,
-
                             itemCount: _results.length,
                             separatorBuilder: (_, _) =>
                                 const GlassDivider(height: 1),
@@ -307,20 +296,20 @@ class _SearchTabState extends State<SearchTab> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.92),
+                                    color: fg,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
                                 subtitle: Text(
                                   sub,
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.65),
+                                    color: muted,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 trailing: Icon(
                                   Icons.chevron_right,
-                                  color: Colors.white.withValues(alpha: 0.55),
+                                  color: muted,
                                 ),
                                 onTap: () async {
                                   _unfocus();

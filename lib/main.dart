@@ -27,6 +27,9 @@ import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_tokens.dart';
 
+import 'theme/theme_controller.dart';
+import 'theme/app_theme.dart';
+
 final TranscriptMailService _mailer = TranscriptMailService(
   baseUrl: 'https://enyx.app',
   // authToken: 'optional', // if you use it
@@ -79,6 +82,7 @@ Future<void> main() async {
 
   await ObjectBox.init();
   await RecordingService.ensureInitialized();
+  await ThemeController.instance.init();
 
   runApp(const MyApp());
 
@@ -145,7 +149,9 @@ Future<void> main() async {
       await BackgroundTranscriber.init();
 
       // ✅ 4) downloader tracking last (optional)
-      FileDownloader().trackTasks().catchError((_) => null);
+      try {
+        await FileDownloader().trackTasks();
+      } catch (_) {}
     } catch (e, st) {
       debugPrint('Post-frame init failed: $e');
       debugPrint('$st');
@@ -158,49 +164,23 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Transcript',
+    return ListenableBuilder(
+      listenable: ThemeController.instance,
+      builder: (context, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Transcript',
+          themeMode: ThemeController.instance.themeMode,
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
 
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
+          builder: (context, child) {
+            return GlassBackground(child: child ?? const SizedBox.shrink());
+          },
 
-        // ✅ IMPORTANT: let your GlassBackground show through
-        scaffoldBackgroundColor: Colors.transparent,
-
-        // Black/white only
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.white,
-          secondary: Colors.white,
-          surface: Color(0x0FFFFFFF), // translucent surfaces
-          onSurface: Colors.white,
-          onPrimary: Colors.black,
-        ),
-
-        // Remove weird tints
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-
-        // Text: iOS-ish
-        textTheme: ThemeData.dark().textTheme.apply(
-          bodyColor: Colors.white.withValues(alpha: 0.92),
-          displayColor: Colors.white.withValues(alpha: 0.92),
-        ),
-
-        // Default cards should not paint solid blocks
-        cardColor: Colors.transparent,
-
-        dividerColor: Colors.white.withValues(alpha: 0.10),
-      ),
-
-      // ✅ Global wallpaper behind EVERYTHING
-      builder: (context, child) {
-        return GlassBackground(child: child ?? const SizedBox.shrink());
+          home: const SplashGate(),
+        );
       },
-
-      home: const SplashGate(),
     );
   }
 }
@@ -277,7 +257,6 @@ class _SplashGateState extends State<SplashGate> {
     final theme = Theme.of(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context, alpha: 0.78);
-    final isDark = GlassTokens.isDark(context);
 
     return PopScope(
       canPop: false,

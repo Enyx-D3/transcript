@@ -9,23 +9,24 @@ class GlassDivider extends StatelessWidget {
     this.thickness = 1,
     this.indent = 0,
     this.endIndent = 0,
-    this.alphaLight = 0.14,
-    this.alphaDark = 0.12,
+    this.alphaLight = 1.0,
+    this.alphaDark = 1.0,
+    this.color,
   });
 
   final double height;
   final double thickness;
   final double indent;
   final double endIndent;
-
   final double alphaLight;
   final double alphaDark;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-
-    final c = Colors.white.withValues(alpha: isDark ? alphaDark : alphaLight);
+    final c = color ??
+        (isDark ? const Color(0xFF262632) : const Color(0xFFE5E5ED));
 
     return Padding(
       padding: EdgeInsetsDirectional.only(start: indent, end: endIndent),
@@ -34,10 +35,7 @@ class GlassDivider extends StatelessWidget {
         child: Center(
           child: Container(
             height: thickness,
-            decoration: BoxDecoration(
-              color: c,
-              borderRadius: BorderRadius.circular(999),
-            ),
+            color: c,
           ),
         ),
       ),

@@ -1,0 +1,5 @@
+{
+    "java.project.sourcePaths": [
+        "third_party/vosk_flutter"
+    ]
+}

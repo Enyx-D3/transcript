@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../ui/glass/liquid_glass.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class SourceTag extends StatelessWidget {
   const SourceTag({
@@ -24,6 +25,8 @@ class SourceTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = (label ?? type).toUpperCase();
+    final fg = GlassTokens.fg(context, alpha: 0.90);
+    final isDark = GlassTokens.isDark(context);
 
     return LiquidGlass(
       borderRadius: BorderRadius.circular(999),
@@ -31,17 +34,15 @@ class SourceTag extends StatelessWidget {
         horizontal: horizontalPadding,
         vertical: verticalPadding,
       ),
+      backgroundColor:
+          isDark ? const Color(0xFF1E1E26) : const Color(0xFFE5E5ED),
       shadow: false,
-      tintOpacityDark: 0.040,
-      tintOpacityLight: 0.035,
-      borderOpacityDark: 0.14,
-      borderOpacityLight: 0.18,
       child: Text(
         text,
         style: TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0.25,
-          color: Colors.white.withValues(alpha: 0.92),
+          color: fg,
           fontSize: fontSize,
         ),
       ),

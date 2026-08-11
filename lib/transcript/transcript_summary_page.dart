@@ -447,11 +447,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
   // ===================== Glass helpers =====================
 
   Widget _metaPill(String text, {Color? accent, IconData? icon}) {
-    final c = accent;
-    final tl = c != null ? 0.055 : 0.050;
-    final td = c != null ? 0.075 : 0.070;
-    final bl = c != null ? 0.24 : 0.20;
-    final bd = c != null ? 0.20 : 0.16;
+    final fg = GlassTokens.fg(context);
+    final c = accent ?? fg;
+    final isDark = GlassTokens.isDark(context);
 
     final radius = BorderRadius.circular(999);
 
@@ -460,14 +458,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
       child: LiquidGlass(
         borderRadius: radius,
         padding: const EdgeInsets.symmetric(horizontal: 10),
+        backgroundColor:
+            isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
         shadow: false,
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-        tintOpacityLight: tl,
-        tintOpacityDark: td,
-        borderOpacityLight: bl,
-        borderOpacityDark: bd,
         child: SizedBox(
           height: 32,
           child: Row(
@@ -477,7 +470,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                 Icon(
                   icon,
                   size: 14,
-                  color: (c ?? Colors.white).withValues(alpha: 0.95),
+                  color: c,
                 ),
                 const SizedBox(width: 6),
               ],
@@ -488,7 +481,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                   softWrap: false,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: (c ?? Colors.white).withValues(alpha: 0.95),
+                    color: c,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
@@ -506,8 +499,10 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     required String text,
     Color? accent,
   }) {
-    final c = accent ?? Colors.white;
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
     final isDark = GlassTokens.isDark(context);
+    final c = accent ?? fg;
 
     return GlassCard(
       variant: GlassCardVariant.tile,
@@ -520,19 +515,14 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
             child: LiquidGlass(
               borderRadius: BorderRadius.circular(14),
               padding: EdgeInsets.zero,
+              backgroundColor:
+                  isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
               shadow: false,
-              blurX: isDark ? 10 : 8,
-              blurY: isDark ? 10 : 8,
-              grain: false,
-              tintOpacityDark: 0.055,
-              tintOpacityLight: 0.045,
-              borderOpacityDark: 0.18,
-              borderOpacityLight: 0.22,
               child: SizedBox(
                 width: 34,
                 height: 34,
                 child: Center(
-                  child: Icon(icon, size: 18, color: c.withValues(alpha: 0.95)),
+                  child: Icon(icon, size: 18, color: c),
                 ),
               ),
             ),
@@ -542,7 +532,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
             child: Text(
               text,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.75),
+                color: muted,
                 fontWeight: FontWeight.w600,
                 height: 1.2,
               ),
@@ -561,8 +551,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     required String primaryLabel,
     required IconData primaryIcon,
   }) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
     final isDark = GlassTokens.isDark(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
 
     return GlassCard(
       variant: GlassCardVariant.tile,
@@ -575,14 +566,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
             child: LiquidGlass(
               borderRadius: BorderRadius.circular(18),
               padding: EdgeInsets.zero,
+              backgroundColor:
+                  isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
               shadow: false,
-              blurX: isDark ? 12 : 10,
-              blurY: isDark ? 12 : 10,
-              grain: false,
-              tintOpacityDark: 0.050,
-              tintOpacityLight: 0.040,
-              borderOpacityDark: 0.16,
-              borderOpacityLight: 0.20,
               child: SizedBox(
                 width: 52,
                 height: 52,
@@ -603,7 +589,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
           Text(
             subtitle,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.70),
+              color: muted,
               height: 1.25,
               fontWeight: FontWeight.w600,
             ),
@@ -621,8 +607,8 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
   }
 
   Widget _summaryCard(String text) {
+    final fg = GlassTokens.fg(context);
     final isDark = GlassTokens.isDark(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
 
     return GlassCard(
       variant: GlassCardVariant.tile,
@@ -637,14 +623,9 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                 child: LiquidGlass(
                   borderRadius: BorderRadius.circular(14),
                   padding: EdgeInsets.zero,
+                  backgroundColor:
+                      isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
                   shadow: false,
-                  blurX: isDark ? 10 : 8,
-                  blurY: isDark ? 10 : 8,
-                  grain: false,
-                  tintOpacityDark: 0.050,
-                  tintOpacityLight: 0.040,
-                  borderOpacityDark: 0.16,
-                  borderOpacityLight: 0.20,
                   child: SizedBox(
                     width: 38,
                     height: 38,
@@ -668,7 +649,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
           SelectableText(
             text,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.92),
+              color: fg,
               height: 1.35,
               fontWeight: FontWeight.w500,
             ),
@@ -854,7 +835,8 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     final hasSummary = (_summaryText ?? '').trim().isNotEmpty;
     final canGenerate = !_generating && _modelAvailable && _modelPath != null;
@@ -953,7 +935,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                           Text(
                             _lengthDesc(_summaryLengthIndex),
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.70),
+                              color: muted,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
@@ -994,7 +976,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                     Text(
                       'Keep the app open while this finishes.',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.70),
+                        color: muted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1044,7 +1026,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                 child: Text(
                   'No summary yet. Tap Generate to create one.',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.70),
+                    color: muted,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1074,23 +1056,19 @@ class _LengthTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-
-    final fg = Colors.white.withValues(alpha: 0.92);
-    final sub = Colors.white.withValues(alpha: 0.70);
-
-    final selFg = Colors.black.withValues(alpha: 0.92);
-    final selSub = Colors.black.withValues(alpha: 0.70);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     Widget tile = LiquidGlass(
       borderRadius: BorderRadius.circular(16),
       padding: const EdgeInsets.all(12),
+      backgroundColor: selected
+          ? (isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight)
+          : Colors.transparent,
+      borderColor: selected
+          ? fg
+          : (isDark ? GlassTokens.borderDark : GlassTokens.borderLight),
       shadow: false,
-      blurX: isDark ? 14 : 12,
-      blurY: isDark ? 14 : 12,
-      tintOpacityDark: selected ? 0.090 : 0.045,
-      tintOpacityLight: selected ? 0.080 : 0.036,
-      borderOpacityDark: selected ? 0.26 : 0.14,
-      borderOpacityLight: selected ? 0.28 : 0.18,
       onTap: onTap,
       child: Row(
         children: [
@@ -1100,16 +1078,18 @@ class _LengthTile extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
-                color: selected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.35),
+                color: selected ? fg : muted,
                 width: 2,
               ),
-              color: selected ? Colors.white : Colors.transparent,
+              color: selected ? fg : Colors.transparent,
             ),
             child: selected
-                ? const Center(
-                    child: Icon(Icons.check, size: 14, color: Colors.black),
+                ? Center(
+                    child: Icon(
+                      Icons.check,
+                      size: 14,
+                      color: isDark ? Colors.black : Colors.white,
+                    ),
                   )
                 : null,
           ),
@@ -1123,14 +1103,14 @@ class _LengthTile extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 14,
-                    color: selected ? selFg : fg,
+                    color: fg,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: selected ? selSub : sub,
+                    color: muted,
                     fontWeight: FontWeight.w600,
                     height: 1.15,
                   ),
@@ -1141,16 +1121,6 @@ class _LengthTile extends StatelessWidget {
         ],
       ),
     );
-
-    if (selected) {
-      tile = DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: Colors.white.withValues(alpha: 0.85),
-        ),
-        child: tile,
-      );
-    }
 
     return tile;
   }

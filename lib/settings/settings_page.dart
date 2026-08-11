@@ -24,6 +24,8 @@ import '../help/help_page.dart';
 // ✅ glass system
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+import '../theme/theme_controller.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -357,24 +359,25 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _busyTrailing(bool busy) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
     return busy
-        ? const SizedBox(
+        ? SizedBox(
             width: 18,
             height: 18,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: Colors.white,
-              backgroundColor: Colors.black,
+              color: fg,
             ),
           )
         : Icon(
             Icons.chevron_right,
-            color: Colors.white.withValues(alpha: 0.70),
+            color: muted,
           );
   }
 
   // =========================
-  // UI helpers (glass style)
+  // UI helpers
   // =========================
 
   Widget _sectionHeader(String title) {
@@ -385,7 +388,7 @@ class _SettingsPageState extends State<SettingsPage> {
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w900,
-          color: Colors.white.withValues(alpha: 0.70),
+          color: GlassTokens.muted(context, alpha: 0.85),
           letterSpacing: 0.2,
         ),
       ),
@@ -408,6 +411,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required ValueChanged<T?> onChanged,
     double width = 160,
   }) {
+    final fg = GlassTokens.fg(context);
     return SizedBox(
       width: width,
       child: GlassCard(
@@ -421,10 +425,10 @@ class _SettingsPageState extends State<SettingsPage> {
             isExpanded: true,
             items: items,
             onChanged: onChanged,
-            dropdownColor: const Color.fromARGB(170, 0, 0, 0),
-            iconEnabledColor: Colors.white.withValues(alpha: 0.80),
+            dropdownColor: GlassTokens.cardColor(context),
+            iconEnabledColor: fg.withValues(alpha: 0.80),
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.92),
+              color: fg,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -439,11 +443,14 @@ class _SettingsPageState extends State<SettingsPage> {
     required String subtitle,
     required Widget trailing,
   }) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
+          Icon(icon, color: fg.withValues(alpha: 0.85)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -453,14 +460,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   title,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    color: Colors.white.withValues(alpha: 0.92),
+                    color: fg,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.70),
+                    color: muted,
                     fontSize: 12,
                   ),
                 ),
@@ -487,6 +494,9 @@ class _SettingsPageState extends State<SettingsPage> {
     required String offLabel,
   }) {
     final label = value ? onLabel : offLabel;
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return InkWell(
       onTap: () => onChanged(!value),
@@ -495,7 +505,7 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
+            Icon(icon, color: fg.withValues(alpha: 0.85)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -505,14 +515,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     title,
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: Colors.white.withValues(alpha: 0.92),
+                      color: fg,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.70),
+                      color: muted,
                       fontSize: 12,
                     ),
                   ),
@@ -523,7 +533,7 @@ class _SettingsPageState extends State<SettingsPage> {
             Text(
               label,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.70),
+                color: muted,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -531,10 +541,12 @@ class _SettingsPageState extends State<SettingsPage> {
             Switch(
               value: value,
               onChanged: onChanged,
-              activeThumbColor: Colors.black,
-              activeTrackColor: Colors.white.withValues(alpha: 0.85),
-              inactiveThumbColor: Colors.white.withValues(alpha: 0.55),
-              inactiveTrackColor: Colors.white.withValues(alpha: 0.18),
+              activeThumbColor: isDark ? Colors.black : Colors.white,
+              activeTrackColor: isDark ? Colors.white : const Color(0xFF141418),
+              inactiveThumbColor: muted,
+              inactiveTrackColor: isDark
+                  ? Colors.white.withValues(alpha: 0.18)
+                  : Colors.black.withValues(alpha: 0.12),
             ),
           ],
         ),
@@ -545,9 +557,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String _fmtMaxTime(int minutes) {
     if (minutes == 30) return '30 min';
     if (minutes == 60) return '1 hour';
-    // if (minutes == 90) return '1.5 hours';
-    // if (minutes == 120) return '2 hours';
-    // if (minutes == 6000) return 'No limit (Experimental)';
     return '$minutes min';
   }
 
@@ -556,6 +565,9 @@ class _SettingsPageState extends State<SettingsPage> {
   // =========================
   @override
   Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -572,10 +584,9 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
       body: _loading
-          ? const Center(
+          ? Center(
               child: CircularProgressIndicator(
-                backgroundColor: Colors.black,
-                color: Colors.white,
+                color: fg,
               ),
             )
           : ListView(
@@ -593,7 +604,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         children: [
                           Icon(
                             Icons.person_outline,
-                            color: Colors.white.withValues(alpha: 0.85),
+                            color: fg.withValues(alpha: 0.85),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -604,14 +615,14 @@ class _SettingsPageState extends State<SettingsPage> {
                                   'Account & Billing',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
-                                    color: Colors.white.withValues(alpha: 0.92),
+                                    color: fg,
                                   ),
                                 ),
                                 const SizedBox(height: 3),
                                 Text(
                                   'Subscription, trial, and purchases',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.70),
+                                    color: muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -620,7 +631,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           Icon(
                             Icons.chevron_right,
-                            color: Colors.white.withValues(alpha: 0.70),
+                            color: muted,
                           ),
                         ],
                       ),
@@ -639,7 +650,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         children: [
                           Icon(
                             Icons.smart_toy,
-                            color: Colors.white.withValues(alpha: 0.85),
+                            color: fg.withValues(alpha: 0.85),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -650,14 +661,14 @@ class _SettingsPageState extends State<SettingsPage> {
                                   'Models',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
-                                    color: Colors.white.withValues(alpha: 0.92),
+                                    color: fg,
                                   ),
                                 ),
                                 const SizedBox(height: 3),
                                 Text(
                                   'Model for AI features',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.70),
+                                    color: muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -666,10 +677,44 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           Icon(
                             Icons.chevron_right,
-                            color: Colors.white.withValues(alpha: 0.70),
+                            color: muted,
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // -------- Appearance --------
+                _sectionHeader('Appearance'),
+                _panel(
+                  child: _kvRow(
+                    icon: Icons.palette_outlined,
+                    title: 'Theme',
+                    subtitle: 'Choose light, dark, or system default theme.',
+                    trailing: _trailingDropdown<ThemeMode>(
+                      value: ThemeController.instance.themeMode,
+                      width: 170,
+                      items: const [
+                        DropdownMenuItem(
+                          value: ThemeMode.system,
+                          child: Text('System', overflow: TextOverflow.ellipsis),
+                        ),
+                        DropdownMenuItem(
+                          value: ThemeMode.dark,
+                          child: Text('Dark Mode', overflow: TextOverflow.ellipsis),
+                        ),
+                        DropdownMenuItem(
+                          value: ThemeMode.light,
+                          child: Text('Light Mode', overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        ThemeController.instance.setThemeMode(v);
+                        setState(() {});
+                      },
                     ),
                   ),
                 ),
@@ -823,7 +868,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             children: [
                               Icon(
                                 Icons.archive_outlined,
-                                color: Colors.white.withValues(alpha: 0.85),
+                                color: fg.withValues(alpha: 0.85),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -834,18 +879,14 @@ class _SettingsPageState extends State<SettingsPage> {
                                       'Export transcripts + audio (ZIP)',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.92,
-                                        ),
+                                        color: fg,
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'Share to Drive / device / email',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.70,
-                                        ),
+                                        color: muted,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -869,7 +910,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             children: [
                               Icon(
                                 Icons.unarchive_outlined,
-                                color: Colors.white.withValues(alpha: 0.85),
+                                color: fg.withValues(alpha: 0.85),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -880,18 +921,14 @@ class _SettingsPageState extends State<SettingsPage> {
                                       'Import transcripts + audio (ZIP)',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.92,
-                                        ),
+                                        color: fg,
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'Pick ZIP from device / Drive',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.70,
-                                        ),
+                                        color: muted,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -976,6 +1013,9 @@ class _SettingsPageState extends State<SettingsPage> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -983,7 +1023,7 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
+            Icon(icon, color: fg.withValues(alpha: 0.85)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -993,14 +1033,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     title,
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: Colors.white.withValues(alpha: 0.92),
+                      color: fg,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.70),
+                      color: muted,
                       fontSize: 12,
                     ),
                   ),
@@ -1009,7 +1049,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             Icon(
               Icons.chevron_right,
-              color: Colors.white.withValues(alpha: 0.70),
+              color: muted,
             ),
           ],
         ),

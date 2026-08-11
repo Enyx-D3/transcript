@@ -19,9 +19,10 @@ import '../ui/glass/glass_divider.dart';
 import '../ui/glass/glass_tokens.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key, this.onLoggedIn});
+  const LoginPage({super.key, this.onLoggedIn, this.onBypass});
 
   final VoidCallback? onLoggedIn;
+  final VoidCallback? onBypass;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -137,6 +138,20 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       setState(() => _busy = false);
       widget.onLoggedIn?.call();
+    } on GoogleSignInException catch (e) {
+      debugPrint('Google Sign-In failed [${e.code}]: ${e.description}');
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        if (e.code == GoogleSignInExceptionCode.canceled) {
+          // User dismissed or tapped outside; cleanly reset state
+          _error = null;
+        } else if (e.code == GoogleSignInExceptionCode.clientConfigurationError) {
+          _error = 'Google Sign-In configuration error. Please check SHA-1 & Client ID.';
+        } else {
+          _error = e.description ?? 'Google Sign-In failed (${e.code.name}).';
+        }
+      });
     } on AuthException catch (e) {
       debugPrint('Google -> Supabase auth failed: ${e.message}');
       if (!mounted) return;
@@ -290,15 +305,33 @@ class _LoginPageState extends State<LoginPage> {
                                   children: [
                                     // ✅ Google (glass button)
                                     GlassButton(
-                                      kind: GlassButtonKind.primary,
+                                       kind: GlassButtonKind.primary,
+                                       onPressed: _busy
+                                           ? null
+                                           : _signInWithGoogle,
+                                       label: _busy
+                                           ? 'Signing in…'
+                                           : 'Continue with Google',
+                                       icon: Icons.g_mobiledata,
+                                       loading: _busy,
+                                    ),
+
+                                    const SizedBox(height: 12),
+
+                                    // 🛠️ Developer Bypass (Skip Login)
+                                    GlassButton(
+                                      kind: GlassButtonKind.secondary,
                                       onPressed: _busy
                                           ? null
-                                          : _signInWithGoogle,
-                                      label: _busy
-                                          ? 'Signing in…'
-                                          : 'Continue with Google',
-                                      icon: Icons.g_mobiledata,
-                                      loading: _busy,
+                                          : () {
+                                              if (widget.onBypass != null) {
+                                                widget.onBypass!();
+                                              } else {
+                                                widget.onLoggedIn?.call();
+                                              }
+                                            },
+                                      label: 'Developer Bypass (Skip Login)',
+                                      icon: Icons.developer_mode,
                                     ),
 
                                     const SizedBox(height: 12),

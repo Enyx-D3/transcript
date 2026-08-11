@@ -25,8 +25,8 @@ Future<bool> showConfirmDeleteDialog(
     builder: (ctx) {
       final isDark = GlassTokens.isDark(ctx);
 
-      final fg = Colors.white.withValues(alpha: 0.92);
-      final sub = Colors.white.withValues(alpha: 0.70);
+      final fg = GlassTokens.fg(ctx);
+      final sub = GlassTokens.muted(ctx);
 
       final dialogBlur = isDark ? 10.0 : 7.0;
 
@@ -53,14 +53,9 @@ Future<bool> showConfirmDeleteDialog(
                     child: LiquidGlass(
                       borderRadius: BorderRadius.circular(22),
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      backgroundColor:
+                          isDark ? GlassTokens.cardDark : GlassTokens.cardLight,
                       shadow: true,
-                      blurX: dialogBlur,
-                      blurY: dialogBlur,
-                      grain: false,
-                      tintOpacityDark: 0.16,
-                      tintOpacityLight: 0.14,
-                      borderOpacityDark: 0.22,
-                      borderOpacityLight: 0.20,
                       child: LayoutBuilder(
                         builder: (context, c) {
                           return ConstrainedBox(
@@ -139,7 +134,7 @@ Future<bool> showConfirmDeleteDialog(
                                             color: sub,
                                             height: 1.28,
                                             fontWeight: FontWeight.w600,
-                                            fontSize: 14, // pinned
+                                            fontSize: 14,
                                           ),
                                     ),
                                   ),
@@ -208,24 +203,19 @@ class _GlassActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDanger = kind == _GlassActionButtonKind.danger;
+    final isDark = GlassTokens.isDark(context);
 
-    final tintDark = isDanger
-        ? 0.10
-        : (kind == _GlassActionButtonKind.primary ? 0.12 : 0.085);
-    final tintLight = isDanger
-        ? 0.10
-        : (kind == _GlassActionButtonKind.primary ? 0.10 : 0.070);
+    final bg = isDanger
+        ? (isDark ? const Color(0xFF331418) : const Color(0xFFFFECEF))
+        : (isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight);
 
-    final borderDark = isDanger
-        ? 0.26
-        : (kind == _GlassActionButtonKind.primary ? 0.22 : 0.18);
-    final borderLight = isDanger
-        ? 0.24
-        : (kind == _GlassActionButtonKind.primary ? 0.20 : 0.16);
+    final border = isDanger
+        ? (isDark ? const Color(0xFF551E24) : const Color(0xFFFFCCD5))
+        : (isDark ? GlassTokens.borderDark : GlassTokens.borderLight);
 
     final fg = isDanger
         ? Colors.redAccent
-        : Colors.white.withValues(alpha: 0.92);
+        : GlassTokens.fg(context);
 
     return LayoutBuilder(
       builder: (_, c) {
@@ -237,17 +227,11 @@ class _GlassActionButton extends StatelessWidget {
             vertical: small ? 10 : 12,
             horizontal: small ? 10 : 14,
           ),
+          backgroundColor: bg,
+          borderColor: border,
           shadow: false,
-          blurX: 0,
-          blurY: 0,
-          grain: false,
-          tintOpacityDark: tintDark,
-          tintOpacityLight: tintLight,
-          borderOpacityDark: borderDark,
-          borderOpacityLight: borderLight,
           onTap: onPressed,
           child: Center(
-            // ✅ No FittedBox, no TextOverflow.visible => no yellow stripes
             child: Text(
               label,
               maxLines: 1,

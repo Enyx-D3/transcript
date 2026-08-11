@@ -2093,7 +2093,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = GlassTokens.isDark(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     final t = _t;
     if (t == null) {
@@ -2362,19 +2363,19 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                         ),
                         const SizedBox(height: 8),
                         if (_turns.isNotEmpty) ...[
-                          const Text(
+                          Text(
                             'Showing draft preview while the final transcript is processing.',
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: muted,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(height: 8),
                         ],
-                        const Text(
+                        Text(
                           'Keep the app open to finish faster.',
                           style: TextStyle(
-                            color: Colors.white70,
+                            color: muted,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -2396,7 +2397,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                             _processingError ??
                                 'Transcription failed. Please try again.',
                             style: const TextStyle(
-                              color: Colors.white70,
+                              color: Colors.redAccent,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -2703,15 +2704,13 @@ class _TurnCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isHighlighted = isActiveSearchMatch || isCurrentPlaybackSegment;
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final isDark = GlassTokens.isDark(context);
 
     return GlassCard(
       variant: GlassCardVariant.panel,
       padding: const EdgeInsets.all(14),
-      tintOpacityDark: isHighlighted ? 0.075 : null,
-      tintOpacityLight: isHighlighted ? 0.070 : null,
-      borderOpacityDark: isHighlighted ? 0.26 : null,
-      borderOpacityLight: isHighlighted ? 0.30 : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2720,8 +2719,8 @@ class _TurnCard extends StatelessWidget {
               if (subtitle != null)
                 Text(
                   subtitle!,
-                  style: const TextStyle(
-                    color: Colors.white60,
+                  style: TextStyle(
+                    color: muted,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2731,7 +2730,7 @@ class _TurnCard extends StatelessWidget {
                 Text(
                   '•',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.25),
+                    color: muted.withValues(alpha: 0.35),
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -2742,66 +2741,40 @@ class _TurnCard extends StatelessWidget {
                   speakerSpan ??
                       TextSpan(
                         text: speaker,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w900,
                           letterSpacing: -0.1,
-                          color: Colors.white,
+                          color: fg,
                         ),
                       ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.1,
-                    color: Colors.white,
+                    color: fg,
                   ),
                 ),
               ),
-              // if (badgeText != null) ...[
-              // const SizedBox(width: 8),
-              // Container(
-              //   padding: const EdgeInsets.symmetric(
-              //     horizontal: 8,
-              //     vertical: 4,
-              //   ),
-              //   decoration: BoxDecoration(
-              //     borderRadius: BorderRadius.circular(999),
-              //     color: Colors.white.withValues(alpha: 0.08),
-              //     border: Border.all(
-              //       color: Colors.white.withValues(alpha: 0.14),
-              //     ),
-              //   ),
-              //   child: Text(
-              //     badgeText!,
-              //     style: const TextStyle(
-              //       color: Colors.white70,
-              //       fontSize: 11,
-              //       fontWeight: FontWeight.w800,
-              //     ),
-              //   ),
-              // ),
-              // ],
               const SizedBox(width: 8),
               Container(
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  color:
-                      (isCurrentPlaybackSegment
-                              ? const Color(0xFFFFD54F)
-                              : Colors.white)
-                          .withValues(
-                            alpha: isCurrentPlaybackSegment ? 0.18 : 0.06,
-                          ),
+                  color: (isCurrentPlaybackSegment
+                          ? const Color(0xFFFFD54F)
+                          : (isDark ? Colors.white : Colors.black))
+                      .withValues(
+                        alpha: isCurrentPlaybackSegment ? 0.18 : 0.06,
+                      ),
                   border: Border.all(
-                    color:
-                        (isCurrentPlaybackSegment
-                                ? const Color(0xFFFFD54F)
-                                : Colors.white)
-                            .withValues(
-                              alpha: isCurrentPlaybackSegment ? 0.38 : 0.10,
-                            ),
+                    color: (isCurrentPlaybackSegment
+                            ? const Color(0xFFFFD54F)
+                            : (isDark ? Colors.white : Colors.black))
+                        .withValues(
+                          alpha: isCurrentPlaybackSegment ? 0.38 : 0.10,
+                        ),
                   ),
                 ),
                 child: Icon(
@@ -2811,7 +2784,7 @@ class _TurnCard extends StatelessWidget {
                   size: 16,
                   color: isCurrentPlaybackSegment
                       ? const Color(0xFFFFE082)
-                      : Colors.white70,
+                      : muted,
                 ),
               ),
             ],
@@ -2821,17 +2794,17 @@ class _TurnCard extends StatelessWidget {
             textSpan ??
                 TextSpan(
                   text: text,
-                  style: const TextStyle(
+                  style: TextStyle(
                     height: 1.35,
                     fontSize: 14.5,
-                    color: Colors.white,
+                    color: fg,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-            style: const TextStyle(
+            style: TextStyle(
               height: 1.35,
               fontSize: 14.5,
-              color: Colors.white,
+              color: fg,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -3049,20 +3022,26 @@ class _VariantDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+
     return Container(
       height: 34,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withValues(alpha: 0.06),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+        border: Border.all(
+          color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.12),
+        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<_AudioVariant>(
           value: value,
-          dropdownColor: const Color(0xFF101018),
-          style: const TextStyle(
-            color: Colors.white,
+          dropdownColor:
+              isDark ? const Color(0xFF101018) : const Color(0xFFFFFFFF),
+          style: TextStyle(
+            color: fg,
             fontWeight: FontWeight.w700,
           ),
           items: [
@@ -3102,6 +3081,10 @@ class _CompactSeekRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
     final maxMs = (dur.inMilliseconds == 0 ? 1 : dur.inMilliseconds).toDouble();
     final v = pos.inMilliseconds.clamp(0, maxMs.toInt()).toDouble();
 
@@ -3111,16 +3094,18 @@ class _CompactSeekRow extends StatelessWidget {
           width: 44,
           child: Text(
             fmt(pos),
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            style: TextStyle(color: muted, fontSize: 12),
           ),
         ),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              activeTrackColor: Colors.white,
-              inactiveTrackColor: Colors.white12,
-              thumbColor: Colors.white,
-              overlayColor: Colors.white12,
+              activeTrackColor: fg,
+              inactiveTrackColor:
+                  (isDark ? Colors.white : Colors.black).withValues(alpha: 0.12),
+              thumbColor: fg,
+              overlayColor:
+                  (isDark ? Colors.white : Colors.black).withValues(alpha: 0.12),
               trackHeight: 3,
             ),
             child: Slider(
@@ -3136,7 +3121,7 @@ class _CompactSeekRow extends StatelessWidget {
           child: Text(
             fmt(dur),
             textAlign: TextAlign.right,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            style: TextStyle(color: muted, fontSize: 12),
           ),
         ),
       ],

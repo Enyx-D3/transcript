@@ -30,6 +30,7 @@ class _AppGateState extends State<AppGate> {
 
   Session? _session;
   bool _ready = false;
+  bool _devBypass = false;
 
   late EligibilityGateResult _eligibility;
 
@@ -148,8 +149,21 @@ class _AppGateState extends State<AppGate> {
     }
 
     // ✅ Not logged in -> Login
-    if (_session == null) {
-      return const LoginPage();
+    if (_session == null && !_devBypass) {
+      return LoginPage(
+        onLoggedIn: () {
+          setState(() {
+            _session = _sb.auth.currentSession;
+          });
+        },
+        onBypass: () {
+          setState(() {
+            _devBypass = true;
+            _eligibility = const EligibilityGateResult(eligible: true);
+            _checkingEligibility = false;
+          });
+        },
+      );
     }
 
     // ✅ Logged in -> Splash until eligibility done

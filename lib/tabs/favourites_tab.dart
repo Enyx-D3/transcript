@@ -16,6 +16,7 @@ import '../transcript/youtube_saved_detail_page.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_divider.dart';
 import '../ui/glass/liquid_glass.dart';
+import '../ui/glass/glass_tokens.dart';
 
 enum _TranscriptSort { dateDesc, dateAsc, titleAsc, titleDesc }
 
@@ -161,6 +162,10 @@ class _FavouritesTabState extends State<FavouritesTab> {
       backgroundColor: Colors.transparent,
       isScrollControlled: false,
       builder: (ctx) {
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        final isDark = GlassTokens.isDark(ctx);
+
         Widget tile(
           _TranscriptSort v,
           String title,
@@ -170,20 +175,20 @@ class _FavouritesTabState extends State<FavouritesTab> {
           final selected = _sort == v;
 
           return ListTile(
-            leading: Icon(ic, color: Colors.white.withValues(alpha: 0.86)),
+            leading: Icon(ic, color: fg),
             title: Text(
               title,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
+                color: fg,
                 fontWeight: FontWeight.w700,
               ),
             ),
             subtitle: Text(
               subtitle,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.65)),
+              style: TextStyle(color: muted),
             ),
             trailing: selected
-                ? Icon(Icons.check, color: Colors.white.withValues(alpha: 0.85))
+                ? Icon(Icons.check, color: fg)
                 : null,
             onTap: () => Navigator.of(ctx).pop(v),
           );
@@ -204,7 +209,9 @@ class _FavouritesTabState extends State<FavouritesTab> {
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(99),
-                      color: Colors.white.withValues(alpha: 0.16),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.16)
+                          : Colors.black.withValues(alpha: 0.16),
                     ),
                   ),
                   tile(
@@ -317,66 +324,52 @@ class _FavouritesTabState extends State<FavouritesTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final isDark = GlassTokens.isDark(context);
 
     final titleStyle = theme.textTheme.headlineSmall?.copyWith(
       fontWeight: FontWeight.w900,
       letterSpacing: -0.2,
-      color: Colors.white.withValues(alpha: 0.92),
+      color: fg,
     );
 
     final subStyle = theme.textTheme.bodySmall?.copyWith(
-      color: Colors.white.withValues(alpha: 0.70),
+      color: muted,
       fontWeight: FontWeight.w600,
     );
 
     final showBusy = _loading;
 
-    // ✅ small control pill: tint-only (no blur)
+    // ✅ small control pill
     Widget headerPill({required IconData icon, required VoidCallback onTap}) {
       return LiquidGlass(
         borderRadius: BorderRadius.circular(999),
         padding: const EdgeInsets.all(8),
+        backgroundColor:
+            isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
         shadow: false,
-
-        // ✅ PERF: do not blur small controls
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-
-        tintOpacityDark: 0.070,
-        tintOpacityLight: 0.055,
-        borderOpacityDark: 0.16,
-        borderOpacityLight: 0.20,
-
         onTap: onTap,
         child: Icon(
           icon,
-          color: Colors.white.withValues(alpha: 0.90),
+          color: fg,
           size: 20,
         ),
       );
     }
 
-    // ✅ heart pill: tint-only (no blur)
+    // ✅ heart pill
     Widget heartPill(TranscriptEntity t) {
       return LiquidGlass(
         borderRadius: BorderRadius.circular(999),
         padding: const EdgeInsets.all(8),
+        backgroundColor:
+            isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
         shadow: false,
-
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-
-        tintOpacityDark: 0.065,
-        tintOpacityLight: 0.050,
-        borderOpacityDark: 0.14,
-        borderOpacityLight: 0.18,
-
         onTap: () => _toggleFavourite(t),
-        child: Icon(
+        child: const Icon(
           Icons.favorite,
-          color: Colors.white.withValues(alpha: 0.92),
+          color: Colors.redAccent,
           size: 18,
         ),
       );
@@ -410,9 +403,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                                   height: 14,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white.withValues(alpha: 0.75),
-                                    ),
+                                    valueColor: AlwaysStoppedAnimation<Color>(fg),
                                   ),
                                 ),
                               ],
@@ -444,11 +435,8 @@ class _FavouritesTabState extends State<FavouritesTab> {
                           child: ListView.separated(
                             controller: _ctrl,
                             physics: const BouncingScrollPhysics(),
-
-                            // ✅ PERF: stable compositing
                             addRepaintBoundaries: false,
                             addAutomaticKeepAlives: false,
-
                             itemCount: _items.length,
                             separatorBuilder: (_, _) =>
                                 const GlassDivider(height: 1),
@@ -486,9 +474,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.92,
-                                          ),
+                                          color: fg,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -507,7 +493,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                                 subtitle: Text(
                                   sub,
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.65),
+                                    color: muted,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),

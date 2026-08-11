@@ -28,6 +28,7 @@ import '../qwen_model_service.dart';
 
 // ✅ ModelProgress type
 import '../model_progress.dart';
+import '../model_picker_page.dart';
 import '../paywall/paywall_page.dart';
 
 import '../rate/rate_gate.dart';
@@ -213,6 +214,9 @@ class _TimelineTabState extends State<TimelineTab> {
       showDragHandle: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+
         Widget tile(
           _TranscriptSort v,
           String title,
@@ -221,23 +225,23 @@ class _TimelineTabState extends State<TimelineTab> {
         ) {
           final selected = _sort == v;
           return ListTile(
-            leading: Icon(ic, color: Colors.white.withValues(alpha: 0.86)),
+            leading: Icon(ic, color: fg),
             title: Text(
               title,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
+                color: fg,
                 fontWeight: FontWeight.w600,
               ),
             ),
             subtitle: Text(
               subtitle,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.70),
+                color: muted,
                 fontWeight: FontWeight.w600,
               ),
             ),
             trailing: selected
-                ? Icon(Icons.check, color: Colors.white.withValues(alpha: 0.92))
+                ? Icon(Icons.check, color: fg)
                 : null,
             onTap: () => Navigator.of(ctx).pop(v),
           );
@@ -339,6 +343,10 @@ class _TimelineTabState extends State<TimelineTab> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        final isDark = GlassTokens.isDark(ctx);
+
         return StatefulBuilder(
           builder: (ctx, setLocal) {
             return AlertDialog(
@@ -354,7 +362,7 @@ class _TimelineTabState extends State<TimelineTab> {
                     Text(
                       'Choose Default Language',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.92),
+                        color: fg,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
@@ -371,7 +379,7 @@ class _TimelineTabState extends State<TimelineTab> {
                                 e.value,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.92),
+                                  color: fg,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -382,7 +390,9 @@ class _TimelineTabState extends State<TimelineTab> {
                         if (v == null) return;
                         setLocal(() => selected = v);
                       },
-                      dropdownColor: const Color.fromARGB(190, 0, 0, 0),
+                      dropdownColor: isDark
+                          ? const Color(0xFF1E1E26)
+                          : const Color(0xFFFFFFFF),
                       decoration: InputDecoration(
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(
@@ -391,19 +401,25 @@ class _TimelineTabState extends State<TimelineTab> {
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderSide: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.22),
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.22)
+                                : Colors.black.withValues(alpha: 0.22),
                             width: 1,
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderSide: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.32),
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.40)
+                                : Colors.black.withValues(alpha: 0.40),
                             width: 1.2,
                           ),
                         ),
                         border: OutlineInputBorder(
                           borderSide: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.22),
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.22)
+                                : Colors.black.withValues(alpha: 0.22),
                           ),
                         ),
                       ),
@@ -412,7 +428,7 @@ class _TimelineTabState extends State<TimelineTab> {
                     Text(
                       'You can change the language later when transcribing.',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.55),
+                        color: muted,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -766,31 +782,49 @@ class _TimelineTabState extends State<TimelineTab> {
     await _load();
   }
 
-  // ✅ Small tag beside Timeline (NO blur, NO grain)
-  Widget _modelDownloadingTag(bool isDark) {
+  // ✅ Small tag beside Timeline (Solid, theme-aware)
+  Widget _modelDownloadingTag(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final pct = (_qwenProgress.percent * 100).clamp(0, 100).toInt();
+    final label = pct > 0 ? 'DOWNLOADING $pct%' : 'DOWNLOADING';
+
     return Padding(
       padding: const EdgeInsets.only(left: 10),
-      child: LiquidGlass(
-        borderRadius: BorderRadius.circular(999),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        shadow: false,
-
-        // ✅ PERF: disable expensive effects for small tag
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-
-        tintOpacityDark: 0.040,
-        tintOpacityLight: 0.035,
-        borderOpacityDark: 0.16,
-        borderOpacityLight: 0.18,
-        child: Text(
-          'MODEL DOWNLOADING',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.25,
-            color: Colors.white.withValues(alpha: 0.92),
-            fontSize: 10,
+      child: GestureDetector(
+        onTap: () => _openPage(const ModelPickerPage()),
+        child: LiquidGlass(
+          borderRadius: BorderRadius.circular(999),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          backgroundColor:
+              isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
+          borderColor:
+              isDark ? GlassTokens.borderDark : GlassTokens.borderLight,
+          shadow: false,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.8,
+                  value:
+                      _qwenProgress.percent > 0 ? _qwenProgress.percent : null,
+                  color: fg,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.25,
+                  color: fg,
+                  fontSize: 10,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -800,9 +834,10 @@ class _TimelineTabState extends State<TimelineTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     final showModelDownloading = _qwenProgress.downloading;
+
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -829,20 +864,18 @@ class _TimelineTabState extends State<TimelineTab> {
                                 style: theme.textTheme.headlineSmall?.copyWith(
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: -0.2,
-                                  color: Colors.white.withValues(alpha: 0.92),
+                                  color: fg,
                                 ),
                               ),
                               if (showModelDownloading)
-                                _modelDownloadingTag(isDark),
+                                _modelDownloadingTag(context),
                             ],
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'Your recent recordings and transcripts',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.70)
-                                  : Colors.black.withValues(alpha: 0.54),
+                              color: muted,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -864,7 +897,7 @@ class _TimelineTabState extends State<TimelineTab> {
                           },
                           icon: Icon(
                             Icons.settings,
-                            color: Colors.white.withValues(alpha: 0.88),
+                            color: fg,
                           ),
                         ),
                       ],
@@ -928,7 +961,7 @@ class _TimelineTabState extends State<TimelineTab> {
                         tooltip: 'Sort',
                         icon: Icon(
                           Icons.sort,
-                          color: Colors.white.withValues(alpha: 0.86),
+                          color: fg,
                         ),
                         onPressed: _showTranscriptSortSheet,
                       ),
@@ -945,7 +978,7 @@ class _TimelineTabState extends State<TimelineTab> {
                               )
                             : Icon(
                                 Icons.refresh,
-                                color: Colors.white.withValues(alpha: 0.86),
+                                color: fg,
                               ),
                       ),
                     ],
@@ -1022,6 +1055,9 @@ class _TimelineTabState extends State<TimelineTab> {
             ? _fmtDate(t.createdAt)
             : '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
 
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 14,
@@ -1036,7 +1072,7 @@ class _TimelineTabState extends State<TimelineTab> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
+                    color: fg,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1047,7 +1083,7 @@ class _TimelineTabState extends State<TimelineTab> {
           subtitle: Text(
             sub,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.70),
+              color: muted,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1058,9 +1094,7 @@ class _TimelineTabState extends State<TimelineTab> {
                 tooltip: t.isFavourite ? 'Unfavourite' : 'Favourite',
                 icon: Icon(
                   t.isFavourite ? Icons.favorite : Icons.favorite_border,
-                  color: Colors.white.withValues(
-                    alpha: t.isFavourite ? 0.92 : 0.72,
-                  ),
+                  color: t.isFavourite ? Colors.redAccent : muted,
                 ),
                 onPressed: () => _toggleFavourite(t),
               ),
@@ -1068,7 +1102,7 @@ class _TimelineTabState extends State<TimelineTab> {
                 tooltip: 'Delete',
                 icon: Icon(
                   Icons.delete_outline,
-                  color: Colors.white.withValues(alpha: 0.62),
+                  color: muted,
                 ),
                 onPressed: () async => _onDeletePressed(t),
               ),
@@ -1145,7 +1179,8 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -1160,16 +1195,14 @@ class _SectionHeader extends StatelessWidget {
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.92),
+                    color: fg,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.70)
-                        : Colors.black.withValues(alpha: 0.54),
+                    color: muted,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1191,6 +1224,8 @@ class _SectionHeaderWithoutSubtitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -1201,7 +1236,7 @@ class _SectionHeaderWithoutSubtitle extends StatelessWidget {
               title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: Colors.white.withValues(alpha: 0.92),
+                color: fg,
               ),
             ),
           ),
@@ -1247,43 +1282,30 @@ class _QuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+    final isDark = GlassTokens.isDark(context);
+
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => onTap(),
       child: LiquidGlass(
         borderRadius: BorderRadius.circular(16),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        backgroundColor:
+            isDark ? GlassTokens.cardDark : GlassTokens.cardLight,
         shadow: false,
-
-        // ✅ PERF: tiles are interactive + many on screen → no blur/grain
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-
-        tintOpacityDark: 0.050,
-        tintOpacityLight: 0.040,
-        borderOpacityDark: 0.14,
-        borderOpacityLight: 0.18,
         child: Row(
           children: [
-            // ✅ PERF: remove nested blur glass — make icon pill tint-only
             LiquidGlass(
               borderRadius: BorderRadius.circular(14),
               padding: const EdgeInsets.all(10),
+              backgroundColor:
+                  isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
               shadow: false,
-
-              blurX: 0,
-              blurY: 0,
-              grain: false,
-
-              tintOpacityDark: 0.030,
-              tintOpacityLight: 0.026,
-              borderOpacityDark: 0.10,
-              borderOpacityLight: 0.12,
               child: Icon(
                 icon,
                 size: 18,
-                color: Colors.white.withValues(alpha: 0.90),
+                color: fg,
               ),
             ),
             const SizedBox(width: 10),
@@ -1294,7 +1316,7 @@ class _QuickTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.92),
+                  color: fg,
                 ),
               ),
             ),

@@ -21,6 +21,7 @@ import '../common/confirm_dialog.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_divider.dart';
 import '../ui/glass/liquid_glass.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class AccountTab extends StatefulWidget {
   const AccountTab({super.key, this.onUpgradeSuccess});
@@ -541,6 +542,10 @@ class _AccountTabState extends State<AccountTab> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) {
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        final isDark = GlassTokens.isDark(ctx);
+
         final monthly = _priceLabel(kProMonthlyId);
         final yearly = _priceLabel(kProYearlyId);
         final lifetime = _priceLabel(kProLifetimeId);
@@ -561,7 +566,7 @@ class _AccountTabState extends State<AccountTab> {
             variant: GlassCardVariant.panel,
             padding: EdgeInsets.zero,
             child: ListTile(
-              leading: Icon(icon, color: Colors.white.withValues(alpha: 0.90)),
+              leading: Icon(icon, color: fg),
               title: Row(
                 children: [
                   Expanded(
@@ -569,7 +574,7 @@ class _AccountTabState extends State<AccountTab> {
                       title,
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        color: Colors.white.withValues(alpha: 0.92),
+                        color: fg,
                       ),
                     ),
                   ),
@@ -578,7 +583,7 @@ class _AccountTabState extends State<AccountTab> {
               ),
               subtitle: Text(
                 subtitle,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.70)),
+                style: TextStyle(color: muted),
               ),
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -588,13 +593,13 @@ class _AccountTabState extends State<AccountTab> {
                     priceRight,
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: Colors.white.withValues(alpha: 0.92),
+                      color: fg,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Icon(
                     Icons.chevron_right,
-                    color: Colors.white.withValues(alpha: 0.70),
+                    color: muted,
                   ),
                 ],
               ),
@@ -604,24 +609,19 @@ class _AccountTabState extends State<AccountTab> {
         }
 
         Widget badgePill(String text) {
-          // ✅ black/white only, no orange (you asked everywhere else)
           return LiquidGlass(
             borderRadius: BorderRadius.circular(999),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            backgroundColor:
+                isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
             shadow: false,
-            blurX: 10,
-            blurY: 10,
-            tintOpacityDark: 0.040,
-            tintOpacityLight: 0.032,
-            borderOpacityDark: 0.14,
-            borderOpacityLight: 0.18,
             child: Text(
               text,
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.2,
-                color: Colors.white.withValues(alpha: 0.78),
+                color: muted,
               ),
             ),
           );
@@ -643,14 +643,16 @@ class _AccountTabState extends State<AccountTab> {
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(99),
-                      color: Colors.white.withValues(alpha: 0.14),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.14)
+                          : Colors.black.withValues(alpha: 0.14),
                     ),
                   ),
                   Row(
                     children: [
                       Icon(
                         Icons.workspace_premium_outlined,
-                        color: Colors.white.withValues(alpha: 0.90),
+                        color: fg,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -659,14 +661,14 @@ class _AccountTabState extends State<AccountTab> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
-                            color: Colors.white.withValues(alpha: 0.92),
+                            color: fg,
                           ),
                         ),
                       ),
                       IconButton(
                         icon: Icon(
                           Icons.close,
-                          color: Colors.white.withValues(alpha: 0.85),
+                          color: fg,
                         ),
                         onPressed: () => Navigator.of(ctx).pop(),
                       ),
@@ -722,19 +724,27 @@ class _AccountTabState extends State<AccountTab> {
                               Navigator.of(ctx).pop();
                               await _restorePurchasesFlow();
                             },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: fg,
+                        side: BorderSide(
+                          color: isDark
+                              ? GlassTokens.borderDark
+                              : GlassTokens.borderLight,
+                        ),
+                      ),
                       icon: _restoring
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.white,
+                                color: fg,
                               ),
                             )
-                          : const Icon(Icons.restore, color: Colors.white),
+                          : Icon(Icons.restore, color: fg),
                       label: Text(
                         _restoring ? 'Restoring…' : 'Restore Purchases',
-                        style: const TextStyle(color: Colors.white),
+                        style: TextStyle(color: fg),
                       ),
                     ),
                   ),
@@ -851,11 +861,12 @@ class _AccountTabState extends State<AccountTab> {
 
     final accessEnabled = (_proActive || _trialActive);
 
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final isDark = GlassTokens.isDark(context);
 
     return RefreshIndicator(
-      color: Colors.white,
+      color: fg,
       onRefresh: () async {
         await _loadProfile(force: true);
         await _prefetchPricing();
@@ -881,16 +892,14 @@ class _AccountTabState extends State<AccountTab> {
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w900,
-                          color: Colors.white.withValues(alpha: 0.92),
+                          color: fg,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _profile?.email ?? user.email ?? 'Unknown',
                         style: TextStyle(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.70)
-                              : Colors.black54,
+                          color: muted,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -922,10 +931,10 @@ class _AccountTabState extends State<AccountTab> {
           const SizedBox(height: 12),
 
           if (_loading)
-            const Center(
+            Center(
               child: Padding(
-                padding: EdgeInsets.all(12),
-                child: CircularProgressIndicator(color: Colors.white),
+                padding: const EdgeInsets.all(12),
+                child: CircularProgressIndicator(color: fg),
               ),
             ),
 
@@ -941,7 +950,7 @@ class _AccountTabState extends State<AccountTab> {
                     'Plan details',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: Colors.white.withValues(alpha: 0.92),
+                      color: fg,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -977,14 +986,19 @@ class _AccountTabState extends State<AccountTab> {
 
                   const SizedBox(height: 14),
 
-                  // 1) lifetime => disabled button
-                  // 2) active subscription => manage subscription
-                  // 3) not pro => get pro sheet
                   if (_proActive && _isLifetime) ...[
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: null,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: fg,
+                          side: BorderSide(
+                            color: isDark
+                                ? GlassTokens.borderDark
+                                : GlassTokens.borderLight,
+                          ),
+                        ),
                         icon: const Icon(Icons.verified),
                         label: const Text('You are Pro (Lifetime)'),
                       ),
@@ -998,8 +1012,13 @@ class _AccountTabState extends State<AccountTab> {
                             : _openManageSubscription,
                         icon: const Icon(Icons.manage_accounts_outlined),
                         label: const Text('Manage subscription'),
-                        style: FilledButton.styleFrom(
-                          foregroundColor: Colors.white,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: fg,
+                          side: BorderSide(
+                            color: isDark
+                                ? GlassTokens.borderDark
+                                : GlassTokens.borderLight,
+                          ),
                         ),
                       ),
                     ),
@@ -1011,18 +1030,23 @@ class _AccountTabState extends State<AccountTab> {
                             ? null
                             : _showUpgradeOptionsSheet,
                         icon: _upgrading
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 18,
                                 height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: fg,
                                 ),
                               )
                             : const Icon(Icons.workspace_premium_outlined),
                         label: Text(_upgrading ? 'Processing…' : 'Get Pro'),
-                        style: FilledButton.styleFrom(
-                          foregroundColor: Colors.white,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: fg,
+                          side: BorderSide(
+                            color: isDark
+                                ? GlassTokens.borderDark
+                                : GlassTokens.borderLight,
+                          ),
                         ),
                       ),
                     ),
@@ -1043,7 +1067,7 @@ class _AccountTabState extends State<AccountTab> {
                     accessEnabled
                         ? Icons.lock_open_outlined
                         : Icons.lock_outline,
-                    color: Colors.white.withValues(alpha: 0.88),
+                    color: fg,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -1051,7 +1075,7 @@ class _AccountTabState extends State<AccountTab> {
                       accessEnabled ? 'Access enabled' : 'Access disabled',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        color: Colors.white.withValues(alpha: 0.88),
+                        color: fg,
                       ),
                     ),
                   ),
@@ -1066,10 +1090,18 @@ class _AccountTabState extends State<AccountTab> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: _signOut,
-                icon: const Icon(Icons.logout, color: Colors.white),
-                label: const Text(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: fg,
+                  side: BorderSide(
+                    color: isDark
+                        ? GlassTokens.borderDark
+                        : GlassTokens.borderLight,
+                  ),
+                ),
+                icon: Icon(Icons.logout, color: fg),
+                label: Text(
                   'Sign out',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: fg),
                 ),
               ),
             ),
@@ -1080,23 +1112,29 @@ class _AccountTabState extends State<AccountTab> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: _deleting ? null : _deleteAccount,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.redAccent,
+                  side: BorderSide(
+                    color: Colors.redAccent.withValues(alpha: 0.4),
+                  ),
+                ),
                 icon: _deleting
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white,
+                          color: Colors.redAccent,
                         ),
                       )
-                    : Icon(
+                    : const Icon(
                         Icons.delete_forever_outlined,
-                        color: Colors.white.withValues(alpha: 0.92),
+                        color: Colors.redAccent,
                       ),
                 label: Text(
                   _deleting ? 'Deleting…' : 'Delete account',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
+                  style: const TextStyle(
+                    color: Colors.redAccent,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1112,7 +1150,7 @@ class _AccountTabState extends State<AccountTab> {
               child: Text(
                 _error!,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.85),
+                  color: muted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1126,7 +1164,8 @@ class _AccountTabState extends State<AccountTab> {
   }
 
   Widget _kvRow(String k, String v, {Widget? trailing}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return Row(
       children: [
@@ -1136,9 +1175,7 @@ class _AccountTabState extends State<AccountTab> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.70)
-                  : Colors.black54,
+              color: muted,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1156,7 +1193,7 @@ class _AccountTabState extends State<AccountTab> {
                   overflow: TextOverflow.visible,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    color: Colors.white.withValues(alpha: 0.92),
+                    color: fg,
                   ),
                 ),
               ),
@@ -1177,22 +1214,21 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final muted = GlassTokens.muted(context);
+    final isDark = GlassTokens.isDark(context);
+
     return LiquidGlass(
       borderRadius: BorderRadius.circular(999),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      backgroundColor:
+          isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
       shadow: false,
-      blurX: 12,
-      blurY: 12,
-      tintOpacityDark: 0.040,
-      tintOpacityLight: 0.032,
-      borderOpacityDark: 0.14,
-      borderOpacityLight: 0.18,
       child: Text(
         text,
         style: TextStyle(
           fontSize: 11.5,
           fontWeight: FontWeight.w800,
-          color: Colors.white.withValues(alpha: 0.78),
+          color: muted,
         ),
       ),
     );

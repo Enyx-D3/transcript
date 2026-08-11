@@ -219,46 +219,40 @@ class _BottomDockNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     Color iconColor(Set<WidgetState> states) {
       final selected = states.contains(WidgetState.selected);
-      if (selected) return Colors.white.withValues(alpha: 0.96);
-      return Colors.white.withValues(alpha: 0.70);
+      if (selected) return fg;
+      return muted;
     }
 
     TextStyle labelStyle(Set<WidgetState> states) {
       final selected = states.contains(WidgetState.selected);
       return TextStyle(
         fontSize: 12,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.w600, // ✅ Apple-ish
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
         letterSpacing: 0.1,
-        color: selected
-            ? Colors.white.withValues(alpha: 0.92)
-            : Colors.white.withValues(alpha: 0.68),
+        color: selected ? fg : muted,
       );
     }
 
     Widget recordIcon(bool selected) {
-      final fg = selected
-          ? Colors.white.withValues(alpha: 0.95)
-          : Colors.white.withValues(alpha: 0.72);
+      final micColor = selected ? fg : muted;
 
       return LiquidGlass(
         borderRadius: BorderRadius.circular(999),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        blurX: isDark ? 16 : 12,
-        blurY: isDark ? 16 : 12,
+        backgroundColor: selected
+            ? (isDark ? const Color(0xFF282832) : const Color(0xFFE2E2EA))
+            : (isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight),
         shadow: false,
-        tintOpacityDark: selected ? 0.070 : 0.045,
-        tintOpacityLight: selected ? 0.055 : 0.035,
-        borderOpacityDark: selected ? 0.18 : 0.14,
-        borderOpacityLight: selected ? 0.22 : 0.18,
-        child: Icon(Icons.mic, size: 22, color: fg),
+        child: Icon(Icons.mic, size: 22, color: micColor),
       );
     }
 
     return GlassDock(
-      // Dock tuning already “Apple”; keep it.
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: NavigationBarTheme(
@@ -266,7 +260,9 @@ class _BottomDockNav extends StatelessWidget {
             height: 66,
             backgroundColor: Colors.transparent,
             elevation: 0,
-            indicatorColor: Colors.white.withValues(alpha: 0.08),
+            indicatorColor: isDark
+                ? Colors.white.withValues(alpha: 0.10)
+                : Colors.black.withValues(alpha: 0.08),
             indicatorShape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -326,15 +322,12 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-    final titleColor = Colors.white.withValues(alpha: 0.92);
-    final subColor = Colors.white.withValues(alpha: 0.70);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return Stack(
       children: [
-        // ✅ Proper glass barrier (blur + dim)
-        GlassModalBarrier(onTap: null),
-
-        // ✅ Glass panel
+        const GlassModalBarrier(onTap: null),
         GlassModal(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -344,16 +337,10 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
                   LiquidGlass(
                     borderRadius: BorderRadius.circular(14),
                     padding: const EdgeInsets.all(10),
-                    blurX: isDark ? 16 : 12,
-                    blurY: isDark ? 16 : 12,
                     shadow: false,
-                    tintOpacityDark: 0.055,
-                    tintOpacityLight: 0.040,
-                    borderOpacityDark: 0.14,
-                    borderOpacityLight: 0.18,
                     child: Icon(
                       Icons.lock_outline,
-                      color: Colors.white.withValues(alpha: 0.92),
+                      color: fg,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -365,17 +352,17 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
                           'Access locked',
                           style: TextStyle(
                             fontSize: 16.5,
-                            fontWeight: FontWeight.w700, // ✅ less heavy
-                            color: titleColor,
+                            fontWeight: FontWeight.w700,
+                            color: fg,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'Trial ended or Pro inactive',
                           style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 12,
+                            color: muted,
                             fontWeight: FontWeight.w600,
-                            color: subColor,
                           ),
                         ),
                       ],
@@ -387,7 +374,7 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
               Text(
                 'Upgrade to continue using the app.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: subColor, fontWeight: FontWeight.w600),
+                style: TextStyle(color: muted, fontWeight: FontWeight.w600),
               ),
 
               if (error != null && error!.trim().isNotEmpty) ...[
@@ -395,47 +382,36 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
                 LiquidGlass(
                   borderRadius: BorderRadius.circular(14),
                   padding: const EdgeInsets.all(10),
-                  blurX: isDark ? 16 : 12,
-                  blurY: isDark ? 16 : 12,
                   shadow: false,
-                  tintOpacityDark: 0.040,
-                  tintOpacityLight: 0.035,
-                  borderOpacityDark: 0.14,
-                  borderOpacityLight: 0.18,
+                  backgroundColor:
+                      isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
                   child: Text(
-                    'Internet is required to verify access.\nDetails: $error',
+                    error!,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11.5,
+                      color: muted,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.82),
-                      height: 1.25,
                     ),
                   ),
                 ),
               ],
+              const SizedBox(height: 14),
 
-              const SizedBox(height: 12),
+              GlassButton(
+                label: 'View Plans',
+                icon: Icons.workspace_premium_outlined,
+                onPressed: onUpgrade,
+              ),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: GlassButton(
-                      label: retrying ? 'Checking…' : 'Retry',
-                      kind: GlassButtonKind.secondary,
-                      onPressed: retrying ? null : onRetry,
-                      loading: retrying,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GlassButton(
-                      label: 'Upgrade',
-                      kind: GlassButtonKind.primary,
-                      icon: Icons.workspace_premium_outlined,
-                      onPressed: onUpgrade,
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 8),
+
+              GlassButton(
+                label: retrying ? 'Checking…' : 'Retry',
+                icon: Icons.refresh,
+                kind: GlassButtonKind.secondary,
+                loading: retrying,
+                onPressed: retrying ? null : onRetry,
               ),
             ],
           ),

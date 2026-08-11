@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../ui/glass/liquid_glass.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class EmptyState extends StatelessWidget {
   const EmptyState({
@@ -13,7 +14,6 @@ class EmptyState extends StatelessWidget {
 
   final String title;
   final String subtitle;
-
   final IconData icon;
   final double iconSize;
   final EdgeInsets padding;
@@ -21,6 +21,9 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final isDark = GlassTokens.isDark(context);
 
     return Center(
       child: Padding(
@@ -31,25 +34,21 @@ class EmptyState extends StatelessWidget {
             LiquidGlass(
               borderRadius: BorderRadius.circular(18),
               padding: const EdgeInsets.all(14),
+              backgroundColor:
+                  isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
               shadow: false,
-              blurX: 16,
-              blurY: 16,
-              tintOpacityDark: 0.05,
-              tintOpacityLight: 0.04,
-              borderOpacityDark: 0.14,
-              borderOpacityLight: 0.18,
               child: Icon(
                 icon,
                 size: iconSize,
-                color: Colors.white.withValues(alpha: 0.82),
+                color: fg.withValues(alpha: 0.85),
               ),
             ),
             const SizedBox(height: 10),
             Text(
               title,
               style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: Colors.white.withValues(alpha: 0.92),
+                fontWeight: FontWeight.w800,
+                color: fg,
               ),
             ),
             const SizedBox(height: 4),
@@ -57,7 +56,7 @@ class EmptyState extends StatelessWidget {
               subtitle,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.white.withValues(alpha: 0.70),
+                color: muted,
                 fontWeight: FontWeight.w600,
                 height: 1.25,
               ),
