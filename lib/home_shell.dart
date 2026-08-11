@@ -229,28 +229,20 @@ class _BottomDockNav extends StatelessWidget {
     return Container(
       color: bg,
       child: Padding(
-        padding: EdgeInsets.only(bottom: bottomInset),
+        padding: EdgeInsets.only(bottom: bottomInset > 0 ? bottomInset : 16),
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.topCenter,
           children: [
             // Main Navigation Bar Container
             Container(
-              height: 64,
+              height: 76,
               decoration: BoxDecoration(
                 color: bg,
                 border: Border(
                   top: BorderSide(color: border, width: 1),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isDark
-                        ? Colors.black.withValues(alpha: 0.35)
-                        : Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
+                // Removed the glow/shadow as requested
               ),
               child: Row(
                 children: [
@@ -312,7 +304,7 @@ class _BottomDockNav extends StatelessWidget {
 
             // Floating Center Mic Button (Slightly lowered, clean with no glow)
             Positioned(
-              top: -10,
+              top: 0,
               child: _FloatingMicButton(
                 onTap: () => onSelect(2),
               ),

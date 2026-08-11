@@ -847,164 +847,165 @@ class _TimelineTabState extends State<TimelineTab> {
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-            child: Column(
-              children: [
-                // ---------- Fixed header ----------
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
+            child: NestedScrollView(
+              headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      // ---------- Fixed header ----------
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Timeline',
+                                      style: theme.textTheme.headlineSmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.2,
+                                        color: fg,
+                                      ),
+                                    ),
+                                    if (showModelDownloading)
+                                      _modelDownloadingTag(context),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Your recent recordings and transcripts',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: muted,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                           Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                'Timeline',
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -0.2,
+                              IconButton(
+                                tooltip: 'Settings',
+                                onPressed: () => _openPage(
+                                  SettingsPage(
+                                    onUpgradeSuccess: widget.onUpgradeSuccess,
+                                  ),
+                                ),
+                                onLongPress: () async {
+                                  await debugResetOnboardingFlags();
+                                },
+                                icon: Icon(
+                                  Icons.settings,
                                   color: fg,
                                 ),
                               ),
-                              if (showModelDownloading)
-                                _modelDownloadingTag(context),
                             ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Your recent recordings and transcripts',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: muted,
-                              fontWeight: FontWeight.w600,
-                            ),
                           ),
                         ],
                       ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: 'Settings',
-                          onPressed: () => _openPage(
-                            SettingsPage(
-                              onUpgradeSuccess: widget.onUpgradeSuccess,
-                            ),
+
+                      const SizedBox(height: 14),
+
+                      // ---------- Fixed quick actions ----------
+                      const _SectionHeaderWithoutSubtitle(title: 'Quick actions'),
+                      const SizedBox(height: 10),
+
+                      _QuickActionGrid(
+                        children: [
+                          _QuickTile(
+                            icon: Icons.people,
+                            label: 'Enroll Voice',
+                            onTap: () => _openPage(const EnrollmentFlowPage()),
                           ),
-                          onLongPress: () async {
-                            await debugResetOnboardingFlags();
-                          },
-                          icon: Icon(
-                            Icons.settings,
-                            color: fg,
+                          _QuickTile(
+                            icon: Icons.person_search,
+                            label: 'People',
+                            onTap: () => _openPage(const SpeakerMemoryPage()),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 14),
-
-                // ---------- Fixed quick actions ----------
-                const _SectionHeaderWithoutSubtitle(title: 'Quick actions'),
-                const SizedBox(height: 10),
-
-                _QuickActionGrid(
-                  children: [
-                    _QuickTile(
-                      icon: Icons.people,
-                      label: 'Enroll Voice',
-                      onTap: () => _openPage(const EnrollmentFlowPage()),
-                    ),
-                    _QuickTile(
-                      icon: Icons.person_search,
-                      label: 'People',
-                      onTap: () => _openPage(const SpeakerMemoryPage()),
-                    ),
-                    _QuickTile(
-                      icon: Icons.video_library_outlined,
-                      label: 'YouTube Transcript',
-                      onTap: () => _openPage(const TranscriptYoutubePage()),
-                    ),
-                    _QuickTile(
-                      icon: Icons.audio_file,
-                      label: 'Audio File',
-                      onTap: () => ImportAudioSheet.show(context),
-                    ),
-                    _QuickTile(
-                      icon: Icons.video_file,
-                      label: 'Video File',
-                      onTap: () => ImportVideoSheet.show(context),
-                    ),
-                    _QuickTile(
-                      icon: Icons.call,
-                      label: 'Phone Call',
-                      onTap: () => _comingSoon(),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // ---------- Fixed transcripts header row ----------
-                _SectionHeader(
-                  title: 'Transcripts',
-                  subtitle: _items.isEmpty
-                      ? 'Nothing here yet (Refresh to fetch latest)'
-                      : '${_items.length} item${_items.length == 1 ? '' : 's'} (Refresh to fetch latest)',
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'Sort',
-                        icon: Icon(
-                          Icons.sort,
-                          color: fg,
-                        ),
-                        onPressed: _showTranscriptSortSheet,
+                          _QuickTile(
+                            icon: Icons.video_library_outlined,
+                            label: 'YouTube Transcript',
+                            onTap: () => _openPage(const TranscriptYoutubePage()),
+                          ),
+                          _QuickTile(
+                            icon: Icons.audio_file,
+                            label: 'Audio File',
+                            onTap: () => ImportAudioSheet.show(context),
+                          ),
+                          _QuickTile(
+                            icon: Icons.video_file,
+                            label: 'Video File',
+                            onTap: () => ImportVideoSheet.show(context),
+                          ),
+                          _QuickTile(
+                            icon: Icons.call,
+                            label: 'Phone Call',
+                            onTap: () => _comingSoon(),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        tooltip: 'Reload',
-                        onPressed: _loading ? null : _load,
-                        icon: _loading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Icon(
-                                Icons.refresh,
+
+                      const SizedBox(height: 16),
+
+                      // ---------- Fixed transcripts header row ----------
+                      _SectionHeader(
+                        title: 'Transcripts',
+                        subtitle: _items.isEmpty
+                            ? 'Nothing here yet (Refresh to fetch latest)'
+                            : '${_items.length} item${_items.length == 1 ? '' : 's'} (Refresh to fetch latest)',
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Sort',
+                              icon: Icon(
+                                Icons.sort,
                                 color: fg,
                               ),
+                              onPressed: _showTranscriptSortSheet,
+                            ),
+                            IconButton(
+                              tooltip: 'Reload',
+                              onPressed: _loading ? null : _load,
+                              icon: _loading
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.refresh,
+                                      color: fg,
+                                    ),
+                            ),
+                          ],
+                        ),
                       ),
+
+                      const SizedBox(height: 10),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 10),
-
-                // ✅ ONLY THIS AREA SCROLLS (Glass panel)
-                Expanded(
-                  child: GlassCard(
-                    variant: GlassCardVariant.tile,
-                    padding: EdgeInsets.zero,
-                    child: _items.isEmpty
-                        ? const EmptyState(
-                            title: 'No transcripts yet',
-                            subtitle:
-                                'Your transcripts will appear here after you record.',
-                            icon: Icons.dangerous,
-                          )
-                        : _buildList(),
-                  ),
-                ),
-
-                const SizedBox(height: 2),
               ],
+              // ✅ ONLY THIS AREA SCROLLS NATIVELY (Glass panel)
+              body: GlassCard(
+                variant: GlassCardVariant.tile,
+                padding: EdgeInsets.zero,
+                child: _items.isEmpty
+                    ? const EmptyState(
+                        title: 'No transcripts yet',
+                        subtitle:
+                            'Your transcripts will appear here after you record.',
+                        icon: Icons.dangerous,
+                      )
+                    : _buildList(),
+              ),
             ),
           ),
         ),
