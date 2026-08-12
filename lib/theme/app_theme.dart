@@ -13,11 +13,11 @@ class AppTheme {
     dividerColor: const Color(0xFF282832),
 
     colorScheme: const ColorScheme.dark(
-      primary: Colors.white,
-      secondary: Colors.white,
+      primary: Color(0xFF007AFF),
+      secondary: Color(0xFF007AFF),
       surface: Color(0xFF17171D),
       onSurface: Colors.white,
-      onPrimary: Color(0xFF0E0E12),
+      onPrimary: Colors.white,
     ),
 
     appBarTheme: const AppBarTheme(
@@ -47,8 +47,8 @@ class AppTheme {
     dividerColor: const Color(0xFFE2E2E8),
 
     colorScheme: const ColorScheme.light(
-      primary: Color(0xFF111114),
-      secondary: Color(0xFF111114),
+      primary: Color(0xFF007AFF),
+      secondary: Color(0xFF007AFF),
       surface: Color(0xFFFFFFFF),
       onSurface: Color(0xFF141418),
       onPrimary: Colors.white,

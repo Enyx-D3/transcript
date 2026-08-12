@@ -372,7 +372,7 @@ class _YoutubeSavedTranscriptPageState
   // ============================================================
 
   Widget _headerBar({required bool canShare}) {
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     return Row(
       children: [
@@ -407,7 +407,7 @@ class _YoutubeSavedTranscriptPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     // ✅ Loading state (no AppBar)
     if (_loading) {
@@ -654,7 +654,8 @@ class _DbTranscriptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     final langName = (item.language?.trim().isNotEmpty ?? false)
         ? item.language!.trim()
@@ -682,10 +683,10 @@ class _DbTranscriptCard extends StatelessWidget {
                   shadow: false,
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.language,
                         size: 16,
-                        color: Colors.white70,
+                        color: muted,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -753,9 +754,9 @@ class _GenTag extends StatelessWidget {
     final isDark = GlassTokens.isDark(context);
     final label = isGenerated ? 'AUTO' : 'MANUAL';
 
-    final color = Colors.white;
-    final border = color.withValues(alpha: isDark ? 0.50 : 0.35);
-    final bg = color.withValues(alpha: isDark ? 0.16 : 0.10);
+    final color = isDark ? Colors.white : const Color(0xFF141418);
+    final border = color.withValues(alpha: isDark ? 0.50 : 0.25);
+    final bg = color.withValues(alpha: isDark ? 0.16 : 0.06);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -784,7 +785,8 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return Padding(
       padding: const EdgeInsets.only(left: 2),
@@ -802,7 +804,7 @@ class _SectionHeader extends StatelessWidget {
           Text(
             subtitle,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.white70,
+              color: muted,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -818,7 +820,7 @@ class _MiniPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     return LiquidGlass(
       borderRadius: BorderRadius.circular(999),
@@ -840,12 +842,13 @@ class _EmptySmall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final muted = GlassTokens.muted(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 6, 2, 4),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.white70,
+        style: TextStyle(
+          color: muted,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -960,6 +963,7 @@ class _GlassIconPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
 
     return Tooltip(
       message: tooltip,
@@ -982,7 +986,7 @@ class _GlassIconPill extends StatelessWidget {
           child: Icon(
             icon,
             size: 20,
-            color: Colors.white.withValues(alpha: onTap == null ? 0.35 : 0.92),
+            color: fg.withValues(alpha: onTap == null ? 0.35 : 0.92),
           ),
         ),
       ),

@@ -6,6 +6,7 @@ import '../common/app_flushbar.dart';
 import '../objectbox/objectbox_store.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_tokens.dart';
 import '../ui/glass/liquid_glass.dart';
 import 'correction_learning.dart';
 
@@ -213,42 +214,50 @@ class _TranscriptEditorPageState extends State<TranscriptEditorPage> {
 
     final decision = await showDialog<_EditorExitAction>(
       context: context,
-      builder: (ctx) => Theme(
-        data: Theme.of(ctx),
-        child: AlertDialog(
-          backgroundColor: Colors.black87,
+      builder: (ctx) {
+        final isDark = GlassTokens.isDark(ctx);
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        const accent = Color(0xFF007AFF);
+
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E26) : Colors.white,
           surfaceTintColor: Colors.transparent,
-          title: const Text(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text(
             'Unsaved changes',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: fg, fontWeight: FontWeight.bold),
           ),
-          content: const Text(
+          content: Text(
             'Save your transcript edits before leaving?',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: muted),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(_EditorExitAction.discard),
-              child: const Text(
+              child: Text(
                 'Discard',
-                style: TextStyle(color: Colors.white70),
+                style: TextStyle(color: muted),
               ),
             ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(_EditorExitAction.cancel),
-              child: const Text(
+              child: Text(
                 'Cancel',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: fg),
               ),
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(_EditorExitAction.save),
-              style: FilledButton.styleFrom(backgroundColor: Colors.white),
-              child: const Text('Save', style: TextStyle(color: Colors.black)),
+              style: FilledButton.styleFrom(
+                backgroundColor: accent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
 
     switch (decision) {
@@ -293,8 +302,8 @@ class _TranscriptEditorPageState extends State<TranscriptEditorPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
-    final muted = Colors.white.withValues(alpha: 0.68);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return PopScope(
       canPop: false,
@@ -456,8 +465,8 @@ class _TranscriptEditorPageState extends State<TranscriptEditorPage> {
                             minLines: null,
                             textAlignVertical: TextAlignVertical.top,
                             keyboardType: TextInputType.multiline,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: fg,
                               height: 1.5,
                               fontSize: 15,
                               fontWeight: FontWeight.w500,
@@ -467,7 +476,7 @@ class _TranscriptEditorPageState extends State<TranscriptEditorPage> {
                               hintText:
                                   'Edit the transcript here.\n\nFormat each line as: Speaker: text',
                               hintStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.40),
+                                color: muted.withValues(alpha: 0.6),
                                 height: 1.5,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -502,6 +511,8 @@ class _EditorIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
     final enabled = onTap != null;
     return Tooltip(
       message: tooltip,
@@ -512,15 +523,17 @@ class _EditorIconButton extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: Colors.white.withValues(alpha: enabled ? 0.07 : 0.03),
+            color: (isDark ? Colors.white : Colors.black)
+                .withValues(alpha: enabled ? 0.07 : 0.03),
             border: Border.all(
-              color: Colors.white.withValues(alpha: enabled ? 0.12 : 0.06),
+              color: (isDark ? Colors.white : Colors.black)
+                  .withValues(alpha: enabled ? 0.12 : 0.06),
             ),
           ),
           child: Icon(
             icon,
             size: 20,
-            color: Colors.white.withValues(alpha: enabled ? 0.92 : 0.35),
+            color: fg.withValues(alpha: enabled ? 0.92 : 0.35),
           ),
         ),
       ),
@@ -536,7 +549,8 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = accent ?? Colors.white;
+    final isDark = GlassTokens.isDark(context);
+    final color = accent ?? (isDark ? Colors.white : const Color(0xFF333344));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(

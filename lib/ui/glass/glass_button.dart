@@ -37,11 +37,11 @@ class GlassButton extends StatelessWidget {
 
     // Solid High-Contrast Colors
     final Color btnBg = isPrimary
-        ? (isDark ? Colors.white : const Color(0xFF111114))
+        ? const Color(0xFF007AFF)
         : (isDark ? const Color(0xFF22222A) : const Color(0xFFE8E8EE));
 
     final Color btnFg = isPrimary
-        ? (isDark ? const Color(0xFF0E0E12) : Colors.white)
+        ? Colors.white
         : (isDark ? Colors.white : const Color(0xFF111114));
 
     final Color btnBorder = isPrimary

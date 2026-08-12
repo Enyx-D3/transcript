@@ -2,13 +2,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:transcript/transcript/import_audio_sheet.dart';
 import 'package:transcript/transcript/import_video_sheet.dart';
 import 'package:transcript/ui/glass/glass_button.dart';
 import 'package:transcript/widgets/empty_state.dart';
-import 'package:transcript/widgets/leading_pill_icon.dart';
-import 'package:transcript/widgets/source_tag.dart';
 
 import '../onboarding/enroll_flow.dart';
 import '../debug/speaker_memory_page.dart';
@@ -37,7 +36,6 @@ import '../rate/rate_prompt_dialog.dart';
 // ✅ Glass primitives
 import '../ui/glass/liquid_glass.dart';
 import '../ui/glass/glass_card.dart';
-import '../ui/glass/glass_divider.dart';
 import '../ui/glass/glass_tokens.dart';
 
 enum _TranscriptSort {
@@ -833,11 +831,10 @@ class _TimelineTabState extends State<TimelineTab> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final showModelDownloading = _qwenProgress.downloading;
 
     final fg = GlassTokens.fg(context);
-    final muted = GlassTokens.muted(context);
+    final isDark = GlassTokens.isDark(context);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -846,482 +843,942 @@ class _TimelineTabState extends State<TimelineTab> {
         onTap: _unfocus,
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: NestedScrollView(
               headerSliverBuilder: (context, innerBoxIsScrolled) => [
                 SliverToBoxAdapter(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ---------- Fixed header ----------
+                      // ---------- Top Header Row ----------
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      'Timeline',
-                                      style: theme.textTheme.headlineSmall?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: -0.2,
-                                        color: fg,
-                                      ),
-                                    ),
-                                    if (showModelDownloading)
-                                      _modelDownloadingTag(context),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
                                 Text(
-                                  'Your recent recordings and transcripts',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: muted,
-                                    fontWeight: FontWeight.w600,
+                                  'Timeline',
+                                  style: TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w800,
+                                    color: fg,
+                                    letterSpacing: -0.4,
                                   ),
                                 ),
+                                if (showModelDownloading)
+                                  Flexible(child: _modelDownloadingTag(context)),
                               ],
                             ),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                tooltip: 'Settings',
-                                onPressed: () => _openPage(
-                                  SettingsPage(
-                                    onUpgradeSuccess: widget.onUpgradeSuccess,
-                                  ),
-                                ),
-                                onLongPress: () async {
-                                  await debugResetOnboardingFlags();
-                                },
-                                icon: Icon(
-                                  Icons.settings,
-                                  color: fg,
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF22222A)
+                                  : const Color(0xFFEEF0F6),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              tooltip: 'Settings',
+                              onPressed: () => _openPage(
+                                SettingsPage(
+                                  onUpgradeSuccess: widget.onUpgradeSuccess,
                                 ),
                               ),
-                            ],
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // ---------- Fixed quick actions ----------
-                      const _SectionHeaderWithoutSubtitle(title: 'Quick actions'),
-                      const SizedBox(height: 10),
-
-                      _QuickActionGrid(
-                        children: [
-                          _QuickTile(
-                            icon: Icons.people,
-                            label: 'Enroll Voice',
-                            onTap: () => _openPage(const EnrollmentFlowPage()),
-                          ),
-                          _QuickTile(
-                            icon: Icons.person_search,
-                            label: 'People',
-                            onTap: () => _openPage(const SpeakerMemoryPage()),
-                          ),
-                          _QuickTile(
-                            icon: Icons.video_library_outlined,
-                            label: 'YouTube Transcript',
-                            onTap: () => _openPage(const TranscriptYoutubePage()),
-                          ),
-                          _QuickTile(
-                            icon: Icons.audio_file,
-                            label: 'Audio File',
-                            onTap: () => ImportAudioSheet.show(context),
-                          ),
-                          _QuickTile(
-                            icon: Icons.video_file,
-                            label: 'Video File',
-                            onTap: () => ImportVideoSheet.show(context),
-                          ),
-                          _QuickTile(
-                            icon: Icons.call,
-                            label: 'Phone Call',
-                            onTap: () => _comingSoon(),
+                              onLongPress: () async {
+                                await debugResetOnboardingFlags();
+                              },
+                              icon: Icon(
+                                Icons.settings_outlined,
+                                size: 22,
+                                color: fg,
+                              ),
+                            ),
                           ),
                         ],
                       ),
 
                       const SizedBox(height: 16),
 
-                      // ---------- Fixed transcripts header row ----------
-                      _SectionHeader(
-                        title: 'Transcripts',
-                        subtitle: _items.isEmpty
-                            ? 'Nothing here yet (Refresh to fetch latest)'
-                            : '${_items.length} item${_items.length == 1 ? '' : 's'} (Refresh to fetch latest)',
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
+                      // ---------- Quick Action Cards Row (Horizontal Scroll) ----------
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        clipBehavior: Clip.none,
+                        child: Row(
                           children: [
-                            IconButton(
-                              tooltip: 'Sort',
-                              icon: Icon(
-                                Icons.sort,
-                                color: fg,
-                              ),
-                              onPressed: _showTranscriptSortSheet,
+                            // 1. Record Meeting
+                            _TimelineActionCard(
+                              title: 'Record',
+                              subtitle: 'Meeting',
+                              icon: Icons.mic_rounded,
+                              iconColor: const Color(0xFF007AFF),
+                              iconBgColor: isDark
+                                  ? const Color(0xFF1E2A3A)
+                                  : const Color(0xFFEBF3FF),
+                              onTap: () => widget.onNavigateToTab(2),
                             ),
-                            IconButton(
-                              tooltip: 'Reload',
-                              onPressed: _loading ? null : _load,
-                              icon: _loading
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Icon(
-                                      Icons.refresh,
-                                      color: fg,
-                                    ),
+                            // 2. Enroll Voice
+                            _TimelineActionCard(
+                              title: 'Enroll Voice',
+                              subtitle: 'Speaker',
+                              icon: Icons.record_voice_over_rounded,
+                              iconColor: const Color(0xFF00B087),
+                              iconBgColor: isDark
+                                  ? const Color(0xFF162E28)
+                                  : const Color(0xFFE6F8F3),
+                              onTap: () =>
+                                  _openPage(const EnrollmentFlowPage()),
+                            ),
+                            // 3. People / Speakers
+                            _TimelineActionCard(
+                              title: 'People',
+                              subtitle: 'Speakers',
+                              icon: Icons.people_alt_rounded,
+                              iconColor: const Color(0xFF635BFF),
+                              iconBgColor: isDark
+                                  ? const Color(0xFF242238)
+                                  : const Color(0xFFF0EFFF),
+                              onTap: () => _openPage(const SpeakerMemoryPage()),
+                            ),
+                            // 4. Import File
+                            _TimelineActionCard(
+                              title: 'Import',
+                              subtitle: 'File',
+                              icon: Icons.folder_rounded,
+                              iconColor: const Color(0xFF007AFF),
+                              iconBgColor: isDark
+                                  ? const Color(0xFF1E2A3A)
+                                  : const Color(0xFFE8F1FF),
+                              onTap: () => _showImportOptions(context),
+                            ),
+                            // 5. YouTube Transcript
+                            _TimelineActionCard(
+                              title: 'YouTube',
+                              subtitle: 'Transcript',
+                              icon: Icons.smart_display_rounded,
+                              iconColor: const Color(0xFFFF3B30),
+                              iconBgColor: isDark
+                                  ? const Color(0xFF382024)
+                                  : const Color(0xFFFFEAEA),
+                              onTap: () =>
+                                  _openPage(const TranscriptYoutubePage()),
                             ),
                           ],
                         ),
                       ),
 
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                     ],
                   ),
                 ),
               ],
-              // ✅ ONLY THIS AREA SCROLLS NATIVELY (Glass panel)
-              body: GlassCard(
-                variant: GlassCardVariant.tile,
-                padding: EdgeInsets.zero,
-                child: _items.isEmpty
-                    ? const EmptyState(
-                        title: 'No transcripts yet',
-                        subtitle:
-                            'Your transcripts will appear here after you record.',
-                        icon: Icons.dangerous,
-                      )
-                    : _buildList(),
+              body: RefreshIndicator(
+                onRefresh: _load,
+                color: const Color(0xFF007AFF),
+                child: _buildList(),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showImportOptions(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF191921) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Import File',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: fg,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Choose media type to transcribe',
+                style: TextStyle(fontSize: 13, color: muted),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E2A3A) : const Color(0xFFE8F1FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.audio_file_rounded, color: Color(0xFF007AFF)),
+                ),
+                title: Text('Import Audio File', style: TextStyle(fontWeight: FontWeight.w600, color: fg)),
+                subtitle: Text('MP3, WAV, M4A, AAC', style: TextStyle(fontSize: 12, color: muted)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ImportAudioSheet.show(context);
+                },
+              ),
+              const Divider(height: 16),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF242238) : const Color(0xFFF0EFFF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.video_file_rounded, color: Color(0xFF635BFF)),
+                ),
+                title: Text('Import Video File', style: TextStyle(fontWeight: FontWeight.w600, color: fg)),
+                subtitle: Text('MP4, MOV, MKV, AVI', style: TextStyle(fontSize: 12, color: muted)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ImportVideoSheet.show(context);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required String title,
+    bool showActions = false,
+  }) {
+    final fg = GlassTokens.fg(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 0, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16.5,
+              fontWeight: FontWeight.w800,
+              color: fg,
+              letterSpacing: -0.2,
+            ),
+          ),
+          if (showActions)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _AnimatedSortButton(
+                  onTap: _showTranscriptSortSheet,
+                ),
+                const SizedBox(width: 6),
+                _AnimatedReloadButton(
+                  loading: _loading,
+                  onTap: _loading ? null : _load,
+                ),
+                const SizedBox(width: 4),
+              ],
+            ),
+        ],
       ),
     );
   }
 
   Widget _buildList() {
-    return ListView.separated(
-      itemCount: _items.length,
-      padding: EdgeInsets.zero,
-      physics: const BouncingScrollPhysics(),
-
-      // ✅ PERF: keep backdrop behavior stable + reduce layer churn
-      addRepaintBoundaries: false,
-      addAutomaticKeepAlives: false,
-
-      separatorBuilder: (_, _) => const GlassDivider(),
-      itemBuilder: (ctx, i) {
-        final t = _items[i];
-
-        final title = (t.title?.trim().isNotEmpty ?? false)
-            ? t.title!.trim()
-            : 'Untitled transcript';
-        debugPrint(t.fullTextCache);
-        final st =
-            t.sourceType; // 0=record, 1=youtube, 2=audio import, 3=video import
-
-        final isYoutube = st == 1;
-        final isAudio = st == 2;
-        final isVideo = st == 3;
-
-        final IconData leadingIcon = isYoutube
-            ? Icons.subtitles
-            : (isAudio
-                  ? Icons.audio_file
-                  : (isVideo ? Icons.video_file : Icons.article_outlined));
-
-        final Widget? tag = isYoutube
-            ? const SourceTag(type: 'youtube', label: 'YOUTUBE')
-            : (isAudio
-                  ? const SourceTag(type: 'audio', label: 'AUDIO')
-                  : (isVideo
-                        ? const SourceTag(type: 'video', label: 'VIDEO')
-                        : null));
-
-        final sub = (isYoutube || isAudio || isVideo)
-            ? _fmtDate(t.createdAt)
-            : '${_fmtDate(t.createdAt)} • ${_fmtDuration(t.durationSec)}';
-
-        final fg = GlassTokens.fg(ctx);
-        final muted = GlassTokens.muted(ctx);
-
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 4,
-          ),
-          leading: LeadingPillIcon(icon: leadingIcon),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: fg,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+    if (_items.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 30),
+        children: [
+          _buildSectionHeader(title: 'Today', showActions: true),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+            child: Center(
+              child: EmptyState(
+                title: 'No transcripts yet',
+                subtitle:
+                    'Your transcripts will appear here after you record or import.',
+                icon: Icons.article_outlined,
               ),
-              if (tag != null) ...[const SizedBox(width: 8), tag],
-            ],
-          ),
-          subtitle: Text(
-            sub,
-            style: TextStyle(
-              color: muted,
-              fontWeight: FontWeight.w600,
             ),
           ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: t.isFavourite ? 'Unfavourite' : 'Favourite',
-                icon: Icon(
-                  t.isFavourite ? Icons.favorite : Icons.favorite_border,
-                  color: t.isFavourite ? Colors.redAccent : muted,
-                ),
-                onPressed: () => _toggleFavourite(t),
-              ),
-              IconButton(
-                tooltip: 'Delete',
-                icon: Icon(
-                  Icons.delete_outline,
-                  color: muted,
-                ),
-                onPressed: () async => _onDeletePressed(t),
-              ),
-            ],
-          ),
-          onTap: () async {
-            _unfocus();
+        ],
+      );
+    }
 
-            if (isYoutube) {
-              final metaId = t.youtubeMetaId;
-              if (metaId == null) {
-                if (!mounted || _disposed) return;
-                await AppFlushbar.success(
-                  context,
-                  message: 'Missing YouTube transcript reference',
-                );
-                return;
-              }
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => YoutubeSavedTranscriptPage(
-                    transcriptId: t.id,
-                    youtubeMetaId: metaId,
-                  ),
-                ),
-              );
-            } else {
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => TranscriptDetailPage(transcriptId: t.id),
-                ),
-              );
-            }
+    final groups = _groupTranscripts(_items);
 
-            _unfocus();
-            await _load();
-          },
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 30),
+      itemCount: groups.length,
+      itemBuilder: (context, groupIndex) {
+        final groupKey = groups.keys.elementAt(groupIndex);
+        final list = groups[groupKey]!;
+
+        final isFirst = groupIndex == 0;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeader(
+              title: groupKey,
+              showActions: isFirst,
+            ),
+            ...list.map(
+              (t) => _TranscriptItemCard(
+                transcript: t,
+                onTap: () => _openDetail(t),
+                onToggleFavourite: () => _toggleFavourite(t),
+                onDelete: () => _onDeletePressed(t),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  String _fmtDate(DateTime dt) {
-    final l = dt.toLocal();
-    final y = l.year.toString().padLeft(4, '0');
-    final m = l.month.toString().padLeft(2, '0');
-    final d = l.day.toString().padLeft(2, '0');
-    final hh = l.hour.toString().padLeft(2, '0');
-    final mm = l.minute.toString().padLeft(2, '0');
-    return '$y-$m-$d $hh:$mm';
+  Map<String, List<TranscriptEntity>> _groupTranscripts(
+      List<TranscriptEntity> items) {
+    final Map<String, List<TranscriptEntity>> groups = {};
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+
+    for (final t in items) {
+      final itemDate = t.createdAt.toLocal();
+      final itemDay = DateTime(itemDate.year, itemDate.month, itemDate.day);
+
+      String groupKey;
+      if (itemDay.isAtSameMomentAs(today)) {
+        groupKey = 'Today';
+      } else if (itemDay.isAtSameMomentAs(yesterday)) {
+        groupKey = 'Yesterday';
+      } else {
+        groupKey = 'Earlier';
+      }
+
+      groups.putIfAbsent(groupKey, () => []).add(t);
+    }
+    return groups;
   }
 
-  String _fmtDuration(double sec) {
-    final s = sec.isFinite && sec >= 0 ? sec : 0.0;
-    final total = s.round();
-    final m = (total ~/ 60).toString();
-    final ss = (total % 60).toString().padLeft(2, '0');
-    return '${m}m${ss}s';
+  Future<void> _openDetail(TranscriptEntity t) async {
+    _unfocus();
+    final isYoutube = t.sourceType == 1;
+
+    if (isYoutube) {
+      final metaId = t.youtubeMetaId;
+      if (metaId == null) {
+        if (!mounted || _disposed) return;
+        await AppFlushbar.success(
+          context,
+          message: 'Missing YouTube transcript reference',
+        );
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => YoutubeSavedTranscriptPage(
+            transcriptId: t.id,
+            youtubeMetaId: metaId,
+          ),
+        ),
+      );
+    } else {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TranscriptDetailPage(transcriptId: t.id),
+        ),
+      );
+    }
+
+    _unfocus();
+    await _load();
   }
 }
 
-// ---------------- UI widgets below (Glass) ----------------
+// ---------------- UI Action Cards & Items ----------------
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
+class _TimelineActionCard extends StatelessWidget {
+  const _TimelineActionCard({
     required this.title,
     required this.subtitle,
-    this.trailing,
+    required this.icon,
+    required this.iconColor,
+    required this.iconBgColor,
+    required this.onTap,
   });
 
   final String title;
   final String subtitle;
-  final Widget? trailing;
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBgColor;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(left: 2),
+    return Container(
+      width: 108,
+      height: 118,
+      margin: const EdgeInsets.only(right: 10),
+      child: Material(
+        color: isDark ? const Color(0xFF191922) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isDark ? const Color(0xFF282834) : const Color(0xFFEEF0F6),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: isDark
+                      ? Colors.black.withValues(alpha: 0.25)
+                      : Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: iconBgColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      icon,
+                      size: 22,
+                      color: iconColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Text(
                   title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  style: TextStyle(
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w700,
                     color: fg,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(
                   subtitle,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
                     color: muted,
-                    fontWeight: FontWeight.w600,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
         ),
-        if (trailing != null) trailing!,
-      ],
-    );
-  }
-}
-
-class _SectionHeaderWithoutSubtitle extends StatelessWidget {
-  const _SectionHeaderWithoutSubtitle({required this.title, this.trailing});
-
-  final String title;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = GlassTokens.fg(context);
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(left: 2),
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: fg,
-              ),
-            ),
-          ),
-        ),
-        if (trailing != null) trailing!,
-      ],
-    );
-  }
-}
-
-class _QuickActionGrid extends StatelessWidget {
-  const _QuickActionGrid({required this.children});
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      variant: GlassCardVariant.tile,
-      padding: const EdgeInsets.all(10),
-      child: GridView.count(
-        crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 2.9,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        children: children,
       ),
     );
   }
 }
 
-class _QuickTile extends StatelessWidget {
-  const _QuickTile({
-    required this.icon,
-    required this.label,
+class _TranscriptItemCard extends StatelessWidget {
+  const _TranscriptItemCard({
+    required this.transcript,
     required this.onTap,
+    required this.onToggleFavourite,
+    required this.onDelete,
   });
 
-  final IconData icon;
-  final String label;
-  final Future<void> Function() onTap;
+  final TranscriptEntity transcript;
+  final VoidCallback onTap;
+  final VoidCallback onToggleFavourite;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final fg = GlassTokens.fg(context);
     final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => onTap(),
-      child: LiquidGlass(
+    final title = (transcript.title?.trim().isNotEmpty ?? false)
+        ? transcript.title!.trim()
+        : 'Untitled transcript';
+
+    final st = transcript.sourceType; // 0=record, 1=youtube, 2=audio, 3=video
+    final isYoutube = st == 1;
+    final isAudio = st == 2;
+    final isVideo = st == 3;
+
+    // Accent bar color on the left edge
+    Color accentColor = const Color(0xFF007AFF);
+    if (isYoutube) accentColor = const Color(0xFFFF3B30);
+    if (isVideo) accentColor = const Color(0xFF635BFF);
+
+    // Format subtitle line: e.g. "10:32 AM  •  42:18  •  3 Speakers"
+    final l = transcript.createdAt.toLocal();
+    final hour = l.hour == 0 ? 12 : (l.hour > 12 ? l.hour - 12 : l.hour);
+    final min = l.minute.toString().padLeft(2, '0');
+    final ampm = l.hour >= 12 ? 'PM' : 'AM';
+    final timeStr = '$hour:$min $ampm';
+
+    final sec = transcript.durationSec.isFinite && transcript.durationSec >= 0
+        ? transcript.durationSec.round()
+        : 0;
+    final h = sec ~/ 3600;
+    final m = (sec % 3600) ~/ 60;
+    final ss = (sec % 60).toString().padLeft(2, '0');
+    final durStr = h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$ss' : '$m:$ss';
+
+    String typeStr;
+    if (isYoutube) {
+      typeStr = 'YouTube';
+    } else if (isAudio) {
+      typeStr = 'Audio File';
+    } else if (isVideo) {
+      typeStr = 'Video File';
+    } else {
+      final speakerSet = transcript.turns.map((e) => e.speakerLabel).toSet();
+      final count = speakerSet.isNotEmpty ? speakerSet.length : 1;
+      typeStr = '$count Speaker${count == 1 ? '' : 's'}';
+    }
+
+    final subtitleStr = '$timeStr  •  $durStr  •  $typeStr';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF191922) : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        backgroundColor:
-            isDark ? GlassTokens.cardDark : GlassTokens.cardLight,
-        shadow: false,
-        child: Row(
-          children: [
-            LiquidGlass(
-              borderRadius: BorderRadius.circular(14),
-              padding: const EdgeInsets.all(10),
-              backgroundColor:
-                  isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
-              shadow: false,
-              child: Icon(
-                icon,
-                size: 18,
-                color: fg,
+        border: Border.all(
+          color: isDark ? const Color(0xFF282834) : const Color(0xFFEEF0F6),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.2)
+                : Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left Accent Line Bar (matching screenshot)
+              Container(
+                width: 4.5,
+                color: accentColor,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: fg,
+              Expanded(
+                child: InkWell(
+                  onTap: onTap,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top Row: Title + 3-dots Popup Menu
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                title,
+                                style: TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: fg,
+                                  letterSpacing: -0.1,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            PopupMenuButton<String>(
+                              icon: Icon(
+                                Icons.more_vert_rounded,
+                                size: 20,
+                                color: muted,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 140),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              onSelected: (val) {
+                                if (val == 'fav') {
+                                  onToggleFavourite();
+                                } else if (val == 'delete') {
+                                  onDelete();
+                                }
+                              },
+                              itemBuilder: (ctx) => [
+                                PopupMenuItem(
+                                  value: 'fav',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        transcript.isFavourite
+                                            ? Icons.favorite
+                                            : Icons.favorite_border,
+                                        size: 18,
+                                        color: transcript.isFavourite
+                                            ? Colors.redAccent
+                                            : fg,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        transcript.isFavourite
+                                            ? 'Unfavourite'
+                                            : 'Favourite',
+                                        style: TextStyle(fontSize: 13.5, color: fg),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.delete_outline,
+                                        size: 18,
+                                        color: Colors.redAccent,
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        'Delete',
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          color: Colors.redAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        // Subtitle row & Completed pill tag
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                subtitleStr,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: muted,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Completed Tag Pill
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? const Color(0xFF1E2A3A)
+                                    : const Color(0xFFE8F1FF),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'Completed',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark
+                                      ? const Color(0xFF4DA1FF)
+                                      : const Color(0xFF007AFF),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- ANIMATED BUTTONS ----------------
+
+class _AnimatedReloadButton extends StatefulWidget {
+  const _AnimatedReloadButton({
+    required this.onTap,
+    required this.loading,
+  });
+
+  final VoidCallback? onTap;
+  final bool loading;
+
+  @override
+  State<_AnimatedReloadButton> createState() => _AnimatedReloadButtonState();
+}
+
+class _AnimatedReloadButtonState extends State<_AnimatedReloadButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _rotationAnim;
+  late final Animation<Color?> _colorAnim;
+  double _touchScale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 750),
+    );
+
+    // Silky smooth 360-degree rotation with seamless cubic ease
+    _rotationAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
+    );
+
+    _colorAnim = ColorTween(
+      begin: const Color(0xFF8E8E93),
+      end: const Color(0xFF007AFF),
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.4, curve: Curves.easeInOut),
+      ),
+    );
+
+    if (widget.loading) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedReloadButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.loading && !oldWidget.loading) {
+      _controller.repeat();
+    } else if (!widget.loading && oldWidget.loading) {
+      _controller.forward().then((_) {
+        if (mounted) _controller.reset();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    if (widget.onTap == null) return;
+    HapticFeedback.lightImpact();
+    _controller.forward(from: 0.0).then((_) {
+      if (mounted && !widget.loading) {
+        _controller.reset();
+      }
+    });
+    widget.onTap!();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = GlassTokens.muted(context);
+
+    return Tooltip(
+      message: 'Reload',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _touchScale = 0.86),
+        onTapUp: (_) => setState(() => _touchScale = 1.0),
+        onTapCancel: () => setState(() => _touchScale = 1.0),
+        onTap: _handleTap,
+        child: AnimatedScale(
+          scale: _touchScale,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final activeColor = _controller.isAnimating && !widget.loading
+                  ? (_colorAnim.value ?? const Color(0xFF007AFF))
+                  : (widget.loading ? const Color(0xFF007AFF) : muted);
+
+              return Padding(
+                padding: const EdgeInsets.all(6),
+                child: RotationTransition(
+                  turns: widget.loading ? _controller : _rotationAnim,
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: 21,
+                    color: activeColor,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimatedSortButton extends StatefulWidget {
+  const _AnimatedSortButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  State<_AnimatedSortButton> createState() => _AnimatedSortButtonState();
+}
+
+class _AnimatedSortButtonState extends State<_AnimatedSortButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _tiltAnim;
+  late final Animation<Color?> _colorAnim;
+  double _touchScale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    );
+
+    // Smooth subtle tilt swing
+    _tiltAnim = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: -0.04)
+            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 35,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: -0.04, end: 0.03)
+            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 35,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.03, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 30,
+      ),
+    ]).animate(_controller);
+
+    _colorAnim = ColorTween(
+      begin: const Color(0xFF8E8E93),
+      end: const Color(0xFF007AFF),
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeInOut),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    HapticFeedback.lightImpact();
+    _controller.forward(from: 0.0);
+    widget.onTap();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = GlassTokens.muted(context);
+
+    return Tooltip(
+      message: 'Sort',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _touchScale = 0.86),
+        onTapUp: (_) => setState(() => _touchScale = 1.0),
+        onTapCancel: () => setState(() => _touchScale = 1.0),
+        onTap: _handleTap,
+        child: AnimatedScale(
+          scale: _touchScale,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final activeColor = _controller.isAnimating
+                  ? (_colorAnim.value ?? const Color(0xFF007AFF))
+                  : muted;
+
+              return Transform.rotate(
+                angle: _controller.isAnimating ? _tiltAnim.value * 6.28 : 0.0,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(
+                    Icons.sort_rounded,
+                    size: 21,
+                    color: activeColor,
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );

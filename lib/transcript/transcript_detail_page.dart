@@ -1206,59 +1206,57 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final newLabel = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        const accent = Colors.white;
+        final isDark = GlassTokens.isDark(ctx);
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        const accent = Color(0xFF007AFF);
 
-        return Theme(
-          data: Theme.of(ctx).copyWith(
-            textSelectionTheme: const TextSelectionThemeData(
-              selectionHandleColor: Colors.white,
-              cursorColor: accent,
-              selectionColor: Color.fromARGB(128, 255, 130, 67),
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E26) : Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text(
+            'Rename speaker',
+            style: TextStyle(color: fg, fontWeight: FontWeight.w700),
+          ),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            style: TextStyle(color: fg),
+            cursorColor: accent,
+            decoration: InputDecoration(
+              labelText: 'Name',
+              labelStyle: TextStyle(color: muted),
+              hintText: 'e.g. Alex',
+              hintStyle: TextStyle(color: muted),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: muted, width: 1.5),
+              ),
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: accent, width: 2),
+              ),
             ),
           ),
-          child: AlertDialog(
-            backgroundColor: Colors.black87,
-            surfaceTintColor: Colors.transparent,
-            title: const Text(
-              'Rename speaker',
-              style: TextStyle(color: Colors.white),
-            ),
-            content: TextField(
-              controller: ctrl,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white),
-              cursorColor: accent,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                labelStyle: TextStyle(color: Colors.white),
-                hintText: 'e.g. Alex',
-                hintStyle: TextStyle(color: Colors.white54),
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: accent, width: 1.5),
-                ),
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: accent, width: 2),
-                ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: muted),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.white),
-                ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              style: FilledButton.styleFrom(
+                backgroundColor: accent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-                style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
-                child: const Text(
-                  'Save',
-                  style: TextStyle(color: Colors.black),
-                ),
+              child: const Text(
+                'Save',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
@@ -1767,7 +1765,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final isDark = GlassTokens.isDark(ctx);
-        final fg = Colors.white.withValues(alpha: 0.92);
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
 
         return SafeArea(
           child: Container(
@@ -1797,7 +1796,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                           width: 42,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.25),
+                            color: muted.withValues(alpha: 0.25),
                             borderRadius: BorderRadius.circular(999),
                           ),
                         ),
@@ -1811,9 +1810,9 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          subtitle: const Text(
+                          subtitle: Text(
                             'Fix wording for this segment only',
-                            style: TextStyle(color: Colors.white70),
+                            style: TextStyle(color: muted),
                           ),
                           onTap: () async {
                             Navigator.pop(ctx);
@@ -1860,42 +1859,58 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
     final newText = await showDialog<String>(
       context: context,
-      builder: (ctx) => Theme(
-        data: Theme.of(ctx),
-        child: AlertDialog(
-          backgroundColor: Colors.black87,
+      builder: (ctx) {
+        final isDark = GlassTokens.isDark(ctx);
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        const accent = Color(0xFF007AFF);
+
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E26) : Colors.white,
           surfaceTintColor: Colors.transparent,
-          title: const Text(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text(
             'Edit segment',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: fg, fontWeight: FontWeight.bold),
           ),
           content: TextField(
             controller: ctrl,
             autofocus: true,
             minLines: 3,
             maxLines: 8,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
+            style: TextStyle(color: fg),
+            decoration: InputDecoration(
               hintText: 'Edit what was said…',
-              hintStyle: TextStyle(color: Colors.white54),
+              hintStyle: TextStyle(color: muted),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: isDark ? const Color(0xFF33333E) : const Color(0xFFE2E2EA)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: accent, width: 1.5),
+              ),
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text(
+              child: Text(
                 'Cancel',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: muted),
               ),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
-              child: const Text('Save', style: TextStyle(color: Colors.black)),
+              style: FilledButton.styleFrom(
+                backgroundColor: accent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
 
     if (newText == null) return;
@@ -1957,6 +1972,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     return ValueListenableBuilder<_PartialTurnsSnapshot>(
       valueListenable: _partialTurnsNotifier,
       builder: (context, partialSnapshot, _) {
+        final muted = GlassTokens.muted(context);
         final displayTurns = _turns.isEmpty
             ? _displayTurnsFromPartialSnapshot(partialSnapshot, isProcessing)
             : _displayTurnsForRender(isProcessing);
@@ -1988,7 +2004,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                         ? 'Tap to play • Long-press for options'
                         : 'Long-press for options',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.55),
+                      color: muted,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -2029,15 +2045,15 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
                     _currentSearchMatch >= 0 &&
                     _searchMatches[_currentSearchMatch] == i;
                 final isCurrentPlaybackSegment = currentPlaybackTurnIndex == i;
-                final baseSpeakerStyle = const TextStyle(
+                final baseSpeakerStyle = TextStyle(
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.1,
-                  color: Colors.white,
+                  color: fg,
                 );
-                final baseTextStyle = const TextStyle(
+                final baseTextStyle = TextStyle(
                   height: 1.35,
                   fontSize: 14.5,
-                  color: Colors.white,
+                  color: fg,
                   fontWeight: FontWeight.w500,
                 );
                 final highlightColor = isActiveSearchMatch
@@ -2471,6 +2487,8 @@ class _MetaPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = accent;
+    final isDark = GlassTokens.isDark(context);
+    final muted = GlassTokens.muted(context);
 
     return Container(
       height: 32,
@@ -2478,8 +2496,10 @@ class _MetaPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: (c ?? Colors.white).withValues(alpha: 0.06),
-        border: Border.all(color: (c ?? Colors.white).withValues(alpha: 0.12)),
+        color: (c ?? (isDark ? Colors.white : Colors.black)).withValues(alpha: 0.06),
+        border: Border.all(
+          color: (c ?? (isDark ? Colors.white : Colors.black)).withValues(alpha: 0.12),
+        ),
       ),
       child: Text(
         text,
@@ -2488,7 +2508,7 @@ class _MetaPill extends StatelessWidget {
         softWrap: false,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: c != null ? c.withValues(alpha: 0.95) : Colors.white70,
+          color: c != null ? c.withValues(alpha: 0.95) : muted,
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
@@ -2511,6 +2531,7 @@ class _IconPillButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
 
     return Tooltip(
       message: tooltip,
@@ -2533,7 +2554,7 @@ class _IconPillButton extends StatelessWidget {
           child: Icon(
             icon,
             size: 20,
-            color: Colors.white.withValues(alpha: 0.92),
+            color: fg,
           ),
         ),
       ),
@@ -2547,12 +2568,13 @@ class _InlineHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final muted = GlassTokens.muted(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.white70,
+        style: TextStyle(
+          color: muted,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -2585,6 +2607,9 @@ class _FloatingSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
     return GlassCard(
       variant: GlassCardVariant.panel,
       padding: const EdgeInsets.all(12),
@@ -2600,7 +2625,7 @@ class _FloatingSearchBar extends StatelessWidget {
               Icon(
                 Icons.search,
                 size: 18,
-                color: Colors.white.withValues(alpha: 0.76),
+                color: muted,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -2608,14 +2633,14 @@ class _FloatingSearchBar extends StatelessWidget {
                   controller: controller,
                   autofocus: true,
                   onChanged: onChanged,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: fg,
                     fontWeight: FontWeight.w600,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Search keyword',
                     hintStyle: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.45),
+                      color: muted,
                       fontWeight: FontWeight.w600,
                     ),
                     border: InputBorder.none,
@@ -2632,7 +2657,7 @@ class _FloatingSearchBar extends StatelessWidget {
                     child: Icon(
                       Icons.close,
                       size: 16,
-                      color: Colors.white.withValues(alpha: 0.72),
+                      color: muted,
                     ),
                   ),
                 ),
@@ -2649,7 +2674,7 @@ class _FloatingSearchBar extends StatelessWidget {
                             : 'No matches found')
                       : 'Type to search within this transcript.',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.68),
+                    color: muted,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2839,6 +2864,9 @@ class _TurnPlaceholderCardState extends State<_TurnPlaceholderCard>
 
   @override
   Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
     return FadeTransition(
       opacity: Tween<double>(begin: 0.55, end: 0.9).animate(_controller),
       child: GlassCard(
@@ -2852,10 +2880,10 @@ class _TurnPlaceholderCardState extends State<_TurnPlaceholderCard>
                 if (widget.speaker?.trim().isNotEmpty ?? false)
                   Text(
                     widget.speaker!.trim(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.1,
-                      color: Colors.white,
+                      color: fg,
                     ),
                   )
                 else
@@ -2864,8 +2892,8 @@ class _TurnPlaceholderCardState extends State<_TurnPlaceholderCard>
                 if (widget.subtitle?.trim().isNotEmpty ?? false)
                   Text(
                     widget.subtitle!.trim(),
-                    style: const TextStyle(
-                      color: Colors.white54,
+                    style: TextStyle(
+                      color: muted,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -2874,12 +2902,12 @@ class _TurnPlaceholderCardState extends State<_TurnPlaceholderCard>
                   const _ShimmerBlock(width: 42, height: 24, radius: 999),
               ],
             ),
-            SizedBox(height: 12),
-            _ShimmerBlock(width: double.infinity, height: 12),
-            SizedBox(height: 8),
-            _ShimmerBlock(width: double.infinity, height: 12),
-            SizedBox(height: 8),
-            _ShimmerBlock(width: 180, height: 12),
+            const SizedBox(height: 12),
+            const _ShimmerBlock(width: double.infinity, height: 12),
+            const SizedBox(height: 8),
+            const _ShimmerBlock(width: double.infinity, height: 12),
+            const SizedBox(height: 8),
+            const _ShimmerBlock(width: 180, height: 12),
           ],
         ),
       ),
@@ -2900,12 +2928,13 @@ class _ShimmerBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        color: Colors.white.withValues(alpha: 0.10),
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
       ),
     );
   }
@@ -2990,7 +3019,7 @@ class _CompactAudioBar extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(color: GlassTokens.muted(context), fontSize: 12),
               ),
             ],
           ),
@@ -3145,7 +3174,8 @@ class _GlassPersonChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     Widget chip = LiquidGlass(
       borderRadius: BorderRadius.circular(999),
@@ -3177,13 +3207,15 @@ class _GlassPersonChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
-              color: Colors.white.withValues(alpha: 0.06),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+              border: Border.all(
+                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.12),
+              ),
             ),
             child: Text(
               '$count',
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: muted,
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
               ),
@@ -3193,7 +3225,7 @@ class _GlassPersonChip extends StatelessWidget {
           Icon(
             Icons.edit,
             size: 16,
-            color: Colors.white.withValues(alpha: 0.70),
+            color: muted,
           ),
         ],
       ),

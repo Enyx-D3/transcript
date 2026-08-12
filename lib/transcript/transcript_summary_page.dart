@@ -685,7 +685,8 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
 
   Future<void> _openLengthSheet() async {
     final isDark = GlassTokens.isDark(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     await showModalBottomSheet(
       context: context,
@@ -769,9 +770,7 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
                                   Text(
                                     'Choose how detailed the summary should be',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.72,
-                                      ),
+                                      color: muted,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),

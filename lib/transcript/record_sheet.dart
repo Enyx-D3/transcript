@@ -14,6 +14,7 @@ import '../transcript/transcript_detail_page.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
 import '../transcript/background_transcriber.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class RecordSheet extends StatefulWidget {
   const RecordSheet({super.key});
@@ -447,10 +448,11 @@ class _RecordSheetState extends State<RecordSheet> {
         ? (_paused ? 'Paused' : (_starting ? 'Starting…' : 'Recording…'))
         : 'Record';
 
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
-    const sheetBg = Color(0xFF0B0C10);
+    final sheetBg = isDark ? const Color(0xFF0F0F16) : Colors.white;
     final border = (isDark ? Colors.white : Colors.black).withValues(
       alpha: 0.10,
     );
@@ -478,13 +480,14 @@ class _RecordSheetState extends State<RecordSheet> {
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.mic, color: Colors.white),
+                                const Icon(Icons.mic, color: Color(0xFF007AFF)),
                                 const SizedBox(width: 8),
                                 Text(
                                   title,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w800,
+                                    color: fg,
                                   ),
                                 ),
                                 if (_starting) ...[
@@ -495,7 +498,7 @@ class _RecordSheetState extends State<RecordSheet> {
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white.withValues(alpha: 0.75),
+                                        fg.withValues(alpha: 0.75),
                                       ),
                                     ),
                                   ),
@@ -506,7 +509,7 @@ class _RecordSheetState extends State<RecordSheet> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close),
+                        icon: Icon(Icons.close, color: fg),
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
@@ -540,13 +543,12 @@ class _RecordSheetState extends State<RecordSheet> {
                                       onPressed: _recording ? _cancel : null,
                                       icon: const Icon(
                                         Icons.close_rounded,
-                                        color: Colors.white,
                                       ),
                                       label: const Text(
                                         'Cancel',
-                                        style: TextStyle(color: Colors.white),
                                       ),
                                       style: OutlinedButton.styleFrom(
+                                        foregroundColor: fg,
                                         padding: const EdgeInsets.symmetric(
                                           vertical: 12,
                                         ),
@@ -568,15 +570,12 @@ class _RecordSheetState extends State<RecordSheet> {
                                         _paused
                                             ? Icons.play_arrow_rounded
                                             : Icons.pause_rounded,
-                                        color: Colors.white,
                                       ),
                                       label: Text(
                                         _paused ? 'Resume' : 'Pause',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                        ),
                                       ),
                                       style: OutlinedButton.styleFrom(
+                                        foregroundColor: fg,
                                         padding: const EdgeInsets.symmetric(
                                           vertical: 12,
                                         ),
@@ -599,14 +598,19 @@ class _RecordSheetState extends State<RecordSheet> {
                                     _recording
                                         ? Icons.stop_rounded
                                         : Icons.fiber_manual_record,
+                                    color: Colors.white,
                                   ),
                                   label: Text(
                                     _recording
                                         ? 'Stop & transcribe'
                                         : 'Start recording',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.white,
+                                    backgroundColor: const Color(0xFF007AFF),
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 14,
                                     ),
@@ -627,11 +631,11 @@ class _RecordSheetState extends State<RecordSheet> {
                             children: [
                               Row(
                                 children: [
-                                  const Expanded(
+                                  Expanded(
                                     child: Text(
                                       'Language',
                                       style: TextStyle(
-                                        color: Colors.white70,
+                                        color: fg,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -654,19 +658,19 @@ class _RecordSheetState extends State<RecordSheet> {
                                               if (v == null) return;
                                               setState(() => _selectedLang = v);
                                             },
-                                      decoration: const InputDecoration(
+                                      decoration: InputDecoration(
                                         isDense: true,
-                                        border: OutlineInputBorder(),
+                                        border: const OutlineInputBorder(),
                                         enabledBorder: OutlineInputBorder(
                                           borderSide: BorderSide(
-                                            color: Color(0xFFff8143),
+                                            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
                                             width: 1,
                                           ),
                                         ),
-                                        focusedBorder: OutlineInputBorder(
+                                        focusedBorder: const OutlineInputBorder(
                                           borderSide: BorderSide(
-                                            color: Color(0xFFff8143),
-                                            width: 1,
+                                            color: Color(0xFF007AFF),
+                                            width: 1.5,
                                           ),
                                         ),
                                       ),
@@ -677,11 +681,11 @@ class _RecordSheetState extends State<RecordSheet> {
                               const SizedBox(height: 12),
                               Row(
                                 children: [
-                                  const Expanded(
+                                  Expanded(
                                     child: Text(
                                       'Speaker diarization',
                                       style: TextStyle(
-                                        color: Colors.white70,
+                                        color: fg,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -691,8 +695,8 @@ class _RecordSheetState extends State<RecordSheet> {
                                     onChanged: (_recording || _starting)
                                         ? null
                                         : _setDiarizationEnabledLocal,
-                                    activeThumbColor: Colors.black,
-                                    activeTrackColor: const Color(0xFFff8143),
+                                    activeThumbColor: Colors.white,
+                                    activeTrackColor: const Color(0xFF007AFF),
                                   ),
                                 ],
                               ),
@@ -700,56 +704,40 @@ class _RecordSheetState extends State<RecordSheet> {
                                 const SizedBox(height: 12),
                                 Row(
                                   children: [
-                                    const Expanded(
+                                    Expanded(
                                       child: Text(
                                         'Target speakers',
                                         style: TextStyle(
-                                          color: Colors.white70,
+                                          color: fg,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
                                     SizedBox(
                                       width: 120,
-                                      child: Theme(
-                                        data: Theme.of(context).copyWith(
-                                          textSelectionTheme:
-                                              const TextSelectionThemeData(
-                                                selectionHandleColor:
-                                                    Colors.white,
-                                                cursorColor: Colors.white,
-                                                selectionColor: Color.fromARGB(
-                                                  128,
-                                                  255,
-                                                  130,
-                                                  67,
-                                                ),
-                                              ),
-                                        ),
-                                        child: TextField(
-                                          cursorColor: Colors.white,
-                                          controller: _targetSpeakersCtrl,
-                                          enabled: !_recording && !_starting,
-                                          keyboardType: TextInputType.number,
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly,
-                                          ],
-                                          decoration: const InputDecoration(
-                                            hintText: '0',
-                                            isDense: true,
-                                            border: OutlineInputBorder(),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: Color(0xFFff8143),
-                                                width: 1,
-                                              ),
+                                      child: TextField(
+                                        cursorColor: const Color(0xFF007AFF),
+                                        controller: _targetSpeakersCtrl,
+                                        enabled: !_recording && !_starting,
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
+                                        ],
+                                        decoration: InputDecoration(
+                                          hintText: '0',
+                                          isDense: true,
+                                          border: const OutlineInputBorder(),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
+                                              width: 1,
                                             ),
-                                            focusedBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: Color(0xFFff8143),
-                                                width: 1,
-                                              ),
+                                          ),
+                                          focusedBorder: const OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: Color(0xFF007AFF),
+                                              width: 1.5,
                                             ),
                                           ),
                                         ),
@@ -758,12 +746,12 @@ class _RecordSheetState extends State<RecordSheet> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                const Align(
+                                Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
                                     'Use 0 for auto-detect.',
                                     style: TextStyle(
-                                      color: Colors.white54,
+                                      color: muted,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -773,9 +761,9 @@ class _RecordSheetState extends State<RecordSheet> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'Tip: keep the phone close and speak clearly. You can rename speakers later in the transcript view.',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                          style: TextStyle(color: muted, fontSize: 12),
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -807,12 +795,13 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final isDark = GlassTokens.isDark(context);
 
-    final bg = isDark ? const Color(0xFF101018) : theme.colorScheme.surface;
+    final bg = isDark ? const Color(0xFF161622) : Colors.white;
     final border = (isDark ? Colors.white : Colors.black).withValues(
-      alpha: 0.10,
+      alpha: isDark ? 0.10 : 0.06,
     );
 
     return Container(
@@ -823,8 +812,8 @@ class _Panel extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             blurRadius: 18,
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -833,12 +822,12 @@ class _Panel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (title != null) ...[
-            Text(title!, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(title!, style: TextStyle(fontWeight: FontWeight.w800, color: fg)),
             if (subtitle != null) ...[
               const SizedBox(height: 2),
               Text(
                 subtitle!,
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(color: muted, fontSize: 12),
               ),
             ],
             const SizedBox(height: 12),
@@ -863,9 +852,13 @@ class _TimerRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+    final isDark = GlassTokens.isDark(context);
+    const accent = Color(0xFF007AFF);
+
     final ringColor = paused
-        ? Colors.white.withValues(alpha: 0.25)
-        : (active ? Colors.white : Colors.white.withValues(alpha: 0.20));
+        ? (isDark ? Colors.white24 : Colors.black26)
+        : (active ? accent : (isDark ? Colors.white24 : Colors.black12));
 
     return Container(
       width: 124,
@@ -874,17 +867,22 @@ class _TimerRing extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: ringColor, width: 3),
         boxShadow: [
-          BoxShadow(
-            blurRadius: 18,
-            color: ringColor.withValues(alpha: 0.18),
-            offset: const Offset(0, 10),
-          ),
+          if (active && !paused)
+            BoxShadow(
+              blurRadius: 18,
+              color: accent.withValues(alpha: 0.25),
+              offset: const Offset(0, 6),
+            ),
         ],
       ),
       child: Center(
         child: Text(
           timeText,
-          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: fg,
+          ),
         ),
       ),
     );
@@ -905,6 +903,7 @@ class LevelBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = GlassTokens.isDark(context);
     final weights = List<double>.generate(barCount, (i) {
       final x = (i / (barCount - 1)) * 2 - 1;
       final bell = 1 - (x * x);
@@ -931,7 +930,7 @@ class LevelBars extends StatelessWidget {
                   child: Container(
                     height: barH,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.90),
+                      color: const Color(0xFF007AFF).withValues(alpha: isDark ? 0.90 : 0.80),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),

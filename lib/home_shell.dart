@@ -249,7 +249,7 @@ class _BottomDockNav extends StatelessWidget {
                   // 1. Timeline
                   Expanded(
                     child: _NavItem(
-                      icon: Icons.receipt_long_outlined,
+                      icon: Icons.graphic_eq_rounded,
                       label: 'Timeline',
                       isSelected: index == 0,
                       activeColor: _primaryBlue,
@@ -261,7 +261,9 @@ class _BottomDockNav extends StatelessWidget {
                   // 2. Calendar
                   Expanded(
                     child: _NavItem(
-                      icon: Icons.event_available_outlined,
+                      icon: index == 1
+                          ? Icons.calendar_month_rounded
+                          : Icons.calendar_month_outlined,
                       label: 'Calendar',
                       isSelected: index == 1,
                       activeColor: _primaryBlue,
