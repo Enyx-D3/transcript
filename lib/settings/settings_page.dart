@@ -115,10 +115,10 @@ class _SettingsPageState extends State<SettingsPage> {
   void _openAccount() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: Colors.transparent,
+        builder: (ctx) => Scaffold(
+          backgroundColor: GlassTokens.backgroundColor(ctx),
           appBar: AppBar(
-            backgroundColor: Colors.transparent,
+            backgroundColor: GlassTokens.backgroundColor(ctx),
             elevation: 0,
             title: const Text('Account'),
             leading: Padding(
@@ -126,7 +126,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: IconPillButton(
                 tooltip: 'Back',
                 icon: Icons.arrow_back,
-                onTap: () => Navigator.of(context).pop(),
+                onTap: () => Navigator.of(ctx).pop(),
               ),
             ),
           ),
@@ -569,9 +569,9 @@ class _SettingsPageState extends State<SettingsPage> {
     final muted = GlassTokens.muted(context);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         elevation: 0,
         title: const Text('Settings'),
         leading: Padding(

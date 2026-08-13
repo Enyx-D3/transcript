@@ -376,7 +376,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: _unfocus,

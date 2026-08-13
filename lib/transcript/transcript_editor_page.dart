@@ -312,7 +312,7 @@ class _TranscriptEditorPageState extends State<TranscriptEditorPage> {
         unawaited(_handleBack());
       },
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),

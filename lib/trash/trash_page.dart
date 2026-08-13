@@ -198,7 +198,7 @@ class _TrashPageState extends State<TrashPage> {
     final muted = GlassTokens.muted(context, alpha: 0.70);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: GlassBackground(
         child: SafeArea(
           child: Column(

@@ -845,14 +845,14 @@ class _TranscriptSummaryPageState extends State<TranscriptSummaryPage> {
     final actionIcon = hasSummary ? Icons.refresh : Icons.auto_awesome;
 
     if (_initializing) {
-      return const Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: GlassTokens.backgroundColor(context),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 18),

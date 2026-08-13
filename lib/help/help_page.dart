@@ -19,10 +19,10 @@ class HelpPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context, alpha: 0.92);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: Stack(
         fit: StackFit.expand,
         children: [

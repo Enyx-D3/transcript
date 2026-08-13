@@ -1242,7 +1242,7 @@ class _GateSplashLike extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0F),
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: SafeArea(
         child: Center(
           child: Padding(

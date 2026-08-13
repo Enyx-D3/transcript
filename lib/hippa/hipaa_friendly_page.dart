@@ -19,7 +19,7 @@ class HipaaFriendlyPage extends StatelessWidget {
     final fg = GlassTokens.fg(context, alpha: 0.92);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: GlassBackground(
         child: SafeArea(
           child: Column(

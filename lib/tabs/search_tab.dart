@@ -152,7 +152,7 @@ class _SearchTabState extends State<SearchTab> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: _unfocus,

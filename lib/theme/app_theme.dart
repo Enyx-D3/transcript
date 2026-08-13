@@ -1,14 +1,18 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class AppTheme {
   AppTheme._();
 
+  static const Color darkBackground = Color(0xFF0E0E12);
+  static const Color lightBackground = Color(0xFFF6F6F9);
+
   // Dark Theme
   static final ThemeData dark = ThemeData(
     brightness: Brightness.dark,
     useMaterial3: true,
-    scaffoldBackgroundColor: const Color(0xFF0E0E12),
-    canvasColor: const Color(0xFF0E0E12),
+    scaffoldBackgroundColor: darkBackground,
+    canvasColor: darkBackground,
     cardColor: const Color(0xFF17171D),
     dividerColor: const Color(0xFF282832),
 
@@ -21,10 +25,20 @@ class AppTheme {
     ),
 
     appBarTheme: const AppBarTheme(
-      backgroundColor: Color(0xFF0E0E12),
+      backgroundColor: darkBackground,
       foregroundColor: Colors.white,
       elevation: 0,
       scrolledUnderElevation: 0,
+    ),
+
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+      },
     ),
 
     splashFactory: NoSplash.splashFactory,
@@ -41,8 +55,8 @@ class AppTheme {
   static final ThemeData light = ThemeData(
     brightness: Brightness.light,
     useMaterial3: true,
-    scaffoldBackgroundColor: const Color(0xFFF5F5F8),
-    canvasColor: const Color(0xFFF5F5F8),
+    scaffoldBackgroundColor: lightBackground,
+    canvasColor: lightBackground,
     cardColor: const Color(0xFFFFFFFF),
     dividerColor: const Color(0xFFE2E2E8),
 
@@ -55,10 +69,20 @@ class AppTheme {
     ),
 
     appBarTheme: const AppBarTheme(
-      backgroundColor: Color(0xFFF5F5F8),
+      backgroundColor: lightBackground,
       foregroundColor: Color(0xFF141418),
       elevation: 0,
       scrolledUnderElevation: 0,
+    ),
+
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+      },
     ),
 
     splashFactory: NoSplash.splashFactory,

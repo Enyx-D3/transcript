@@ -197,7 +197,7 @@ class _GateSplash extends StatelessWidget {
     final muted = GlassTokens.muted(context, alpha: 0.78);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: GlassBackground(
         child: SafeArea(
           child: Center(

@@ -131,7 +131,7 @@ class _HomeShellState extends State<HomeShell> {
     ];
 
     return Scaffold(
-      backgroundColor: Colors.transparent, // ✅ let wallpaper show
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: Stack(
         children: [
           IgnorePointer(
@@ -164,33 +164,9 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-/// Keeps tab state but adds a subtle fade when switching.
-class _AnimatedIndexedStack extends StatelessWidget {
-  const _AnimatedIndexedStack({required this.index, required this.children});
-
-  final int index;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 180),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      transitionBuilder: (child, anim) =>
-          FadeTransition(opacity: anim, child: child),
-      child: _KeyedIndexedStack(
-        key: ValueKey(index),
-        index: index,
-        children: children,
-      ),
-    );
-  }
-}
-
-class _KeyedIndexedStack extends StatelessWidget {
-  const _KeyedIndexedStack({
-    super.key,
+/// Keeps tab state and adds a smooth directional slide + fade transition when switching.
+class _AnimatedIndexedStack extends StatefulWidget {
+  const _AnimatedIndexedStack({
     required this.index,
     required this.children,
   });
@@ -199,8 +175,112 @@ class _KeyedIndexedStack extends StatelessWidget {
   final List<Widget> children;
 
   @override
+  State<_AnimatedIndexedStack> createState() => _AnimatedIndexedStackState();
+}
+
+class _AnimatedIndexedStackState extends State<_AnimatedIndexedStack>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+  int _prevIndex = 0;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.index;
+    _prevIndex = widget.index;
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    _controller.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedIndexedStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.index != oldWidget.index) {
+      setState(() {
+        _prevIndex = oldWidget.index;
+        _currentIndex = widget.index;
+      });
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return IndexedStack(index: index, children: children);
+    final isForward = _currentIndex >= _prevIndex;
+
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, _) {
+        final animVal = _animation.value;
+        final isAnimating = animVal < 1.0;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: widget.children.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final child = entry.value;
+
+            final isCurrent = idx == _currentIndex;
+            final isPrev = idx == _prevIndex && isAnimating;
+            final isVisible = isCurrent || isPrev;
+
+            if (!isVisible) {
+              return Offstage(
+                offstage: true,
+                child: TickerMode(
+                  enabled: false,
+                  child: child,
+                ),
+              );
+            }
+
+            if (isCurrent && isAnimating) {
+              final double slideX =
+                  (1.0 - animVal) * (isForward ? 20.0 : -20.0);
+              return Transform.translate(
+                offset: Offset(slideX, 0),
+                child: Opacity(
+                  opacity: animVal.clamp(0.0, 1.0),
+                  child: child,
+                ),
+              );
+            }
+
+            if (isPrev) {
+              final double slideX =
+                  animVal * (isForward ? -20.0 : 20.0);
+              return Transform.translate(
+                offset: Offset(slideX, 0),
+                child: Opacity(
+                  opacity: (1.0 - animVal).clamp(0.0, 1.0),
+                  child: TickerMode(
+                    enabled: false,
+                    child: child,
+                  ),
+                ),
+              );
+            }
+
+            return child;
+          }).toList(),
+        );
+      },
+    );
   }
 }
 

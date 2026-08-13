@@ -412,7 +412,7 @@ class _YoutubeSavedTranscriptPageState
     // ✅ Loading state (no AppBar)
     if (_loading) {
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
@@ -452,7 +452,7 @@ class _YoutubeSavedTranscriptPageState
     // ✅ Not found state (no AppBar)
     if (_meta == null) {
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
@@ -482,7 +482,7 @@ class _YoutubeSavedTranscriptPageState
     final canShare = (_manual.isNotEmpty || _auto.isNotEmpty);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
@@ -962,31 +962,25 @@ class _GlassIconPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = GlassTokens.isDark(context);
+    final disabled = onTap == null;
     final fg = GlassTokens.fg(context);
+    final iconColor = disabled
+        ? fg.withValues(alpha: 0.35)
+        : fg.withValues(alpha: 0.92);
 
     return Tooltip(
       message: tooltip,
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: (isDark ? Colors.white : Colors.black).withValues(
-              alpha: 0.06,
-            ),
-            border: Border.all(
-              color: (isDark ? Colors.white : Colors.black).withValues(
-                alpha: 0.10,
-              ),
-            ),
-          ),
+        child: LiquidGlass(
+          borderRadius: BorderRadius.circular(999),
+          padding: const EdgeInsets.all(8),
+          shadow: false,
           child: Icon(
             icon,
             size: 20,
-            color: fg.withValues(alpha: onTap == null ? 0.35 : 0.92),
+            color: iconColor,
           ),
         ),
       ),

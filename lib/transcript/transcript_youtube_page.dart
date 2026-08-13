@@ -372,7 +372,7 @@ class _TranscriptYoutubePageState extends State<TranscriptYoutubePage> {
         _hasFetched && !_loading && (_manual.isNotEmpty || _auto.isNotEmpty);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: GlassBackground(
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,

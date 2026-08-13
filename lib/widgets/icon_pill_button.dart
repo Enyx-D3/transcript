@@ -7,11 +7,15 @@ class IconPillButton extends StatelessWidget {
     super.key,
     required this.tooltip,
     required this.icon,
+    this.size = 20,
+    this.padding,
     required this.onTap,
   });
 
   final String tooltip;
   final IconData icon;
+  final double size;
+  final EdgeInsetsGeometry? padding;
   final VoidCallback? onTap;
 
   @override
@@ -29,9 +33,9 @@ class IconPillButton extends StatelessWidget {
         onTap: onTap,
         child: LiquidGlass(
           borderRadius: BorderRadius.circular(999),
-          padding: const EdgeInsets.all(8),
+          padding: padding ?? const EdgeInsets.all(8),
           shadow: false,
-          child: Icon(icon, size: 20, color: iconColor),
+          child: Icon(icon, size: size, color: iconColor),
         ),
       ),
     );

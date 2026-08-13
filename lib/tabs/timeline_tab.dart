@@ -8,6 +8,7 @@ import 'package:transcript/transcript/import_audio_sheet.dart';
 import 'package:transcript/transcript/import_video_sheet.dart';
 import 'package:transcript/ui/glass/glass_button.dart';
 import 'package:transcript/widgets/empty_state.dart';
+import '../widgets/icon_pill_button.dart';
 
 import '../onboarding/enroll_flow.dart';
 import '../debug/speaker_memory_page.dart';
@@ -834,152 +835,159 @@ class _TimelineTabState extends State<TimelineTab> {
     final showModelDownloading = _qwenProgress.downloading;
 
     final fg = GlassTokens.fg(context);
-    final isDark = GlassTokens.isDark(context);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: _unfocus,
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: NestedScrollView(
-              headerSliverBuilder: (context, innerBoxIsScrolled) => [
+          bottom: false,
+          child: RefreshIndicator(
+            onRefresh: _load,
+            color: const Color(0xFF007AFF),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              slivers: [
                 SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ---------- Top Header Row ----------
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Text(
-                                  'Timeline',
-                                  style: TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w800,
-                                    color: fg,
-                                    letterSpacing: -0.4,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ---------- Top Header Row ----------
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Timeline',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w800,
+                                      color: fg,
+                                      letterSpacing: -0.4,
+                                    ),
+                                  ),
+                                  if (showModelDownloading)
+                                    Flexible(child: _modelDownloadingTag(context)),
+                                ],
+                              ),
+                            ),
+                            Transform.translate(
+                              offset: const Offset(0, -3),
+                              child: IconPillButton(
+                                tooltip: 'Settings',
+                                icon: Icons.settings_outlined,
+                                size: 23,
+                                padding: const EdgeInsets.all(9),
+                                onTap: () => _openPage(
+                                  SettingsPage(
+                                    onUpgradeSuccess: widget.onUpgradeSuccess,
                                   ),
                                 ),
-                                if (showModelDownloading)
-                                  Flexible(child: _modelDownloadingTag(context)),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? const Color(0xFF22222A)
-                                  : const Color(0xFFEEF0F6),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Settings',
-                              onPressed: () => _openPage(
-                                SettingsPage(
-                                  onUpgradeSuccess: widget.onUpgradeSuccess,
-                                ),
                               ),
-                              onLongPress: () async {
-                                await debugResetOnboardingFlags();
-                              },
-                              icon: Icon(
-                                Icons.settings_outlined,
-                                size: 22,
-                                color: fg,
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // ---------- Quick Action Cards Row (Horizontal Scroll) ----------
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          clipBehavior: Clip.none,
+                          child: Row(
+                            children: [
+                              // 1. Record Meeting
+                              _TimelineActionCard(
+                                title: 'Record',
+                                subtitle: 'Meeting',
+                                icon: Icons.mic_rounded,
+                                iconColor: const Color(0xFF007AFF),
+                                onTap: () => widget.onNavigateToTab(2),
+                              ),
+                              // 2. Import File
+                              _TimelineActionCard(
+                                title: 'Import',
+                                subtitle: 'Audio / Video',
+                                icon: Icons.folder_rounded,
+                                iconColor: const Color(0xFF007AFF),
+                                onTap: () => _showImportOptions(context),
+                              ),
+                              // 3. YouTube Transcript
+                              _TimelineActionCard(
+                                title: 'YouTube',
+                                subtitle: 'Transcript',
+                                icon: Icons.smart_display_rounded,
+                                iconColor: const Color(0xFFFF3B30),
+                                onTap: () =>
+                                    _openPage(const TranscriptYoutubePage()),
+                              ),
+                              // 4. Enroll Voice
+                              _TimelineActionCard(
+                                title: 'Enroll Voice',
+                                subtitle: 'Speaker',
+                                icon: Icons.record_voice_over_rounded,
+                                iconColor: const Color(0xFF00B087),
+                                onTap: () =>
+                                    _openPage(const EnrollmentFlowPage()),
+                              ),
+                              // 5. People / Speakers
+                              _TimelineActionCard(
+                                title: 'People',
+                                subtitle: 'Speakers',
+                                icon: Icons.people_alt_rounded,
+                                iconColor: const Color(0xFF635BFF),
+                                onTap: () => _openPage(const SpeakerMemoryPage()),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // ---------- Grouped Transcript Slivers ----------
+                if (_items.isEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(title: 'Today', showActions: true),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+                            child: Center(
+                              child: EmptyState(
+                                title: 'No transcripts yet',
+                                subtitle:
+                                    'Your transcripts will appear here after you record or import.',
+                                icon: Icons.article_outlined,
                               ),
                             ),
                           ),
                         ],
                       ),
+                    ),
+                  )
+                else
+                  ..._buildGroupedSlivers(),
 
-                      const SizedBox(height: 16),
-
-                      // ---------- Quick Action Cards Row (Horizontal Scroll) ----------
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        clipBehavior: Clip.none,
-                        child: Row(
-                          children: [
-                            // 1. Record Meeting
-                            _TimelineActionCard(
-                              title: 'Record',
-                              subtitle: 'Meeting',
-                              icon: Icons.mic_rounded,
-                              iconColor: const Color(0xFF007AFF),
-                              iconBgColor: isDark
-                                  ? const Color(0xFF1E2A3A)
-                                  : const Color(0xFFEBF3FF),
-                              onTap: () => widget.onNavigateToTab(2),
-                            ),
-                            // 2. Enroll Voice
-                            _TimelineActionCard(
-                              title: 'Enroll Voice',
-                              subtitle: 'Speaker',
-                              icon: Icons.record_voice_over_rounded,
-                              iconColor: const Color(0xFF00B087),
-                              iconBgColor: isDark
-                                  ? const Color(0xFF162E28)
-                                  : const Color(0xFFE6F8F3),
-                              onTap: () =>
-                                  _openPage(const EnrollmentFlowPage()),
-                            ),
-                            // 3. People / Speakers
-                            _TimelineActionCard(
-                              title: 'People',
-                              subtitle: 'Speakers',
-                              icon: Icons.people_alt_rounded,
-                              iconColor: const Color(0xFF635BFF),
-                              iconBgColor: isDark
-                                  ? const Color(0xFF242238)
-                                  : const Color(0xFFF0EFFF),
-                              onTap: () => _openPage(const SpeakerMemoryPage()),
-                            ),
-                            // 4. Import File
-                            _TimelineActionCard(
-                              title: 'Import',
-                              subtitle: 'File',
-                              icon: Icons.folder_rounded,
-                              iconColor: const Color(0xFF007AFF),
-                              iconBgColor: isDark
-                                  ? const Color(0xFF1E2A3A)
-                                  : const Color(0xFFE8F1FF),
-                              onTap: () => _showImportOptions(context),
-                            ),
-                            // 5. YouTube Transcript
-                            _TimelineActionCard(
-                              title: 'YouTube',
-                              subtitle: 'Transcript',
-                              icon: Icons.smart_display_rounded,
-                              iconColor: const Color(0xFFFF3B30),
-                              iconBgColor: isDark
-                                  ? const Color(0xFF382024)
-                                  : const Color(0xFFFFEAEA),
-                              onTap: () =>
-                                  _openPage(const TranscriptYoutubePage()),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-                    ],
-                  ),
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 90),
                 ),
               ],
-              body: RefreshIndicator(
-                onRefresh: _load,
-                color: const Color(0xFF007AFF),
-                child: _buildList(),
-              ),
             ),
           ),
         ),
@@ -1101,57 +1109,56 @@ class _TimelineTabState extends State<TimelineTab> {
     );
   }
 
-  Widget _buildList() {
-    if (_items.isEmpty) {
-      return ListView(
-        padding: const EdgeInsets.only(bottom: 30),
-        children: [
-          _buildSectionHeader(title: 'Today', showActions: true),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 36, horizontal: 24),
-            child: Center(
-              child: EmptyState(
-                title: 'No transcripts yet',
-                subtitle:
-                    'Your transcripts will appear here after you record or import.',
-                icon: Icons.article_outlined,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
+  List<Widget> _buildGroupedSlivers() {
     final groups = _groupTranscripts(_items);
+    final slivers = <Widget>[];
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 30),
-      itemCount: groups.length,
-      itemBuilder: (context, groupIndex) {
-        final groupKey = groups.keys.elementAt(groupIndex);
-        final list = groups[groupKey]!;
+    int groupIndex = 0;
+    for (final entry in groups.entries) {
+      final groupKey = entry.key;
+      final list = entry.value;
+      final isFirst = groupIndex == 0;
+      groupIndex++;
 
-        final isFirst = groupIndex == 0;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionHeader(
+      // Section Header
+      slivers.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: _buildSectionHeader(
               title: groupKey,
               showActions: isFirst,
             ),
-            ...list.map(
-              (t) => _TranscriptItemCard(
-                transcript: t,
-                onTap: () => _openDetail(t),
-                onToggleFavourite: () => _toggleFavourite(t),
-                onDelete: () => _onDeletePressed(t),
-              ),
+          ),
+        ),
+      );
+
+      // Section Items
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
+                final t = list[i];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _TranscriptItemCard(
+                    transcript: t,
+                    onTap: () => _openDetail(t),
+                    onToggleFavourite: () => _toggleFavourite(t),
+                    onDelete: () => _onDeletePressed(t),
+                  ),
+                );
+              },
+              childCount: list.length,
             ),
-          ],
-        );
-      },
-    );
+          ),
+        ),
+      );
+    }
+
+    return slivers;
   }
 
   Map<String, List<TranscriptEntity>> _groupTranscripts(
@@ -1222,7 +1229,6 @@ class _TimelineActionCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.iconColor,
-    required this.iconBgColor,
     required this.onTap,
   });
 
@@ -1230,7 +1236,6 @@ class _TimelineActionCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Color iconColor;
-  final Color iconBgColor;
   final VoidCallback onTap;
 
   @override
@@ -1239,12 +1244,20 @@ class _TimelineActionCard extends StatelessWidget {
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
 
+    final cardBg = isDark
+        ? const Color(0xFF191922)
+        : const Color(0xFFEBEBF0);
+
+    final borderColor = isDark
+        ? const Color(0xFF282834)
+        : const Color(0xFFDADAE2);
+
     return Container(
       width: 108,
-      height: 118,
+      height: 114,
       margin: const EdgeInsets.only(right: 10),
       child: Material(
-        color: isDark ? const Color(0xFF191922) : Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -1254,14 +1267,14 @@ class _TimelineActionCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: isDark ? const Color(0xFF282834) : const Color(0xFFEEF0F6),
+                color: borderColor,
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
                   color: isDark
                       ? Colors.black.withValues(alpha: 0.25)
-                      : Colors.black.withValues(alpha: 0.04),
+                      : Colors.black.withValues(alpha: 0.03),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -1270,22 +1283,12 @@ class _TimelineActionCard extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: iconBgColor,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Icon(
-                      icon,
-                      size: 22,
-                      color: iconColor,
-                    ),
-                  ),
+                Icon(
+                  icon,
+                  size: 32,
+                  color: iconColor,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Text(
                   title,
                   style: TextStyle(
@@ -1296,7 +1299,7 @@ class _TimelineActionCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: TextStyle(

@@ -113,7 +113,7 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
         : (isReady ? 'Downloaded' : 'Not downloaded');
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),

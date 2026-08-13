@@ -262,7 +262,7 @@ class _SplashGateState extends State<SplashGate> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {},
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         body: GlassBackground(
           child: SafeArea(
             child: Center(
