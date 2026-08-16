@@ -28,8 +28,6 @@ Future<bool> showConfirmDeleteDialog(
       final fg = GlassTokens.fg(ctx);
       final sub = GlassTokens.muted(ctx);
 
-      final dialogBlur = isDark ? 10.0 : 7.0;
-
       // ✅ clamp text scaling inside dialog to prevent overflow from app-wide scaling
       final mq = MediaQuery.of(ctx);
       final clampedScaler = mq.textScaler.clamp(
@@ -187,7 +185,7 @@ Future<bool> showConfirmDeleteDialog(
   return res ?? false;
 }
 
-enum _GlassActionButtonKind { primary, secondary, danger }
+enum _GlassActionButtonKind { secondary, danger }
 
 class _GlassActionButton extends StatelessWidget {
   const _GlassActionButton({
