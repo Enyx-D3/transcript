@@ -7,13 +7,11 @@ import '../objectbox/entities.dart';
 import '../objectbox.g.dart';
 import '../common/app_flushbar.dart';
 import '../common/confirm_dialog.dart';
+import '../widgets/icon_pill_button.dart';
 
 // ✅ Glass primitives
-import '../ui/glass/glass_background.dart';
 import '../ui/glass/glass_card.dart';
-import '../ui/glass/glass_divider.dart';
 import '../ui/glass/glass_tokens.dart';
-import '../ui/glass/liquid_glass.dart';
 
 class TrashPage extends StatefulWidget {
   const TrashPage({super.key});
@@ -149,17 +147,17 @@ class _TrashPageState extends State<TrashPage> {
   Future<void> _deleteNow(int id) async {
     final ok = await showConfirmDeleteDialog(
       context,
-      title: 'Delete permanently?',
-      message:
-          'This will permanently delete the transcript and its related data.',
+      title: 'Delete forever?',
+      message: 'This will permanently remove the transcript.',
+      confirmText: 'Delete',
     );
     if (!ok) return;
 
     await _deleteTranscriptCascade(id);
-    await _load();
 
+    await _load();
     if (!mounted) return;
-    await AppFlushbar.success(context, message: 'Deleted permanently');
+    await AppFlushbar.success(context, message: 'Permanently deleted');
   }
 
   Future<void> _emptyTrash() async {
@@ -167,12 +165,18 @@ class _TrashPageState extends State<TrashPage> {
 
     final ok = await showConfirmDeleteDialog(
       context,
-      title: 'Empty Trash?',
-      message: 'This will permanently delete all items in Trash.',
+      title: 'Empty trash?',
+      message: 'All items will be permanently deleted.',
+      confirmText: 'Empty trash',
     );
     if (!ok) return;
 
-    final ids = _items.map((e) => e.id).toList();
+    final box = ObjectBox.I.store.box<TranscriptEntity>();
+    final qb = box.query(TranscriptEntity_.isDeleted.equals(true));
+    final q = qb.build();
+    final ids = q.findIds();
+    q.close();
+
     for (final id in ids) {
       await _deleteTranscriptCascade(id);
     }
@@ -191,129 +195,105 @@ class _TrashPageState extends State<TrashPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = GlassTokens.isDark(context);
-
     final fg = GlassTokens.fg(context, alpha: 0.92);
     final muted = GlassTokens.muted(context, alpha: 0.70);
+    final isDark = GlassTokens.isDark(context);
 
     return Scaffold(
       backgroundColor: GlassTokens.backgroundColor(context),
-      body: GlassBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              // ✅ header (no AppBar)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                child: Row(
-                  children: [
-                    LiquidGlass(
-                      borderRadius: BorderRadius.circular(999),
-                      padding: const EdgeInsets.all(8),
-                      shadow: false,
-                      blurX: isDark ? 16 : 12,
-                      blurY: isDark ? 16 : 12,
-                      tintOpacityDark: 0.040,
-                      tintOpacityLight: 0.032,
-                      borderOpacityDark: 0.14,
-                      borderOpacityLight: 0.18,
-                      onTap: () => Navigator.of(context).maybePop(),
-                      child: Icon(Icons.arrow_back, color: fg, size: 20),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Trash',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.2,
-                          color: fg,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // ✅ Custom compact header button (never overflows)
-                    _HeaderGlassButton(
-                      label: 'Empty',
-                      icon: Icons.delete_sweep_outlined,
-                      enabled: _items.isNotEmpty && !_loading,
-                      onTap: _emptyTrash,
-                    ),
-                  ],
+      appBar: AppBar(
+        backgroundColor: GlassTokens.backgroundColor(context),
+        elevation: 0,
+        title: Text(
+          'Trash',
+          style: TextStyle(
+            color: fg,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        leading: Padding(
+          padding: const EdgeInsets.all(7.0),
+          child: IconPillButton(
+            tooltip: 'Back',
+            icon: Icons.arrow_back,
+            onTap: () => Navigator.of(context).maybePop(),
+          ),
+        ),
+        actions: [
+          if (_items.isNotEmpty && !_loading)
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Center(
+                child: _HeaderButton(
+                  label: 'Empty',
+                  icon: Icons.delete_sweep_outlined,
+                  onTap: _emptyTrash,
                 ),
               ),
-
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: GlassDivider(height: 1, thickness: 0.8),
+            ),
+        ],
+      ),
+      body: _loading
+          ? Center(
+              child: CircularProgressIndicator(
+                color: fg,
               ),
-              const SizedBox(height: 10),
-
-              Expanded(
-                child: RefreshIndicator.adaptive(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
-                    children: [
-                      if (_loading)
-                        GlassCard(
-                          variant: GlassCardVariant.tile,
-                          padding: const EdgeInsets.all(14),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white.withValues(alpha: 0.75),
+            )
+          : RefreshIndicator.adaptive(
+              onRefresh: _load,
+              child: _items.isEmpty
+                  ? ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 48, 16, 24),
+                      children: [
+                        Center(
+                          child: GlassCard(
+                            variant: GlassCardVariant.panel,
+                            padding: const EdgeInsets.all(28),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 28,
+                                    color: muted,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Loading…',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: fg,
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Trash is empty',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 17,
+                                    color: fg,
+                                  ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Deleted transcripts will appear here.\nYou can restore them or delete permanently.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: muted,
+                                    fontSize: 13,
+                                    height: 1.4,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        )
-                      else if (_items.isEmpty)
-                        GlassCard(
-                          variant: GlassCardVariant.tile,
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Trash is empty',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 16,
-                                  color: fg,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Deleted transcripts will appear here. You can restore them or delete permanently.',
-                                style: TextStyle(
-                                  color: muted,
-                                  height: 1.35,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else ...[
+                        ),
+                      ],
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                      children: [
                         Row(
                           children: [
                             Text(
@@ -328,7 +308,7 @@ class _TrashPageState extends State<TrashPage> {
                             _MetaPill(text: '${_items.length}'),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         ..._items.map((t) {
                           final title = (t.title?.trim().isNotEmpty ?? false)
                               ? t.title!.trim()
@@ -348,90 +328,64 @@ class _TrashPageState extends State<TrashPage> {
                               badge: isYoutube
                                   ? 'YouTube'
                                   : (isAudio
-                                        ? 'Audio'
-                                        : (isVideo ? 'Video' : 'Voice')),
+                                      ? 'Audio'
+                                      : (isVideo ? 'Video' : 'Voice')),
                               onRestore: () => _restore(t.id),
                               onDeleteNow: () => _deleteNow(t.id),
                             ),
                           );
                         }),
                       ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+                    ),
+            ),
     );
   }
 }
 
 // ===================== UI HELPERS =====================
 
-class _HeaderGlassButton extends StatelessWidget {
-  const _HeaderGlassButton({
+class _HeaderButton extends StatelessWidget {
+  const _HeaderButton({
     required this.label,
     required this.icon,
     required this.onTap,
-    required this.enabled,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onTap;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-    final fg = GlassTokens.fg(context, alpha: enabled ? 0.92 : 0.70);
+    const dangerColor = Color(0xFFFF3B30);
 
-    // Header space is tight. This keeps it compact AND safe.
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 120),
-      child: Opacity(
-        opacity: enabled ? 1 : 0.55,
-        child: LiquidGlass(
-          borderRadius: BorderRadius.circular(16),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          shadow: false,
-          blurX: 0,
-          blurY: 0,
-          grain: false,
-          tintOpacityDark: isDark ? 0.075 : 0.060,
-          tintOpacityLight: isDark ? 0.060 : 0.050,
-          borderOpacityDark: isDark ? 0.16 : 0.18,
-          borderOpacityLight: isDark ? 0.20 : 0.22,
-          onTap: enabled ? onTap : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: fg),
-              const SizedBox(width: 6),
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow:
-                        TextOverflow.visible, // avoid debug overflow yellows
-                    style: TextStyle(
-                      color: fg,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13.5,
-                      height: 1.0,
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: dangerColor.withValues(alpha: isDark ? 0.14 : 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: dangerColor.withValues(alpha: isDark ? 0.22 : 0.15),
           ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: dangerColor),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: dangerColor,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -439,28 +393,29 @@ class _HeaderGlassButton extends StatelessWidget {
 }
 
 class _MetaPill extends StatelessWidget {
-  const _MetaPill({required this.text, this.accent});
+  const _MetaPill({required this.text});
   final String text;
-  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
-    final c = accent;
+    final isDark = GlassTokens.isDark(context);
     return Container(
-      height: 32,
+      height: 28,
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: (c ?? Colors.white).withValues(alpha: 0.06),
-        border: Border.all(color: (c ?? Colors.white).withValues(alpha: 0.12)),
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.08 : 0.05),
+        border: Border.all(
+          color: (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.14 : 0.08),
+        ),
       ),
       child: Text(
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: c != null ? c.withValues(alpha: 0.95) : Colors.white70,
+          color: isDark ? Colors.white70 : const Color(0xFF484852),
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
@@ -490,7 +445,7 @@ class _TrashCard extends StatelessWidget {
     final muted = GlassTokens.muted(context, alpha: 0.70);
 
     return GlassCard(
-      variant: GlassCardVariant.tile,
+      variant: GlassCardVariant.panel,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -503,7 +458,7 @@ class _TrashCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: -0.1,
                     fontSize: 15.5,
                     color: fg,
@@ -517,25 +472,26 @@ class _TrashCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: TextStyle(color: muted, fontWeight: FontWeight.w600),
+            style: TextStyle(color: muted, fontSize: 12.5, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 12),
 
-          // ✅ Buttons that will never overflow in narrow widths
           Row(
             children: [
               Expanded(
-                child: _CompactRowButton(
+                child: _ActionButton(
                   label: 'Restore',
                   icon: Icons.restore_rounded,
+                  color: const Color(0xFF007AFF),
                   onTap: onRestore,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _CompactRowButton(
+                child: _ActionButton(
                   label: 'Delete',
-                  icon: Icons.delete_forever,
+                  icon: Icons.delete_forever_rounded,
+                  color: const Color(0xFFFF3B30),
                   onTap: onDeleteNow,
                 ),
               ),
@@ -547,69 +503,55 @@ class _TrashCard extends StatelessWidget {
   }
 }
 
-class _CompactRowButton extends StatelessWidget {
-  const _CompactRowButton({
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
     required this.label,
     required this.icon,
+    required this.color,
     required this.onTap,
   });
 
   final String label;
   final IconData icon;
+  final Color color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-    final fg = GlassTokens.fg(context, alpha: 0.92);
 
-    return LayoutBuilder(
-      builder: (context, c) {
-        final small = c.maxWidth < 150;
-        final padV = small ? 10.0 : 12.0;
-        final padH = small ? 10.0 : 14.0;
-        final fontSize = small ? 13.0 : 14.0;
-
-        return LiquidGlass(
-          borderRadius: BorderRadius.circular(16),
-          padding: EdgeInsets.symmetric(vertical: padV, horizontal: padH),
-          shadow: false,
-          blurX: 0,
-          blurY: 0,
-          grain: false,
-          tintOpacityDark: isDark ? 0.075 : 0.060,
-          tintOpacityLight: isDark ? 0.060 : 0.050,
-          borderOpacityDark: isDark ? 0.16 : 0.18,
-          borderOpacityLight: isDark ? 0.20 : 0.22,
-          onTap: onTap,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: fg),
-              const SizedBox(width: 8),
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow:
-                        TextOverflow.visible, // stops yellow overflow warnings
-                    style: TextStyle(
-                      color: fg,
-                      fontWeight: FontWeight.w900,
-                      fontSize: fontSize,
-                      height: 1.0,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.14 : 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: color.withValues(alpha: isDark ? 0.22 : 0.15),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 17, color: color),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
                 ),
               ),
-            ],
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
