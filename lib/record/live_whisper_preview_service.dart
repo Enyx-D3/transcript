@@ -37,17 +37,25 @@ class LiveWhisperPreview {
 }
 
 class LiveWhisperPreviewService {
+  static final LiveWhisperPreviewService instance = LiveWhisperPreviewService._();
+  LiveWhisperPreviewService._();
+  factory LiveWhisperPreviewService() => instance;
+
   static const _sampleRate = 16000;
   static const _bytesPerSample = 2;
   static const _wavHeaderBytes = 44;
-  static const _chunkSeconds = 8;
+  static const _chunkSeconds = 4;
   static const _stableTailSeconds = 1;
 
   final _updates = StreamController<LiveWhisperPreview>.broadcast();
   final _asr = AsrService();
 
+  LiveWhisperPreview _currentPreview = LiveWhisperPreview.idle();
+  LiveWhisperPreview get currentPreview => _currentPreview;
+
   Timer? _timer;
   bool _stopped = true;
+  bool get isRunning => !_stopped;
   bool _acceptingChunks = false;
   bool _decoding = false;
   int _runId = 0;
@@ -63,6 +71,11 @@ class LiveWhisperPreviewService {
   bool get isSupported => !Platform.isFuchsia;
 
   Future<void> start(String wavPath, {String lang = 'en'}) async {
+    if (!_stopped && _wavPath == wavPath) {
+      debugPrint('[LiveWhisper] start called but already active for path=$wavPath; keeping state');
+      return;
+    }
+
     await stop(finalize: false);
 
     if (!isSupported) {
@@ -81,7 +94,7 @@ class LiveWhisperPreviewService {
     debugPrint('[LiveWhisper] start path=$wavPath lang=$lang run=$runId');
     _emit(LiveWhisperPreview.idle());
     _timer = Timer.periodic(
-      const Duration(seconds: 8),
+      const Duration(seconds: 4),
       (_) => _pump(wavPath: wavPath, lang: lang, runId: runId),
     );
     unawaited(_pump(wavPath: wavPath, lang: lang, runId: runId));
@@ -250,6 +263,7 @@ class LiveWhisperPreviewService {
   }
 
   void _emit(LiveWhisperPreview preview) {
+    _currentPreview = preview;
     if (!_updates.isClosed) _updates.add(preview);
   }
 }

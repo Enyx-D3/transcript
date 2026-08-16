@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class RecordingService {
   static const _serviceId = 431;
+  static final List<double> recentAmplitudes = <double>[];
 
   static Future<void> ensureInitialized() async {
     FlutterForegroundTask.init(
@@ -30,7 +31,7 @@ class RecordingService {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(200),
+        eventAction: ForegroundTaskEventAction.repeat(150),
         allowWakeLock: true,
         allowWifiLock: false,
         autoRunOnBoot: false,
@@ -39,6 +40,23 @@ class RecordingService {
     );
 
     FlutterForegroundTask.initCommunicationPort();
+    FlutterForegroundTask.removeTaskDataCallback(_globalTaskListener);
+    FlutterForegroundTask.addTaskDataCallback(_globalTaskListener);
+  }
+
+  static void _globalTaskListener(Object data) {
+    if (data is Map && data['type'] == 'tick') {
+      final lv = (data['level'] as num?)?.toDouble();
+      final db = (data['db'] as num?)?.toDouble() ??
+          ((lv != null) ? (lv * 60.0) - 60.0 : -60.0);
+      final pa = data['paused'] as bool? ?? false;
+      if (!pa) {
+        recentAmplitudes.add(db);
+        if (recentAmplitudes.length > 50) {
+          recentAmplitudes.removeAt(0);
+        }
+      }
+    }
   }
 
   /// Accepts targetSpeakers (nullable).
@@ -122,8 +140,14 @@ class RecordingService {
     final v = await FlutterForegroundTask.getData(key: _kFilePath);
     final path = v is String ? v : null;
 
+    recentAmplitudes.clear();
     final result = await FlutterForegroundTask.stopService();
     return (result is ServiceRequestSuccess) ? path : null;
+  }
+
+  static Future<String?> getCurrentWavPath() async {
+    final v = await FlutterForegroundTask.getData(key: _kFilePath);
+    return v is String ? v : null;
   }
 
   static void addListener(void Function(Object data) onData) {
@@ -398,13 +422,15 @@ class _RecordingTaskHandler extends TaskHandler {
       }
 
       double level = 0.0;
+      double db = -60.0;
       try {
         final amp = await _rec.getAmplitude();
-        final db = amp.current; // -160..0
+        db = amp.current; // -160..0
         final clamped = db.clamp(-60.0, 0.0);
         level = (clamped + 60.0) / 60.0; // 0..1
       } catch (_) {
         level = 0.0;
+        db = -60.0;
       }
 
       FlutterForegroundTask.sendDataToMain({
@@ -412,6 +438,7 @@ class _RecordingTaskHandler extends TaskHandler {
         'elapsedSec': elapsed,
         'paused': _paused,
         'level': level,
+        'db': db,
       });
 
       if (elapsed != _lastNotifSec) {
