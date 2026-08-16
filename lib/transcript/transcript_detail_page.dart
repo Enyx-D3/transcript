@@ -2909,7 +2909,7 @@ class _ModernAudioHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF007AFF);
+    final primaryColor = GlassTokens.primary(context);
 
     final statusTitle = isTranscribingNow
         ? 'Processing Recording…'
@@ -3279,7 +3279,7 @@ class _QuickActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
-    const primaryColor = Color(0xFF007AFF);
+    final primaryColor = GlassTokens.primary(context);
     final disabled = onTap == null;
 
     final bg = isPrimary
@@ -3377,7 +3377,7 @@ class _ModernTurnCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
           color: isCurrentPlaybackSegment
-              ? const Color(0xFF007AFF)
+              ? GlassTokens.primary(context)
               : (isDark ? const Color(0xFF282834) : const Color(0xFFEEF0F6)),
           width: isCurrentPlaybackSegment ? 1.5 : 1,
         ),
@@ -3466,7 +3466,7 @@ class _ModernTurnCard extends StatelessWidget {
                                     : Icons.play_arrow_rounded,
                                 size: 12,
                                 color: isCurrentPlaybackSegment
-                                    ? const Color(0xFF007AFF)
+                                    ? GlassTokens.primary(context)
                                     : muted,
                               ),
                               const SizedBox(width: 3),
@@ -3477,7 +3477,7 @@ class _ModernTurnCard extends StatelessWidget {
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: isCurrentPlaybackSegment
-                                    ? const Color(0xFF007AFF)
+                                    ? GlassTokens.primary(context)
                                     : muted,
                               ),
                             ),
@@ -3775,7 +3775,7 @@ class _FloatingSearchBar extends StatelessWidget {
               Icon(
                 Icons.search_rounded,
                 size: 19,
-                color: const Color(0xFF007AFF),
+                color: GlassTokens.primary(context),
               ),
               const SizedBox(width: 10),
               Expanded(

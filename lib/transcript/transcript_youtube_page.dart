@@ -424,7 +424,7 @@ class _TranscriptYoutubePageState extends State<TranscriptYoutubePage> {
                         borderOpacityLight: 0.18,
                         child: TextField(
                           controller: _ctrl,
-                          cursorColor: const Color(0xFF007AFF),
+                          cursorColor: GlassTokens.primary(context),
                           textInputAction: TextInputAction.done,
                           onSubmitted: (_) => _loading ? null : _fetchAll(),
                           style: TextStyle(color: fg),

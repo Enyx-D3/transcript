@@ -363,7 +363,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                 borderRadius: BorderRadius.circular(14),
                 border: isSelected
                     ? Border.all(
-                        color: const Color(0xFF007AFF).withValues(alpha: 0.35),
+                        color: GlassTokens.primary(context).withValues(alpha: 0.35),
                         width: 1,
                       )
                     : null,
@@ -374,7 +374,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                     padding: const EdgeInsets.all(7),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? const Color(0xFF007AFF)
+                          ? GlassTokens.primary(context)
                           : (isDark
                               ? const Color(0xFF242432)
                               : const Color(0xFFF0F1F6)),
@@ -398,7 +398,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                             fontWeight: isSelected
                                 ? FontWeight.w700
                                 : FontWeight.w600,
-                            color: isSelected ? const Color(0xFF007AFF) : fg,
+                            color: isSelected ? GlassTokens.primary(context) : fg,
                           ),
                         ),
                         const SizedBox(height: 1.5),
@@ -413,9 +413,9 @@ class _FavouritesTabState extends State<FavouritesTab> {
                     ),
                   ),
                   if (isSelected)
-                    const Icon(
+                    Icon(
                       Icons.check_circle_rounded,
-                      color: Color(0xFF007AFF),
+                      color: GlassTokens.primary(context),
                       size: 19,
                     ),
                 ],
@@ -554,7 +554,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
           bottom: false,
           child: RefreshIndicator(
             onRefresh: _load,
-            color: const Color(0xFF007AFF),
+            color: GlassTokens.primary(context),
             child: CustomScrollView(
               controller: _scrollCtrl,
               physics: const AlwaysScrollableScrollPhysics(
@@ -668,17 +668,6 @@ class _FavouritesTabState extends State<FavouritesTab> {
                           ],
                         ),
 
-                        // Subtitle
-                        const SizedBox(height: 2),
-                        Text(
-                          'Your starred transcripts & recordings',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: muted,
-                          ),
-                        ),
-
                         // Search Bar (expandable)
                         AnimatedCrossFade(
                           duration: const Duration(milliseconds: 220),
@@ -781,7 +770,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                                   filter: _SourceFilter.voice,
                                   label: 'Voice',
                                   icon: Icons.mic_rounded,
-                                  accentColor: const Color(0xFF007AFF),
+                                  accentColor: GlassTokens.primary(context),
                                 ),
                                 const SizedBox(width: 8),
                                 _buildFilterChip(
@@ -1056,7 +1045,7 @@ class _FavouritesTabState extends State<FavouritesTab> {
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF007AFF),
+                foregroundColor: GlassTokens.primary(context),
               ),
             ),
           ],
@@ -1104,7 +1093,7 @@ class _FavoriteTranscriptCard extends StatelessWidget {
     final isVideo = st == 3;
 
     // Accent colors & icons per source
-    Color accentColor = const Color(0xFF007AFF);
+    Color accentColor = GlassTokens.primary(context);
     IconData sourceIcon = Icons.mic_rounded;
     String sourceName = 'Voice';
 
@@ -1497,7 +1486,7 @@ class _IconButtonPill extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isActive
-                ? const Color(0xFF007AFF).withValues(alpha: 0.4)
+                ? GlassTokens.primary(context).withValues(alpha: 0.4)
                 : (isDark
                     ? const Color(0xFF282834)
                     : const Color(0xFFE2E4EB)),
@@ -1507,7 +1496,7 @@ class _IconButtonPill extends StatelessWidget {
         child: Icon(
           icon,
           size: 19,
-          color: isActive ? const Color(0xFF007AFF) : muted,
+          color: isActive ? GlassTokens.primary(context) : muted,
         ),
       ),
     );
@@ -1612,7 +1601,7 @@ class _AnimatedSortButtonState extends State<_AnimatedSortButton>
                     Icons.sort_rounded,
                     size: 19,
                     color: _controller.isAnimating
-                        ? const Color(0xFF007AFF)
+                        ? GlassTokens.primary(context)
                         : muted,
                   ),
                 );
@@ -1726,7 +1715,7 @@ class _AnimatedReloadButtonState extends State<_AnimatedReloadButton>
               child: Icon(
                 Icons.refresh_rounded,
                 size: 19,
-                color: widget.loading ? const Color(0xFF007AFF) : muted,
+                color: widget.loading ? GlassTokens.primary(context) : muted,
               ),
             ),
           ),

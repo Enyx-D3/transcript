@@ -845,7 +845,7 @@ class _TimelineTabState extends State<TimelineTab> {
           bottom: false,
           child: RefreshIndicator(
             onRefresh: _load,
-            color: const Color(0xFF007AFF),
+            color: GlassTokens.primary(context),
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),
@@ -885,6 +885,7 @@ class _TimelineTabState extends State<TimelineTab> {
                               child: IconPillButton(
                                 tooltip: 'Settings',
                                 icon: Icons.settings_outlined,
+                                iconColor: GlassTokens.primary(context),
                                 size: 23,
                                 padding: const EdgeInsets.all(9),
                                 onTap: () => _openPage(
@@ -910,7 +911,7 @@ class _TimelineTabState extends State<TimelineTab> {
                                 title: 'Record',
                                 subtitle: 'Meeting',
                                 icon: Icons.mic_rounded,
-                                iconColor: const Color(0xFF007AFF),
+                                iconColor: GlassTokens.primary(context),
                                 onTap: () => widget.onNavigateToTab(2),
                               ),
                               // 2. Import File
@@ -918,7 +919,7 @@ class _TimelineTabState extends State<TimelineTab> {
                                 title: 'Import',
                                 subtitle: 'Audio / Video',
                                 icon: Icons.folder_rounded,
-                                iconColor: const Color(0xFF007AFF),
+                                iconColor: GlassTokens.primary(context),
                                 onTap: () => _showImportOptions(context),
                               ),
                               // 3. YouTube Transcript
@@ -1035,7 +1036,7 @@ class _TimelineTabState extends State<TimelineTab> {
                     color: isDark ? const Color(0xFF1E2A3A) : const Color(0xFFE8F1FF),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.audio_file_rounded, color: Color(0xFF007AFF)),
+                  child: Icon(Icons.audio_file_rounded, color: GlassTokens.primary(context)),
                 ),
                 title: Text('Import Audio File', style: TextStyle(fontWeight: FontWeight.w600, color: fg)),
                 subtitle: Text('MP3, WAV, M4A, AAC', style: TextStyle(fontSize: 12, color: muted)),
@@ -1348,7 +1349,7 @@ class _TranscriptItemCard extends StatelessWidget {
     final isVideo = st == 3;
 
     // Accent bar color on the left edge
-    Color accentColor = const Color(0xFF007AFF);
+    Color accentColor = GlassTokens.primary(context);
     if (isYoutube) accentColor = const Color(0xFFFF3B30);
     if (isVideo) accentColor = const Color(0xFF635BFF);
 
@@ -1539,9 +1540,7 @@ class _TranscriptItemCard extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: isDark
-                                      ? const Color(0xFF4DA1FF)
-                                      : const Color(0xFF007AFF),
+                                  color: GlassTokens.primary(context),
                                 ),
                               ),
                             ),
@@ -1579,7 +1578,6 @@ class _AnimatedReloadButtonState extends State<_AnimatedReloadButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _rotationAnim;
-  late final Animation<Color?> _colorAnim;
   double _touchScale = 1.0;
 
   @override
@@ -1593,16 +1591,6 @@ class _AnimatedReloadButtonState extends State<_AnimatedReloadButton>
     // Silky smooth 360-degree rotation with seamless cubic ease
     _rotationAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
-    );
-
-    _colorAnim = ColorTween(
-      begin: const Color(0xFF8E8E93),
-      end: const Color(0xFF007AFF),
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeInOut),
-      ),
     );
 
     if (widget.loading) {
@@ -1642,6 +1630,7 @@ class _AnimatedReloadButtonState extends State<_AnimatedReloadButton>
   @override
   Widget build(BuildContext context) {
     final muted = GlassTokens.muted(context);
+    final primaryColor = GlassTokens.primary(context);
 
     return Tooltip(
       message: 'Reload',
@@ -1659,8 +1648,14 @@ class _AnimatedReloadButtonState extends State<_AnimatedReloadButton>
             animation: _controller,
             builder: (context, child) {
               final activeColor = _controller.isAnimating && !widget.loading
-                  ? (_colorAnim.value ?? const Color(0xFF007AFF))
-                  : (widget.loading ? const Color(0xFF007AFF) : muted);
+                  ? (ColorTween(begin: muted, end: primaryColor).evaluate(
+                          CurvedAnimation(
+                            parent: _controller,
+                            curve: const Interval(0.0, 0.4, curve: Curves.easeInOut),
+                          ),
+                        ) ??
+                        primaryColor)
+                  : (widget.loading ? primaryColor : muted);
 
               return Padding(
                 padding: const EdgeInsets.all(6),
@@ -1693,7 +1688,6 @@ class _AnimatedSortButtonState extends State<_AnimatedSortButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _tiltAnim;
-  late final Animation<Color?> _colorAnim;
   double _touchScale = 1.0;
 
   @override
@@ -1722,16 +1716,6 @@ class _AnimatedSortButtonState extends State<_AnimatedSortButton>
         weight: 30,
       ),
     ]).animate(_controller);
-
-    _colorAnim = ColorTween(
-      begin: const Color(0xFF8E8E93),
-      end: const Color(0xFF007AFF),
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeInOut),
-      ),
-    );
   }
 
   @override
@@ -1749,6 +1733,7 @@ class _AnimatedSortButtonState extends State<_AnimatedSortButton>
   @override
   Widget build(BuildContext context) {
     final muted = GlassTokens.muted(context);
+    final primaryColor = GlassTokens.primary(context);
 
     return Tooltip(
       message: 'Sort',
@@ -1766,7 +1751,13 @@ class _AnimatedSortButtonState extends State<_AnimatedSortButton>
             animation: _controller,
             builder: (context, child) {
               final activeColor = _controller.isAnimating
-                  ? (_colorAnim.value ?? const Color(0xFF007AFF))
+                  ? (ColorTween(begin: muted, end: primaryColor).evaluate(
+                          CurvedAnimation(
+                            parent: _controller,
+                            curve: const Interval(0.0, 0.5, curve: Curves.easeInOut),
+                          ),
+                        ) ??
+                        primaryColor)
                   : muted;
 
               return Transform.rotate(

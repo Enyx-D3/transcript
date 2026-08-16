@@ -482,7 +482,7 @@ class _TrashCard extends StatelessWidget {
                 child: _ActionButton(
                   label: 'Restore',
                   icon: Icons.restore_rounded,
-                  color: const Color(0xFF007AFF),
+                  color: GlassTokens.primary(context),
                   onTap: onRestore,
                 ),
               ),

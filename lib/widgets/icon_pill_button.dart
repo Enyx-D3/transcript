@@ -9,6 +9,7 @@ class IconPillButton extends StatelessWidget {
     required this.icon,
     this.size = 20,
     this.padding,
+    this.iconColor,
     required this.onTap,
   });
 
@@ -16,15 +17,17 @@ class IconPillButton extends StatelessWidget {
   final IconData icon;
   final double size;
   final EdgeInsetsGeometry? padding;
+  final Color? iconColor;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final disabled = onTap == null;
     final fg = GlassTokens.fg(context);
-    final iconColor = disabled
-        ? fg.withValues(alpha: 0.35)
-        : fg.withValues(alpha: 0.92);
+    final effectiveIconColor = iconColor ??
+        (disabled
+            ? fg.withValues(alpha: 0.35)
+            : fg.withValues(alpha: 0.92));
 
     return Tooltip(
       message: tooltip,
@@ -35,7 +38,7 @@ class IconPillButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
           padding: padding ?? const EdgeInsets.all(8),
           shadow: false,
-          child: Icon(icon, size: size, color: iconColor),
+          child: Icon(icon, size: size, color: effectiveIconColor),
         ),
       ),
     );

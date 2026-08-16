@@ -542,7 +542,7 @@ class _RecordSheetState extends State<RecordSheet> {
     final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
-    const primaryBlue = Color(0xFF007AFF);
+    final primaryBlue = GlassTokens.primary(context);
     const recordRed = Color(0xFFFF3B30);
     const pauseAmber = Color(0xFFFF9500);
 
@@ -819,7 +819,7 @@ class _RecordSheetState extends State<RecordSheet> {
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.subtitles_rounded, size: 15, color: primaryBlue),
+                                Icon(Icons.subtitles_rounded, size: 15, color: primaryBlue),
                                 const SizedBox(width: 6),
                                 Text(
                                   'Live transcript',
@@ -843,13 +843,13 @@ class _RecordSheetState extends State<RecordSheet> {
                                         Container(
                                           width: 6,
                                           height: 6,
-                                          decoration: const BoxDecoration(
+                                          decoration: BoxDecoration(
                                             color: primaryBlue,
                                             shape: BoxShape.circle,
                                           ),
                                         ),
                                         const SizedBox(width: 4),
-                                        const Text(
+                                        Text(
                                           'LIVE',
                                           style: TextStyle(
                                             fontSize: 9.5,
@@ -939,7 +939,7 @@ class _RecordSheetState extends State<RecordSheet> {
                                   child: DropdownButton<String>(
                                     value: _selectedLang,
                                     isDense: true,
-                                    icon: const Icon(Icons.unfold_more_rounded, size: 18, color: primaryBlue),
+                                    icon: Icon(Icons.unfold_more_rounded, size: 18, color: primaryBlue),
                                     dropdownColor: isDark ? const Color(0xFF1E1E26) : Colors.white,
                                     borderRadius: BorderRadius.circular(14),
                                     items: _langOptions.entries

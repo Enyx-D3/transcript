@@ -70,6 +70,10 @@ class GlassTokens {
   static bool isDark(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark;
 
+  static Color primary(BuildContext context) {
+    return Theme.of(context).colorScheme.primary;
+  }
+
   static Color fg(BuildContext context, {double alpha = 0.95}) {
     final dark = isDark(context);
     return (dark ? Colors.white : const Color(0xFF1A1A1E))

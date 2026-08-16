@@ -172,7 +172,9 @@ class MyApp extends StatelessWidget {
           title: 'Transcript',
           themeMode: ThemeController.instance.themeMode,
           theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
+          darkTheme: ThemeController.instance.isCrimson
+              ? AppTheme.crimson
+              : AppTheme.dark,
 
           builder: (context, child) {
             return GlassBackground(child: child ?? const SizedBox.shrink());
@@ -230,7 +232,7 @@ class _SplashGateState extends State<SplashGate> {
       }
 
       setState(() => _status = 'Initializing…');
-      // await _recoverStaleTranscriptionLock();
+      await _recoverStaleTranscriptionLock();
 
       setState(() => _status = 'Checking access…');
       final eligibility = await checkEligibilityOnce(Supabase.instance.client);

@@ -218,7 +218,7 @@ class _TranscriptEditorPageState extends State<TranscriptEditorPage> {
         final isDark = GlassTokens.isDark(ctx);
         final fg = GlassTokens.fg(ctx);
         final muted = GlassTokens.muted(ctx);
-        const accent = Color(0xFF007AFF);
+        final accent = GlassTokens.primary(ctx);
 
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E26) : Colors.white,

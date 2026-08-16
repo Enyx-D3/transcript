@@ -38,7 +38,7 @@ Future<bool?> showReportDialog({
           final muted = GlassTokens.muted(ctx);
 
           // App Theme Primary Color
-          const primaryColor = Color(0xFF007AFF);
+          final primaryColor = GlassTokens.primary(ctx);
 
           // Solid, opaque background colors (never transparent in light or dark mode)
           final dialogBg = isDark ? const Color(0xFF191922) : Colors.white;
@@ -82,7 +82,7 @@ Future<bool?> showReportDialog({
                                   : primaryColor.withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.flag_rounded,
                               color: primaryColor,
                               size: 20,
@@ -218,7 +218,7 @@ Future<bool?> showReportDialog({
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
+                            borderSide: BorderSide(
                               color: primaryColor,
                               width: 1.5,
                             ),

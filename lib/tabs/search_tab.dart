@@ -119,21 +119,9 @@ class _SearchTabState extends State<SearchTab> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
     final isDark = GlassTokens.isDark(context);
-
-    final titleStyle = theme.textTheme.headlineSmall?.copyWith(
-      fontWeight: FontWeight.w900,
-      letterSpacing: -0.2,
-      color: fg,
-    );
-
-    final subStyle = theme.textTheme.bodySmall?.copyWith(
-      color: muted,
-      fontWeight: FontWeight.w600,
-    );
 
     Widget closePill({double iconSize = 18}) {
       return LiquidGlass(
@@ -158,26 +146,19 @@ class _SearchTabState extends State<SearchTab> {
         onTap: _unfocus,
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // ---------- Header ----------
-                Row(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Search', style: titleStyle),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Find transcripts by title or content',
-                          style: subStyle,
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                  ],
+                Text(
+                  'Search',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: fg,
+                    letterSpacing: -0.4,
+                  ),
                 ),
 
                 const SizedBox(height: 14),

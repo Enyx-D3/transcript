@@ -294,11 +294,9 @@ class _BottomDockNav extends StatelessWidget {
   final int index;
   final ValueChanged<int> onSelect;
   final bool eligible;
-
-  static const Color _primaryBlue = Color(0xFF007AFF);
-
   @override
   Widget build(BuildContext context) {
+    final primaryColor = GlassTokens.primary(context);
     final isDark = GlassTokens.isDark(context);
     final inactiveColor =
         isDark ? const Color(0xFFA0A0AB) : const Color(0xFF6B6B78);
@@ -332,7 +330,7 @@ class _BottomDockNav extends StatelessWidget {
                       icon: Icons.graphic_eq_rounded,
                       label: 'Timeline',
                       isSelected: index == 0,
-                      activeColor: _primaryBlue,
+                      activeColor: primaryColor,
                       inactiveColor: inactiveColor,
                       onTap: () => onSelect(0),
                     ),
@@ -346,7 +344,7 @@ class _BottomDockNav extends StatelessWidget {
                           : Icons.calendar_month_outlined,
                       label: 'Calendar',
                       isSelected: index == 1,
-                      activeColor: _primaryBlue,
+                      activeColor: primaryColor,
                       inactiveColor: inactiveColor,
                       onTap: () => onSelect(1),
                     ),
@@ -361,7 +359,7 @@ class _BottomDockNav extends StatelessWidget {
                       icon: Icons.search_rounded,
                       label: 'Search',
                       isSelected: index == 3,
-                      activeColor: _primaryBlue,
+                      activeColor: primaryColor,
                       inactiveColor: inactiveColor,
                       onTap: () => onSelect(3),
                     ),
@@ -375,7 +373,7 @@ class _BottomDockNav extends StatelessWidget {
                           : Icons.favorite_outline_rounded,
                       label: 'Favorites',
                       isSelected: index == 4,
-                      activeColor: _primaryBlue,
+                      activeColor: primaryColor,
                       inactiveColor: inactiveColor,
                       onTap: () => onSelect(4),
                     ),
@@ -437,12 +435,13 @@ class _NavItem extends StatelessWidget {
             Text(
               label,
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11.5,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                 color: color,
-                letterSpacing: -0.1,
+                letterSpacing: -0.15,
+                height: 1.1,
               ),
             ),
           ],
@@ -477,9 +476,9 @@ class _FloatingMicButtonState extends State<_FloatingMicButton> {
         child: Container(
           width: 56,
           height: 56,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Color(0xFF007AFF),
+            color: GlassTokens.primary(context),
           ),
           child: const Center(
             child: Icon(

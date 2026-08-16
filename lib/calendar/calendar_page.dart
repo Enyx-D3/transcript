@@ -345,7 +345,7 @@ class _CalendarPageState extends State<CalendarPage> {
                           child: Container(
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? const Color(0xFF007AFF)
+                                  ? GlassTokens.primary(context)
                                   : (isDark
                                       ? GlassTokens.surfaceDark
                                       : GlassTokens.surfaceLight),
@@ -466,7 +466,7 @@ class _CalendarPageState extends State<CalendarPage> {
                               height: 6,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: isSelectedToday ? const Color(0xFF007AFF) : muted,
+                                color: isSelectedToday ? GlassTokens.primary(context) : muted,
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -475,7 +475,7 @@ class _CalendarPageState extends State<CalendarPage> {
                               style: TextStyle(
                                 fontSize: 12.5,
                                 fontWeight: isSelectedToday ? FontWeight.w800 : FontWeight.w600,
-                                color: isSelectedToday ? const Color(0xFF007AFF) : fg,
+                                color: isSelectedToday ? GlassTokens.primary(context) : fg,
                               ),
                             ),
                           ],
@@ -551,15 +551,17 @@ class _CalendarPageState extends State<CalendarPage> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1A2433) : const Color(0xFFEAF2FF),
+                        color: isDark
+                            ? GlassTokens.primary(context).withValues(alpha: 0.16)
+                            : GlassTokens.primary(context).withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
                         '${selectedDayTranscripts.length} recording${selectedDayTranscripts.length == 1 ? '' : 's'} • ${_fmtDurationShort(dayTotalSec)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF007AFF),
+                          color: GlassTokens.primary(context),
                         ),
                       ),
                     ),
@@ -573,7 +575,7 @@ class _CalendarPageState extends State<CalendarPage> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _loadTranscripts,
-                color: const Color(0xFF007AFF),
+                color: GlassTokens.primary(context),
                 child: selectedDayTranscripts.isEmpty
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(
@@ -689,7 +691,7 @@ class _WeekDayCard extends StatelessWidget {
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF007AFF),
+            color: GlassTokens.primary(context),
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -743,7 +745,7 @@ class _WeekDayCard extends StatelessWidget {
     }
 
     if (isToday) {
-      border = const Color(0xFF007AFF);
+      border = GlassTokens.primary(context);
     }
 
     return InkWell(
@@ -767,7 +769,7 @@ class _WeekDayCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: isToday ? const Color(0xFF007AFF) : muted,
+                color: isToday ? GlassTokens.primary(context) : muted,
               ),
             ),
             const SizedBox(height: 3),
@@ -776,7 +778,7 @@ class _WeekDayCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 15.5,
                 fontWeight: isToday || hasRecordings ? FontWeight.w800 : FontWeight.w600,
-                color: isToday ? const Color(0xFF007AFF) : fg,
+                color: isToday ? GlassTokens.primary(context) : fg,
               ),
             ),
             const SizedBox(height: 3),
@@ -784,9 +786,9 @@ class _WeekDayCard extends StatelessWidget {
               Container(
                 width: 5,
                 height: 5,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Color(0xFF007AFF),
+                  color: GlassTokens.primary(context),
                 ),
               )
             else
@@ -831,8 +833,8 @@ class _TimelineTranscriptCard extends StatelessWidget {
         ),
       2 => (
           Icons.audio_file_rounded,
-          const Color(0xFF007AFF),
-          isDark ? const Color(0xFF1E2A3A) : const Color(0xFFE8F1FF),
+          const Color(0xFF00B0FF),
+          isDark ? const Color(0xFF162838) : const Color(0xFFE8F6FF),
         ),
       3 => (
           Icons.video_file_rounded,
@@ -841,8 +843,10 @@ class _TimelineTranscriptCard extends StatelessWidget {
         ),
       _ => (
           Icons.mic_rounded,
-          const Color(0xFF007AFF),
-          isDark ? const Color(0xFF1E2A3A) : const Color(0xFFEBF3FF),
+          GlassTokens.primary(context),
+          isDark
+              ? GlassTokens.primary(context).withValues(alpha: 0.16)
+              : GlassTokens.primary(context).withValues(alpha: 0.08),
         ),
     };
 

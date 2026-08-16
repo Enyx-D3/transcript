@@ -195,6 +195,6 @@ class AppFlushbar {
     title: title ?? 'Info',
     message: message,
     icon: Icons.info_rounded,
-    iconColor: const Color(0xFF007AFF),
+    iconColor: GlassTokens.primary(context),
   );
 }

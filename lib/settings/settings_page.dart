@@ -341,7 +341,7 @@ class _SettingsPageState extends State<SettingsPage> {
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF007AFF),
+                backgroundColor: GlassTokens.primary(context),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -448,7 +448,7 @@ class _SettingsPageState extends State<SettingsPage> {
             items: items,
             onChanged: onChanged,
             dropdownColor: GlassTokens.cardColor(context),
-            iconEnabledColor: const Color(0xFF007AFF),
+            iconEnabledColor: GlassTokens.primary(context),
             style: TextStyle(
               color: fg,
               fontWeight: FontWeight.w700,
@@ -468,7 +468,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
-    const primaryColor = Color(0xFF007AFF);
+    final primaryColor = GlassTokens.primary(context);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -533,7 +533,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
-    const primaryColor = Color(0xFF007AFF);
+    final primaryColor = GlassTokens.primary(context);
 
     return InkWell(
       onTap: () => onChanged(!value),
@@ -635,12 +635,22 @@ class _SettingsPageState extends State<SettingsPage> {
       appBar: AppBar(
         backgroundColor: GlassTokens.backgroundColor(context),
         elevation: 0,
-        title: const Text('Settings'),
+        scrolledUnderElevation: 0,
+        titleSpacing: 4,
+        title: Text(
+          'Settings',
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: fg,
+            letterSpacing: -0.4,
+          ),
+        ),
         leading: Padding(
           padding: const EdgeInsets.all(7.0),
           child: IconPillButton(
             tooltip: 'Back',
-            icon: Icons.arrow_back,
+            icon: Icons.arrow_back_rounded,
             onTap: () => Navigator.of(context).pop(),
           ),
         ),
@@ -668,12 +678,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             width: 36,
                             height: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF007AFF).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                              color: GlassTokens.primary(context).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.person_outline,
-                              color: Color(0xFF007AFF),
+                              color: GlassTokens.primary(context),
                               size: 20,
                             ),
                           ),
@@ -723,12 +733,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             width: 36,
                             height: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF007AFF).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                              color: GlassTokens.primary(context).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.smart_toy_outlined,
-                              color: Color(0xFF007AFF),
+                              color: GlassTokens.primary(context),
                               size: 20,
                             ),
                           ),
@@ -772,27 +782,31 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: _kvRow(
                     icon: Icons.palette_outlined,
                     title: 'Theme',
-                    subtitle: 'Choose light, dark, or system default theme.',
-                    trailing: _trailingDropdown<ThemeMode>(
-                      value: ThemeController.instance.themeMode,
+                    subtitle: 'Choose your preferred app theme.',
+                    trailing: _trailingDropdown<AppThemeMode>(
+                      value: ThemeController.instance.appThemeMode,
                       width: 170,
                       items: const [
                         DropdownMenuItem(
-                          value: ThemeMode.system,
+                          value: AppThemeMode.system,
                           child: Text('System', overflow: TextOverflow.ellipsis),
                         ),
                         DropdownMenuItem(
-                          value: ThemeMode.dark,
-                          child: Text('Dark Mode', overflow: TextOverflow.ellipsis),
+                          value: AppThemeMode.dark,
+                          child: Text('Dark (Blue)', overflow: TextOverflow.ellipsis),
                         ),
                         DropdownMenuItem(
-                          value: ThemeMode.light,
+                          value: AppThemeMode.crimson,
+                          child: Text('Crimson (Dark)', overflow: TextOverflow.ellipsis),
+                        ),
+                        DropdownMenuItem(
+                          value: AppThemeMode.light,
                           child: Text('Light Mode', overflow: TextOverflow.ellipsis),
                         ),
                       ],
                       onChanged: (v) {
                         if (v == null) return;
-                        ThemeController.instance.setThemeMode(v);
+                        ThemeController.instance.setAppThemeMode(v);
                         setState(() {});
                       },
                     ),
@@ -950,12 +964,12 @@ class _SettingsPageState extends State<SettingsPage> {
                                 width: 36,
                                 height: 36,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF007AFF).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                                  color: GlassTokens.primary(context).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.archive_outlined,
-                                  color: Color(0xFF007AFF),
+                                  color: GlassTokens.primary(context),
                                   size: 20,
                                 ),
                               ),
@@ -1001,12 +1015,12 @@ class _SettingsPageState extends State<SettingsPage> {
                                 width: 36,
                                 height: 36,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF007AFF).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                                  color: GlassTokens.primary(context).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.unarchive_outlined,
-                                  color: Color(0xFF007AFF),
+                                  color: GlassTokens.primary(context),
                                   size: 20,
                                 ),
                               ),
@@ -1114,7 +1128,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
-    const primaryColor = Color(0xFF007AFF);
+    final primaryColor = GlassTokens.primary(context);
 
     return InkWell(
       onTap: onTap,
