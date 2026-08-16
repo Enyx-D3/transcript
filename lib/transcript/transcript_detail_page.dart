@@ -213,7 +213,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
       for (final u in _turns) {
         final txt = u.text.trim();
         if (txt.isEmpty) continue;
-        buf.writeln('${u.speakerLabel}: $txt');
+        buf.writeln('${_sanitizeSpeakerLabel(u.speakerLabel)}: $txt');
       }
       final transcriptText = buf.toString().trim();
       if (transcriptText.isEmpty) {
@@ -1299,6 +1299,12 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     await _refreshTick();
   }
 
+  String _sanitizeSpeakerLabel(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty || s.toLowerCase() == 'draft') return 'Speaker 1';
+    return s;
+  }
+
   // ---------- Build transcript text ----------
   String _buildTranscriptText({bool preferEdited = true}) {
     final t = _t;
@@ -1309,11 +1315,11 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     final b = StringBuffer();
     if (_turns.isNotEmpty) {
       for (final u in _turns) {
-        b.writeln('${u.speakerLabel}: ${u.text}');
+        b.writeln('${_sanitizeSpeakerLabel(u.speakerLabel)}: ${u.text}');
       }
     } else {
       for (final u in _partialTurns) {
-        b.writeln('${u.turn.speaker}: ${u.turn.text}');
+        b.writeln('${_sanitizeSpeakerLabel(u.turn.speaker)}: ${u.turn.text}');
       }
     }
     return b.toString().trim();
@@ -1338,8 +1344,8 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
 
         final idx = trimmed.indexOf(':');
         final speaker = (idx > 0)
-            ? trimmed.substring(0, idx).trim()
-            : 'Speaker';
+            ? _sanitizeSpeakerLabel(trimmed.substring(0, idx).trim())
+            : 'Speaker 1';
         final text = (idx > 0) ? trimmed.substring(idx + 1).trim() : trimmed;
 
         final ts = (i < turns.length) ? turns[i] : null;
@@ -1360,7 +1366,7 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
     return turns
         .map(
           (u) => _DisplayTurn(
-            u.speakerLabel,
+            _sanitizeSpeakerLabel(u.speakerLabel),
             u.text,
             startSec: u.startSec,
             endSec: u.endSec,
@@ -1417,16 +1423,17 @@ class _TranscriptDetailPageState extends State<TranscriptDetailPage> {
         final counts = <String, int>{};
         if (_turns.isNotEmpty) {
           for (final u in _turns) {
-            final speaker = u.speakerLabel.trim();
+            final speaker = _sanitizeSpeakerLabel(u.speakerLabel);
             if (speaker.isEmpty) continue;
             counts[speaker] = (counts[speaker] ?? 0) + 1;
           }
         } else {
           for (final u in snapshot.turns) {
-            final speaker = u.turn.speaker.trim();
-            if (speaker.isEmpty || speaker == 'Processing next segment') {
+            final raw = u.turn.speaker.trim();
+            if (raw.isEmpty || raw == 'Processing next segment') {
               continue;
             }
+            final speaker = _sanitizeSpeakerLabel(raw);
             counts[speaker] = (counts[speaker] ?? 0) + 1;
           }
         }

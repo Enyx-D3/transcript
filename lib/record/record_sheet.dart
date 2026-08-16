@@ -429,13 +429,13 @@ class _RecordSheetState extends State<RecordSheet> {
           List.generate(draftLines.length, (i) {
             final start = i * chunkSec;
             return TranscriptTurnEntity(
-              speakerLabel: 'Draft',
+              speakerLabel: 'Speaker 1',
               startSec: start,
               endSec: start + chunkSec,
               text: draftLines[i],
               rawText: draftLines[i],
               calibratedText: draftLines[i],
-              originalSpeakerLabel: 'Draft',
+              originalSpeakerLabel: 'Speaker 1',
             )..transcript.targetId = id;
           }),
         );

@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:transcript/ui/glass/glass_button.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:transcript/widgets/icon_pill_button.dart';
@@ -314,27 +313,50 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color.fromARGB(190, 0, 0, 0),
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Import transcripts + audio?'),
-        content: const Text(
-          'This will add transcripts (and their audio if included) from a ZIP export into your database.\n\n'
-          '*Duplicates are not automatically removed.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+      builder: (ctx) {
+        final isDark = GlassTokens.isDark(ctx);
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF191922) : Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            'Import transcripts + audio?',
+            style: TextStyle(color: fg, fontWeight: FontWeight.w800),
           ),
-          GlassButton(
-            label: 'Import',
-            onPressed: () => Navigator.pop(ctx, true),
-            expand: false,
-            kind: GlassButtonKind.secondary,
+          content: Text(
+            'This will add transcripts (and their audio if included) from a ZIP export into your database.\n\n'
+            '*Duplicates are not automatically removed.',
+            style: TextStyle(color: muted),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: muted, fontWeight: FontWeight.w700),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF007AFF),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Import',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (ok != true) return;
@@ -426,7 +448,7 @@ class _SettingsPageState extends State<SettingsPage> {
             items: items,
             onChanged: onChanged,
             dropdownColor: GlassTokens.cardColor(context),
-            iconEnabledColor: fg.withValues(alpha: 0.80),
+            iconEnabledColor: const Color(0xFF007AFF),
             style: TextStyle(
               color: fg,
               fontWeight: FontWeight.w700,
@@ -443,14 +465,28 @@ class _SettingsPageState extends State<SettingsPage> {
     required String subtitle,
     required Widget trailing,
   }) {
+    final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
+    const primaryColor = Color(0xFF007AFF);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
-          Icon(icon, color: fg.withValues(alpha: 0.85)),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: primaryColor.withValues(alpha: isDark ? 0.14 : 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: primaryColor,
+              size: 20,
+            ),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -459,11 +495,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text(
                   title,
                   style: TextStyle(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w800,
                     color: fg,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: TextStyle(
@@ -497,15 +533,32 @@ class _SettingsPageState extends State<SettingsPage> {
     final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
+    const primaryColor = Color(0xFF007AFF);
 
     return InkWell(
       onTap: () => onChanged(!value),
       borderRadius: BorderRadius.circular(14),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            Icon(icon, color: fg.withValues(alpha: 0.85)),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: value
+                    ? primaryColor.withValues(alpha: isDark ? 0.16 : 0.10)
+                    : (isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.black.withValues(alpha: 0.04)),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: value ? primaryColor : fg.withValues(alpha: 0.75),
+                size: 20,
+              ),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -514,11 +567,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w800,
                       color: fg,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
                     style: TextStyle(
@@ -529,24 +582,33 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: muted,
-                fontWeight: FontWeight.w900,
+                color: value ? primaryColor : muted,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Switch(
               value: value,
               onChanged: onChanged,
-              activeThumbColor: isDark ? Colors.black : Colors.white,
-              activeTrackColor: isDark ? Colors.white : const Color(0xFF141418),
-              inactiveThumbColor: muted,
+              activeThumbColor: Colors.white,
+              activeTrackColor: primaryColor,
+              inactiveThumbColor:
+                  isDark ? const Color(0xFF9E9EA6) : const Color(0xFF8E8E93),
               inactiveTrackColor: isDark
-                  ? Colors.white.withValues(alpha: 0.18)
-                  : Colors.black.withValues(alpha: 0.12),
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.black.withValues(alpha: 0.10),
+              trackOutlineColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? Colors.transparent
+                    : (isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : Colors.black.withValues(alpha: 0.08)),
+              ),
             ),
           ],
         ),
@@ -599,12 +661,21 @@ class _SettingsPageState extends State<SettingsPage> {
                     onTap: _openAccount,
                     borderRadius: BorderRadius.circular(14),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.person_outline,
-                            color: fg.withValues(alpha: 0.85),
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF007AFF).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.person_outline,
+                              color: Color(0xFF007AFF),
+                              size: 20,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -614,11 +685,11 @@ class _SettingsPageState extends State<SettingsPage> {
                                 Text(
                                   'Account & Billing',
                                   style: TextStyle(
-                                    fontWeight: FontWeight.w900,
+                                    fontWeight: FontWeight.w800,
                                     color: fg,
                                   ),
                                 ),
-                                const SizedBox(height: 3),
+                                const SizedBox(height: 2),
                                 Text(
                                   'Subscription, trial, and purchases',
                                   style: TextStyle(
@@ -645,12 +716,21 @@ class _SettingsPageState extends State<SettingsPage> {
                     onTap: _openModelPage,
                     borderRadius: BorderRadius.circular(14),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.smart_toy,
-                            color: fg.withValues(alpha: 0.85),
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF007AFF).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.smart_toy_outlined,
+                              color: Color(0xFF007AFF),
+                              size: 20,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -660,11 +740,11 @@ class _SettingsPageState extends State<SettingsPage> {
                                 Text(
                                   'Models',
                                   style: TextStyle(
-                                    fontWeight: FontWeight.w900,
+                                    fontWeight: FontWeight.w800,
                                     color: fg,
                                   ),
                                 ),
-                                const SizedBox(height: 3),
+                                const SizedBox(height: 2),
                                 Text(
                                   'Model for AI features',
                                   style: TextStyle(
@@ -863,12 +943,21 @@ class _SettingsPageState extends State<SettingsPage> {
                             : null,
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.archive_outlined,
-                                color: fg.withValues(alpha: 0.85),
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF007AFF).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.archive_outlined,
+                                  color: Color(0xFF007AFF),
+                                  size: 20,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -878,11 +967,11 @@ class _SettingsPageState extends State<SettingsPage> {
                                     Text(
                                       'Export transcripts + audio (ZIP)',
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w900,
+                                        fontWeight: FontWeight.w800,
                                         color: fg,
                                       ),
                                     ),
-                                    const SizedBox(height: 3),
+                                    const SizedBox(height: 2),
                                     Text(
                                       'Share to Drive / device / email',
                                       style: TextStyle(
@@ -905,12 +994,21 @@ class _SettingsPageState extends State<SettingsPage> {
                             : null,
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.unarchive_outlined,
-                                color: fg.withValues(alpha: 0.85),
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF007AFF).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.unarchive_outlined,
+                                  color: Color(0xFF007AFF),
+                                  size: 20,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -920,11 +1018,11 @@ class _SettingsPageState extends State<SettingsPage> {
                                     Text(
                                       'Import transcripts + audio (ZIP)',
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w900,
+                                        fontWeight: FontWeight.w800,
                                         color: fg,
                                       ),
                                     ),
-                                    const SizedBox(height: 3),
+                                    const SizedBox(height: 2),
                                     Text(
                                       'Pick ZIP from device / Drive',
                                       style: TextStyle(
@@ -1013,17 +1111,31 @@ class _SettingsPageState extends State<SettingsPage> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final isDark = GlassTokens.isDark(context);
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
+    const primaryColor = Color(0xFF007AFF);
 
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            Icon(icon, color: fg.withValues(alpha: 0.85)),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: primaryColor.withValues(alpha: isDark ? 0.14 : 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: primaryColor,
+                size: 20,
+              ),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1032,11 +1144,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w800,
                       color: fg,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
                     style: TextStyle(
