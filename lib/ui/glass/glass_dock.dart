@@ -7,44 +7,33 @@ class GlassDock extends StatelessWidget {
   const GlassDock({
     super.key,
     required this.child,
-    this.padding =
-        const EdgeInsets.fromLTRB(12, 10, 12, 12),
+    this.padding = const EdgeInsets.fromLTRB(12, 8, 12, 10),
     this.innerPadding = EdgeInsets.zero,
     this.radius,
     this.blur,
     this.tintLight,
     this.tintDark,
     this.shadow = true,
+    this.backgroundColor,
   });
 
   final Widget child;
-
-  /// outer spacing
   final EdgeInsetsGeometry padding;
-
-  /// inner padding inside glass
   final EdgeInsetsGeometry innerPadding;
-
   final BorderRadius? radius;
   final double? blur;
-
   final double? tintLight;
   final double? tintDark;
-
   final bool shadow;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
 
-    // Dock should be slightly stronger than panels
-    const defaultTintDark = 0.065;
-    const defaultTintLight = 0.050;
-
-    const defaultBorderDark = 0.16;
-    const defaultBorderLight = 0.22;
-
-    final blurValue = blur ?? (isDark ? 16 : 12); // perf
+    final bg = backgroundColor ??
+        (isDark ? const Color(0xFF14141A) : const Color(0xFFFFFFFF));
+    final border = isDark ? const Color(0xFF282832) : const Color(0xFFE2E2E9);
 
     return SafeArea(
       top: false,
@@ -53,24 +42,14 @@ class GlassDock extends StatelessWidget {
         child: LiquidGlass(
           padding: innerPadding,
           borderRadius: radius ?? GlassTokens.radiusDock,
-
-          blurX: blurValue,
-          blurY: blurValue,
-
-          tintOpacityDark: tintDark ?? defaultTintDark,
-          tintOpacityLight: tintLight ?? defaultTintLight,
-
-          borderOpacityDark: defaultBorderDark,
-          borderOpacityLight: defaultBorderLight,
-
+          backgroundColor: bg,
+          borderColor: border,
           shadow: shadow,
-          grain: false,
-          shadowBlur: 30,
-          shadowOffset: const Offset(0, 18),
-          shadowOpacityDark: 0.20,
+          shadowBlur: 20,
+          shadowOffset: const Offset(0, 4),
+          shadowOpacityDark: 0.45,
           shadowOpacityLight: 0.08,
-
-          onTap: null, // dock is not tappable itself
+          onTap: null,
           child: child,
         ),
       ),

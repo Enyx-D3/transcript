@@ -1,12 +1,14 @@
 // lib/record/record_sheet.dart
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:objectbox/objectbox.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:transcript/common/app_flushbar.dart';
+import 'package:waveform_flutter/waveform_flutter.dart' as waveform;
 
 import '../record/recording_service.dart';
 import '../transcript/transcript_detail_page.dart';
@@ -14,13 +16,9 @@ import '../transcript/transcript_detail_page.dart';
 import '../objectbox/objectbox_store.dart';
 import '../objectbox/entities.dart';
 import '../transcript/background_transcriber.dart';
-import '../paywall/transcription_premium_gate.dart';
+import 'live_whisper_preview_service.dart';
 
-// ✅ Glass primitives (same language as ImportAudioSheet)
-import '../ui/glass/liquid_glass.dart';
-import '../ui/glass/glass_card.dart';
-import '../ui/glass/glass_button.dart';
-import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
 
 class RecordSheet extends StatefulWidget {
   const RecordSheet({super.key});
@@ -70,16 +68,17 @@ class _RecordSheetState extends State<RecordSheet> {
   bool _starting = false;
 
   double _seconds = 0.0;
-  double _level = 0.0;
   late final void Function(Object) _fgListener;
+  late final LiveWhisperPreviewService _livePreviewService;
+  StreamSubscription<LiveWhisperPreview>? _livePreviewSub;
+  late final ValueNotifier<LiveWhisperPreview> _livePreview;
+  StreamController<waveform.Amplitude>? _amplitudeStreamController;
 
   static const String _kBusyTranscribing = 'busy_transcribing';
   static const String _kActiveTranscriptId = 'bg_active_transcript_id';
   bool _handledStop = false;
 
-  final TextEditingController _targetSpeakersCtrl = TextEditingController(
-    text: '0',
-  );
+  int _targetSpeakersCount = 0; // 0 == auto
 
   static const Map<String, String> _langOptions = {
     'en': 'English',
@@ -89,24 +88,28 @@ class _RecordSheetState extends State<RecordSheet> {
     'pt': 'Portuguese',
     'it': 'Italian',
     'zh': 'Chinese',
-    'auto': 'Auto',
+    'auto': 'Auto-detect',
   };
 
-  // loaded from prefs
   String _selectedLang = 'en';
   bool _diarizationEnabled = true;
 
   static const String _kLastElapsedSec = 'rec_last_elapsed_sec';
-  static const String _kLastLevel = 'rec_last_level';
   static const String _kLastPaused = 'rec_last_paused';
 
-  // must match SettingsPage keys
   static const String _kPrefDefaultLang = 'pref_default_lang';
   static const String _kPrefDiarizationEnabled = 'pref_diarization_enabled';
 
   @override
   void initState() {
     super.initState();
+    _livePreviewService = LiveWhisperPreviewService.instance;
+    _livePreview = ValueNotifier<LiveWhisperPreview>(
+      _livePreviewService.currentPreview,
+    );
+    _livePreviewSub = _livePreviewService.updates.listen((preview) {
+      _livePreview.value = preview;
+    });
 
     _fgListener = (Object data) async {
       if (!mounted) return;
@@ -117,17 +120,29 @@ class _RecordSheetState extends State<RecordSheet> {
       if (type == 'tick') {
         final sec = (data['elapsedSec'] as num?)?.toDouble();
         final lv = (data['level'] as num?)?.toDouble();
+        final db =
+            (data['db'] as num?)?.toDouble() ??
+            ((lv != null) ? (lv * 60.0) - 60.0 : -60.0);
         final pa = data['paused'] as bool?;
 
         if (!mounted) return;
         setState(() {
           if (sec != null) _seconds = sec;
-          if (lv != null) _level = lv.clamp(0.0, 1.0);
           if (pa != null) _paused = pa;
 
           _recording = true;
           _starting = false;
         });
+
+        if (_recording && !_paused) {
+          RecordingService.recentAmplitudes.add(db);
+          if (RecordingService.recentAmplitudes.length > 40) {
+            RecordingService.recentAmplitudes.removeAt(0);
+          }
+          _amplitudeStreamController?.add(
+            waveform.Amplitude(current: db, max: 0.0),
+          );
+        }
         return;
       }
 
@@ -150,12 +165,19 @@ class _RecordSheetState extends State<RecordSheet> {
         final ts = data['targetSpeakers'];
         final int? targetSpeakers = (ts is int) ? ts : null;
 
+        _amplitudeStreamController?.close();
+        _amplitudeStreamController = null;
+
         if (!mounted) return;
         setState(() {
           _recording = false;
           _paused = false;
           _starting = false;
         });
+        final draftText = _livePreviewService.currentText.isNotEmpty
+            ? _livePreviewService.currentText
+            : _livePreview.value.text.trim();
+        await _livePreviewService.stop();
 
         if (wavPath == null || wavPath.trim().isEmpty) {
           if (!mounted) return;
@@ -167,6 +189,7 @@ class _RecordSheetState extends State<RecordSheet> {
           wavPath: wavPath,
           targetSpeakers: _diarizationEnabled ? targetSpeakers : null,
           lang: _selectedLang,
+          draftText: draftText,
         );
       }
     };
@@ -177,7 +200,9 @@ class _RecordSheetState extends State<RecordSheet> {
 
   @override
   void dispose() {
-    _targetSpeakersCtrl.dispose();
+    _amplitudeStreamController?.close();
+    _livePreviewSub?.cancel();
+    _livePreview.dispose();
     RecordingService.removeListener(_fgListener);
     super.dispose();
   }
@@ -207,8 +232,6 @@ class _RecordSheetState extends State<RecordSheet> {
   }
 
   Future<void> _hydrateFromRecordingService() async {
-    if (Platform.isIOS) return;
-
     final running = await FlutterForegroundTask.isRunningService;
     if (!mounted) return;
 
@@ -222,7 +245,6 @@ class _RecordSheetState extends State<RecordSheet> {
     }
 
     final elapsed = await FlutterForegroundTask.getData(key: _kLastElapsedSec);
-    final level = await FlutterForegroundTask.getData(key: _kLastLevel);
     final paused = await FlutterForegroundTask.getData(key: _kLastPaused);
 
     if (!mounted) return;
@@ -232,8 +254,30 @@ class _RecordSheetState extends State<RecordSheet> {
 
       _paused = (paused is bool) ? paused : false;
       if (elapsed is num) _seconds = elapsed.toDouble();
-      if (level is num) _level = level.toDouble().clamp(0.0, 1.0);
     });
+
+    _livePreview.value = _livePreviewService.currentPreview;
+
+    if (_recording) {
+      if (!_livePreviewService.isRunning) {
+        final wavPath = await RecordingService.getCurrentWavPath();
+        if (wavPath != null) {
+          unawaited(_livePreviewService.start(wavPath, lang: _selectedLang));
+        }
+      }
+
+      if (_amplitudeStreamController == null) {
+        _amplitudeStreamController =
+            StreamController<waveform.Amplitude>.broadcast();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          for (final db in RecordingService.recentAmplitudes) {
+            _amplitudeStreamController?.add(
+              waveform.Amplitude(current: db, max: 0.0),
+            );
+          }
+        });
+      }
+    }
   }
 
   Future<void> _ensureMic() async {
@@ -247,13 +291,8 @@ class _RecordSheetState extends State<RecordSheet> {
   }
 
   int? _parseTargetSpeakers() {
-    final raw = _targetSpeakersCtrl.text.trim();
-    if (raw.isEmpty) return null;
-
-    final n = int.tryParse(raw);
-    if (n == null) return null;
-    if (n <= 0) return null;
-    return n.clamp(1, 12);
+    if (_targetSpeakersCount <= 0) return null;
+    return _targetSpeakersCount.clamp(1, 12);
   }
 
   Future<void> _start() async {
@@ -268,15 +307,22 @@ class _RecordSheetState extends State<RecordSheet> {
 
       await _ensureMic();
 
+      RecordingService.recentAmplitudes.clear();
+      _amplitudeStreamController?.close();
+      _amplitudeStreamController =
+          StreamController<waveform.Amplitude>.broadcast();
+
       if (!mounted) return;
       setState(() {
         _starting = true;
         _seconds = 0.0;
-        _level = 0.0;
       });
+      _livePreview.value = LiveWhisperPreview.idle();
 
       final path = await RecordingService.start(targetSpeakers: targetSpeakers);
       if (path == null) {
+        _amplitudeStreamController?.close();
+        _amplitudeStreamController = null;
         if (!mounted) return;
         setState(() => _starting = false);
         await AppFlushbar.error(context, message: 'Couldn’t start recording.');
@@ -288,7 +334,10 @@ class _RecordSheetState extends State<RecordSheet> {
         _recording = true;
         _paused = false;
       });
+      unawaited(_livePreviewService.start(path, lang: _selectedLang));
     } catch (e) {
+      _amplitudeStreamController?.close();
+      _amplitudeStreamController = null;
       if (!mounted) return;
       setState(() => _starting = false);
       await AppFlushbar.error(
@@ -301,7 +350,8 @@ class _RecordSheetState extends State<RecordSheet> {
   Future<void> _pause() async {
     if (!_recording || _paused) return;
     try {
-      await RecordingService.pause();
+      RecordingService.pause();
+      await _livePreviewService.pause();
       if (!mounted) return;
       setState(() => _paused = true);
     } catch (_) {
@@ -313,7 +363,8 @@ class _RecordSheetState extends State<RecordSheet> {
   Future<void> _resume() async {
     if (!_recording || !_paused) return;
     try {
-      await RecordingService.resume();
+      RecordingService.resume();
+      await _livePreviewService.resume();
       if (!mounted) return;
       setState(() => _paused = false);
     } catch (_) {
@@ -326,6 +377,9 @@ class _RecordSheetState extends State<RecordSheet> {
     if (!_recording) return;
 
     try {
+      _amplitudeStreamController?.close();
+      _amplitudeStreamController = null;
+
       if (!mounted) return;
       setState(() {
         _recording = false;
@@ -339,17 +393,14 @@ class _RecordSheetState extends State<RecordSheet> {
     }
   }
 
-  Future<void> _stopWithPremiumGate() async {
-    final allowed = await ensureIosPremiumForTranscription(context);
-    if (!allowed) return;
-    await _stop();
-  }
-
   Future<void> _cancel() async {
     try {
       _handledStop = true;
+      _amplitudeStreamController?.close();
+      _amplitudeStreamController = null;
 
       final p = await RecordingService.stop();
+      await _livePreviewService.stop(finalize: false);
 
       if (!mounted) return;
       setState(() {
@@ -357,8 +408,8 @@ class _RecordSheetState extends State<RecordSheet> {
         _paused = false;
         _starting = false;
         _seconds = 0.0;
-        _level = 0.0;
       });
+      _livePreview.value = LiveWhisperPreview.idle();
 
       if (p != null) {
         try {
@@ -378,6 +429,7 @@ class _RecordSheetState extends State<RecordSheet> {
     required String wavPath,
     int? targetSpeakers,
     required String lang,
+    required String draftText,
   }) async {
     final placeholderDuration = (_seconds.isFinite && _seconds >= 0)
         ? _seconds
@@ -385,16 +437,46 @@ class _RecordSheetState extends State<RecordSheet> {
 
     final obx = ObjectBox.I;
 
-    final tId = obx.transcripts.put(
-      TranscriptEntity(
+    final draftLines = _draftLines(draftText);
+    final draftCache = draftLines.isEmpty ? null : draftLines.join('\n');
+
+    final tId = obx.store.runInTransaction(TxMode.write, () {
+      final transcript = TranscriptEntity(
         title: '',
-        model: 'whisper',
+        model: 'sherpa-onnx-whisper-tiny',
         lang: lang,
         audioPath: wavPath,
         durationSec: placeholderDuration,
         createdAt: DateTime.now(),
-      ),
-    );
+        rawText: draftCache,
+        calibratedText: draftCache,
+        fullTextCache: draftCache,
+        searchText: draftCache,
+      );
+      final id = obx.transcripts.put(transcript);
+
+      if (draftLines.isNotEmpty) {
+        final chunkSec = placeholderDuration > 0
+            ? placeholderDuration / draftLines.length
+            : 8.0;
+        obx.turns.putMany(
+          List.generate(draftLines.length, (i) {
+            final start = i * chunkSec;
+            return TranscriptTurnEntity(
+              speakerLabel: 'Speaker 1',
+              startSec: start,
+              endSec: start + chunkSec,
+              text: draftLines[i],
+              rawText: draftLines[i],
+              calibratedText: draftLines[i],
+              originalSpeakerLabel: 'Speaker 1',
+            )..transcript.targetId = id;
+          }),
+        );
+      }
+
+      return id;
+    });
 
     final jobId = obx.jobs.put(
       TranscriptionJobEntity(
@@ -420,6 +502,8 @@ class _RecordSheetState extends State<RecordSheet> {
     );
 
     try {
+      final sp = await SharedPreferences.getInstance();
+      final typoFix = sp.getBool('pref_typo_fix_enabled') ?? false;
       await BackgroundTranscriber.start(
         wavPath: wavPath,
         translateToEnglish: false,
@@ -427,6 +511,8 @@ class _RecordSheetState extends State<RecordSheet> {
         existingTranscriptId: tId,
         targetSpeakers: targetSpeakers,
         lang: lang,
+        typoFixEnabled: typoFix,
+        diarizationEnabled: _diarizationEnabled,
       );
 
       final job = obx.jobs.get(jobId);
@@ -452,404 +538,655 @@ class _RecordSheetState extends State<RecordSheet> {
     }
   }
 
+  List<String> _draftLines(String value) => value
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
+
   @override
   Widget build(BuildContext context) {
-    final h = MediaQuery.of(context).size.height * 0.72;
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final primaryBlue = GlassTokens.primary(context);
+    const recordRed = Color(0xFFFF3B30);
+    const pauseAmber = Color(0xFFFF9500);
 
-    final title = _recording
-        ? (_paused ? 'Paused' : (_starting ? 'Starting…' : 'Recording…'))
-        : 'Record';
+    final sheetHeight = MediaQuery.of(context).size.height * 0.58;
 
-    final fg = Colors.white.withValues(alpha: 0.92);
-
-    // ✅ close pill = tint-only (same as ImportAudioSheet preferred)
-    Widget closePill() {
-      return LiquidGlass(
-        borderRadius: BorderRadius.circular(999),
-        padding: const EdgeInsets.all(8),
-        shadow: false,
-        blurX: 0,
-        blurY: 0,
-        grain: false,
-        tintOpacityDark: 0.070,
-        tintOpacityLight: 0.055,
-        borderOpacityDark: 0.16,
-        borderOpacityLight: 0.20,
-        onTap: _starting ? null : () => Navigator.of(context).pop(),
-        child: Icon(Icons.close, color: fg, size: 20),
-      );
-    }
-
-    return SizedBox(
-      height: h,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        child: Stack(
-          children: [
-            // ✅ sheet backdrop (moderate blur + stronger tint for readability)
-            LiquidGlass(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(22),
+    return Container(
+      height: sheetHeight,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131419) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.50 : 0.12),
+            blurRadius: 30,
+            offset: const Offset(0, -6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Drag Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 2),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: (isDark ? Colors.white : Colors.black).withValues(
+                  alpha: 0.16,
+                ),
+                borderRadius: BorderRadius.circular(2),
               ),
-              padding: EdgeInsets.zero,
-              shadow: false,
-              blurX: 9.0,
-              blurY: 9.0,
-              grain: false,
-              tintOpacityDark: 0.10,
-              tintOpacityLight: 0.08,
-              borderOpacityDark: 0.18,
-              borderOpacityLight: 0.22,
-              child: const SizedBox.expand(),
             ),
+          ),
 
-            Column(
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 16, 4),
+            child: Row(
               children: [
-                // ---------- Header ----------
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Row(
+                Text(
+                  'Record',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: fg,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const Spacer(),
+                InkWell(
+                  onTap: _starting ? null : () => Navigator.of(context).pop(),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: (isDark ? Colors.white : Colors.black).withValues(
+                        alpha: 0.05,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.close_rounded, size: 17, color: muted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ===== Minimalist Voice Stage =====
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      children: [
+                        // 🌊 Dynamic AI Waveform Visualizer (On Top)
+                        SizedBox(
+                          height: 36,
+                          child:
+                              _recording && _amplitudeStreamController != null
+                              ? waveform.AnimatedWaveList(
+                                  stream: _amplitudeStreamController!.stream,
+                                  barBuilder: (animation, amplitude) {
+                                    final db = amplitude.current.abs().clamp(
+                                      1.0,
+                                      60.0,
+                                    );
+                                    final barHeight =
+                                        (((60.0 - db) / 60.0) * 28.0 + 4.0)
+                                            .clamp(4.0, 32.0);
+
+                                    return SizeTransition(
+                                      sizeFactor: animation,
+                                      axis: Axis.horizontal,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 1.5,
+                                        ),
+                                        child: Center(
+                                          child: Container(
+                                            width: 3.5,
+                                            height: barHeight,
+                                            decoration: BoxDecoration(
+                                              color: _paused
+                                                  ? pauseAmber.withValues(
+                                                      alpha: 0.70,
+                                                    )
+                                                  : primaryBlue,
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Timer text (Below Wave)
+                        Text(
+                          _fmtTime(_seconds),
+                          style: TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w900,
+                            color: _recording
+                                ? (_paused ? pauseAmber : fg)
+                                : fg.withValues(alpha: 0.85),
+                            letterSpacing: -1.0,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                        Text(
+                          _recording
+                              ? (_paused ? 'Paused' : 'Recording…')
+                              : 'Ready',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _recording
+                                ? (_paused ? pauseAmber : primaryBlue)
+                                : muted,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Minimal Action Controls
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            Icon(Icons.mic, color: fg),
-                            const SizedBox(width: 8),
-                            Text(
-                              title,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: fg,
+                            // Cancel
+                            SizedBox(
+                              width: 56,
+                              child: Opacity(
+                                opacity: _recording ? 1.0 : 0.0,
+                                child: InkWell(
+                                  onTap: _recording ? _cancel : null,
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.close_rounded,
+                                          size: 20,
+                                          color: recordRed,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Cancel',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: recordRed,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                            if (_starting) ...[
-                              const SizedBox(width: 10),
-                              SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white.withValues(alpha: 0.75),
+
+                            // Main Record Button
+                            GestureDetector(
+                              onTap: _starting
+                                  ? null
+                                  : (_recording ? _stop : _start),
+                              child: Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _recording ? recordRed : primaryBlue,
+                                ),
+                                child: Center(
+                                  child: _starting
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.2,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  Colors.white,
+                                                ),
+                                          ),
+                                        )
+                                      : (_recording
+                                            ? Container(
+                                                width: 20,
+                                                height: 20,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                              )
+                                            : const Icon(
+                                                Icons.mic_rounded,
+                                                size: 28,
+                                                color: Colors.white,
+                                              )),
+                                ),
+                              ),
+                            ),
+
+                            // Pause / Resume
+                            SizedBox(
+                              width: 56,
+                              child: Opacity(
+                                opacity: _recording ? 1.0 : 0.0,
+                                child: InkWell(
+                                  onTap: (!_recording || _starting)
+                                      ? null
+                                      : (_paused ? _resume : _pause),
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          _paused
+                                              ? Icons.play_arrow_rounded
+                                              : Icons.pause_rounded,
+                                          size: 20,
+                                          color: _paused
+                                              ? primaryBlue
+                                              : pauseAmber,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _paused ? 'Resume' : 'Pause',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: _paused
+                                                ? primaryBlue
+                                                : pauseAmber,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ===== Live Speech Preview (when recording) =====
+                  ValueListenableBuilder<LiveWhisperPreview>(
+                    valueListenable: _livePreview,
+                    builder: (context, preview, _) {
+                      if (!_recording && preview.text.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      final lines = preview.text.trim();
+                      final partial = preview.partial.trim();
+                      final hasText = lines.isNotEmpty || partial.isNotEmpty;
+
+                      return Container(
+                        margin: const EdgeInsets.only(top: 22, bottom: 16),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: (isDark ? Colors.white : Colors.black)
+                              .withValues(alpha: 0.035),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: (isDark ? Colors.white : Colors.black)
+                                .withValues(alpha: 0.06),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.subtitles_rounded,
+                                  size: 15,
+                                  color: primaryBlue,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Live transcript',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: fg,
+                                  ),
+                                ),
+                                const Spacer(),
+                                if (_recording && !_paused)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: primaryBlue.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 6,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                            color: primaryBlue,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'LIVE',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: primaryBlue,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            if (hasText) ...[
+                              const SizedBox(height: 8),
+                              Text.rich(
+                                TextSpan(
+                                  children: [
+                                    if (lines.isNotEmpty)
+                                      TextSpan(
+                                        text: lines,
+                                        style: TextStyle(
+                                          color: fg,
+                                          fontSize: 13,
+                                          height: 1.3,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    if (lines.isNotEmpty && partial.isNotEmpty)
+                                      const TextSpan(text: ' '),
+                                    if (partial.isNotEmpty)
+                                      TextSpan(
+                                        text: partial,
+                                        style: TextStyle(
+                                          color: muted,
+                                          fontSize: 13,
+                                          height: 1.3,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
                             ],
                           ],
                         ),
-                      ),
-                      closePill(),
-                    ],
+                      );
+                    },
                   ),
-                ),
 
-                const GlassDivider(),
-
-                // ---------- Body ----------
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // ===== Main panel =====
-                        GlassCard(
-                          variant: GlassCardVariant.tile,
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Center(
-                                child: _TimerRing(
-                                  timeText: _fmtTime(_seconds),
-                                  active: _recording && !_paused,
-                                  paused: _paused,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              LevelBars(
-                                level: _level,
-                                height: 16,
-                                barCount: 22,
-                              ),
-                              const SizedBox(height: 14),
-
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: GlassButton(
-                                      kind: GlassButtonKind.secondary,
-                                      label: 'Cancel',
-                                      icon: Icons.close_rounded,
-                                      onPressed: _recording ? _cancel : null,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: GlassButton(
-                                      kind: GlassButtonKind.secondary,
-                                      label: _paused ? 'Resume' : 'Pause',
-                                      icon: _paused
-                                          ? Icons.play_arrow_rounded
-                                          : Icons.pause_rounded,
-                                      onPressed: (!_recording || _starting)
-                                          ? null
-                                          : (_paused ? _resume : _pause),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-
-                              GlassButton(
-                                kind: GlassButtonKind.primary,
-                                label: _recording
-                                    ? 'Stop & transcribe'
-                                    : 'Start recording',
-                                icon: _recording
-                                    ? Icons.stop_rounded
-                                    : Icons.fiber_manual_record,
-                                onPressed: _starting
-                                    ? null
-                                    : (_recording
-                                          ? _stopWithPremiumGate
-                                          : _start),
-                              ),
-                            ],
-                          ),
+                  // ===== Minimal Options Group (Smooth Animated Cross-Fade & Collapse) =====
+                  AnimatedCrossFade(
+                    duration: const Duration(milliseconds: 350),
+                    firstCurve: Curves.easeOutCubic,
+                    secondCurve: Curves.easeInCubic,
+                    sizeCurve: Curves.easeInOutCubic,
+                    crossFadeState: _recording
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    secondChild: const SizedBox(
+                      width: double.infinity,
+                      height: 0,
+                    ),
+                    firstChild: Container(
+                      margin: const EdgeInsets.only(top: 20, bottom: 12),
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.white : Colors.black)
+                            .withValues(alpha: 0.035),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: (isDark ? Colors.white : Colors.black)
+                              .withValues(alpha: 0.06),
                         ),
-
-                        const SizedBox(height: 12),
-
-                        // ===== Options =====
-                        GlassCard(
-                          variant: GlassCardVariant.tile,
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                'Options',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: fg,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Set before recording',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.65),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Language row
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Language',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.72,
-                                        ),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
+                      ),
+                      child: Column(
+                        children: [
+                          // Language Row
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'Language',
+                                  style: TextStyle(
+                                    color: fg,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
                                   ),
-                                  SizedBox(
-                                    width: 180,
-                                    child: _GlassField(
-                                      enabled: !_recording && !_starting,
-                                      child: DropdownButtonFormField<String>(
-                                        initialValue: _selectedLang,
-                                        isDense: true,
-                                        iconEnabledColor: Colors.white
-                                            .withValues(alpha: 0.80),
-                                        dropdownColor: const Color(0xFF0B0C10),
-                                        items: _langOptions.entries
-                                            .map(
-                                              (e) => DropdownMenuItem<String>(
-                                                value: e.key,
-                                                child: Text(
-                                                  e.value,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: Colors.white
-                                                        .withValues(
-                                                          alpha: 0.92,
-                                                        ),
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
+                                ),
+                                const Spacer(),
+                                DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _selectedLang,
+                                    isDense: true,
+                                    icon: Icon(
+                                      Icons.unfold_more_rounded,
+                                      size: 18,
+                                      color: primaryBlue,
+                                    ),
+                                    dropdownColor: isDark
+                                        ? const Color(0xFF1E1E26)
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(14),
+                                    items: _langOptions.entries
+                                        .map(
+                                          (e) => DropdownMenuItem<String>(
+                                            value: e.key,
+                                            child: Text(
+                                              e.value,
+                                              style: TextStyle(
+                                                color: fg,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13,
                                               ),
-                                            )
-                                            .toList(),
-                                        onChanged: (_recording || _starting)
-                                            ? null
-                                            : (v) {
-                                                if (v == null) return;
-                                                setState(
-                                                  () => _selectedLang = v,
-                                                );
-                                              },
-                                        decoration: const InputDecoration(
-                                          isDense: true,
-                                          border: InputBorder.none,
-                                          contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 10,
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 12),
-
-                              // Diarization
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Speaker diarization',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.72,
-                                        ),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  Switch(
-                                    value: _diarizationEnabled,
+                                        )
+                                        .toList(),
                                     onChanged: (_recording || _starting)
                                         ? null
-                                        : _setDiarizationEnabledLocal,
-                                    activeThumbColor: Colors.black,
-                                    activeTrackColor: Colors.white.withValues(
-                                      alpha: 0.55,
-                                    ),
-                                    inactiveThumbColor: Colors.white.withValues(
-                                      alpha: 0.70,
-                                    ),
-                                    inactiveTrackColor: Colors.white.withValues(
-                                      alpha: 0.18,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              if (_diarizationEnabled) ...[
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Target speakers',
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.72,
-                                          ),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: 120,
-                                      child: Theme(
-                                        data: Theme.of(context).copyWith(
-                                          textSelectionTheme:
-                                              TextSelectionThemeData(
-                                                selectionHandleColor: Colors
-                                                    .white
-                                                    .withValues(alpha: 0.90),
-                                                cursorColor: Colors.white
-                                                    .withValues(alpha: 0.90),
-                                                selectionColor: Colors.white
-                                                    .withValues(alpha: 0.18),
-                                              ),
-                                        ),
-                                        child: _GlassField(
-                                          enabled: !_recording && !_starting,
-                                          child: TextField(
-                                            cursorColor: Colors.white
-                                                .withValues(alpha: 0.90),
-                                            controller: _targetSpeakersCtrl,
-                                            enabled: !_recording && !_starting,
-                                            keyboardType: TextInputType.number,
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter
-                                                  .digitsOnly,
-                                            ],
-                                            style: TextStyle(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.92,
-                                              ),
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            decoration: InputDecoration(
-                                              hintText: '0',
-                                              hintStyle: TextStyle(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.45,
-                                                ),
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                              isDense: true,
-                                              border: InputBorder.none,
-                                              contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 10,
-                                                    vertical: 10,
-                                                  ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Use 0 for auto-detect.',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.55),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                                        : (v) {
+                                            if (v == null) return;
+                                            setState(() => _selectedLang = v);
+                                          },
                                   ),
                                 ),
                               ],
-                            ],
+                            ),
                           ),
-                        ),
 
-                        const SizedBox(height: 12),
-
-                        Text(
-                          'Tip: keep the phone close and speak clearly. You can rename speakers later in the transcript view.',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.65),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                          Divider(
+                            height: 1,
+                            indent: 16,
+                            endIndent: 16,
+                            color: (isDark ? Colors.white : Colors.black)
+                                .withValues(alpha: 0.05),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
+
+                          // Diarization Switch Row
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Speaker diarization',
+                                        style: TextStyle(
+                                          color: fg,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        'Distinguish multiple speakers',
+                                        style: TextStyle(
+                                          color: muted,
+                                          fontSize: 11.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Transform.scale(
+                                  scale: 0.82,
+                                  child: Switch(
+                                    value: _diarizationEnabled,
+                                    activeTrackColor: primaryBlue,
+                                    onChanged: (_recording || _starting)
+                                        ? null
+                                        : (v) => _setDiarizationEnabledLocal(v),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Target Speakers Counter (if diarization is on)
+                          if (_diarizationEnabled) ...[
+                            Divider(
+                              height: 1,
+                              indent: 16,
+                              endIndent: 16,
+                              color: (isDark ? Colors.white : Colors.black)
+                                  .withValues(alpha: 0.05),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Target speakers',
+                                    style: TextStyle(
+                                      color: fg,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      InkWell(
+                                        onTap:
+                                            (_recording ||
+                                                _starting ||
+                                                _targetSpeakersCount <= 0)
+                                            ? null
+                                            : () => setState(
+                                                () => _targetSpeakersCount--,
+                                              ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(4),
+                                          child: Icon(
+                                            Icons.remove_circle_outline_rounded,
+                                            size: 20,
+                                            color: _targetSpeakersCount > 0
+                                                ? primaryBlue
+                                                : muted,
+                                          ),
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
+                                        child: Text(
+                                          _targetSpeakersCount == 0
+                                              ? 'Auto'
+                                              : '$_targetSpeakersCount',
+                                          style: TextStyle(
+                                            color: fg,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                      InkWell(
+                                        onTap:
+                                            (_recording ||
+                                                _starting ||
+                                                _targetSpeakersCount >= 10)
+                                            ? null
+                                            : () => setState(
+                                                () => _targetSpeakersCount++,
+                                              ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(4),
+                                          child: Icon(
+                                            Icons.add_circle_outline_rounded,
+                                            size: 20,
+                                            color: _targetSpeakersCount < 10
+                                                ? primaryBlue
+                                                : muted,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -858,131 +1195,5 @@ class _RecordSheetState extends State<RecordSheet> {
     final mm = (s ~/ 60).toString().padLeft(2, '0');
     final ss = (s % 60).toStringAsFixed(1).padLeft(4, '0');
     return '$mm:$ss';
-  }
-}
-
-/// ✅ your preferred: tint-only interactive field container
-class _GlassField extends StatelessWidget {
-  const _GlassField({required this.child, required this.enabled});
-
-  final Widget child;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget field = LiquidGlass(
-      borderRadius: BorderRadius.circular(14),
-      padding: EdgeInsets.zero,
-      shadow: false,
-
-      // ✅ PERF: interactive => tint-only
-      blurX: 0,
-      blurY: 0,
-      grain: false,
-
-      tintOpacityDark: 0.075,
-      tintOpacityLight: 0.060,
-      borderOpacityDark: 0.16,
-      borderOpacityLight: 0.20,
-      child: child,
-    );
-
-    if (!enabled) field = Opacity(opacity: 0.55, child: field);
-    return field;
-  }
-}
-
-class _TimerRing extends StatelessWidget {
-  const _TimerRing({
-    required this.timeText,
-    required this.active,
-    required this.paused,
-  });
-
-  final String timeText;
-  final bool active;
-  final bool paused;
-
-  @override
-  Widget build(BuildContext context) {
-    final ringColor = paused
-        ? Colors.white.withValues(alpha: 0.25)
-        : (active ? Colors.white : Colors.white.withValues(alpha: 0.20));
-
-    return Container(
-      width: 124,
-      height: 124,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: ringColor, width: 3),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 18,
-            color: ringColor.withValues(alpha: 0.18),
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          timeText,
-          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-        ),
-      ),
-    );
-  }
-}
-
-class LevelBars extends StatelessWidget {
-  const LevelBars({
-    super.key,
-    required this.level,
-    this.height = 16,
-    this.barCount = 16,
-  });
-
-  final double level;
-  final double height;
-  final int barCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final weights = List<double>.generate(barCount, (i) {
-      final x = (i / (barCount - 1)) * 2 - 1;
-      final bell = 1 - (x * x);
-      return 0.4 + 0.6 * bell;
-    });
-
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: level),
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      builder: (context, v, _) {
-        return SizedBox(
-          height: height,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: List.generate(barCount, (i) {
-              final barH = (height * weights[i] * (0.2 + 0.8 * v)).clamp(
-                2.0,
-                height,
-              );
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                  child: Container(
-                    height: barH,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.90),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        );
-      },
-    );
   }
 }

@@ -3,8 +3,8 @@ import 'liquid_glass.dart';
 import 'glass_tokens.dart';
 
 enum GlassCardVariant {
-  panel, // big shared surfaces
-  tile,  // small components
+  panel, // primary card / container
+  tile,  // nested / secondary tile
 }
 
 class GlassCard extends StatelessWidget {
@@ -26,11 +26,8 @@ class GlassCard extends StatelessWidget {
     this.shadowOpacityLight,
     this.shadowOpacityDark,
     this.onTap,
-    this.borderColor,
-    this.tintColor,
-
-    // ✅ pass-through (optional)
     this.grain,
+    this.backgroundColor,
   });
 
   final Widget child;
@@ -38,84 +35,41 @@ class GlassCard extends StatelessWidget {
   final EdgeInsetsGeometry? margin;
   final BorderRadius? borderRadius;
   final double? blur;
-
   final GlassCardVariant variant;
-
   final double? tintOpacityLight;
   final double? tintOpacityDark;
   final double? borderOpacityLight;
   final double? borderOpacityDark;
-
   final bool? shadow;
   final double? shadowBlur;
   final Offset? shadowOffset;
   final double? shadowOpacityLight;
   final double? shadowOpacityDark;
-
   final VoidCallback? onTap;
-  final Color? borderColor;
-  final Color? tintColor;
-
-  /// If null, uses smart default (panel=true, tile=false).
   final bool? grain;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
     final isPanel = variant == GlassCardVariant.panel;
 
-    // Panels = almost transparent (structure only)
-    const panelTintDark = 0.020;
-    const panelTintLight = 0.025;
-    const panelBorderDark = 0.12;
-    const panelBorderLight = 0.16;
-
-    // ✅ Reduce blur a bit (huge perf gain, minimal visual change)
-    const panelBlurDark = 14.0;  // perf
-    const panelBlurLight = 10.0; // perf
-
-    // Tiles = slightly more visible
-    const tileTintDark = 0.065;
-    const tileTintLight = 0.060;
-    const tileBorderDark = 0.16;
-    const tileBorderLight = 0.20;
-    const tileBlurDark = 0.0;
-    const tileBlurLight = 0.0; // perf: no per-tile blur (use screen blur)
-
-    final presetBlur = blur ??
-        (isDark
-            ? (isPanel ? panelBlurDark : tileBlurDark)
-            : (isPanel ? panelBlurLight : tileBlurLight));
-
-    // Panels should not float
-    final defaultShadow = isPanel ? false : true;
+    final solidBg = backgroundColor ??
+        (isPanel
+            ? (isDark ? GlassTokens.cardDark : GlassTokens.cardLight)
+            : (isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight));
 
     return LiquidGlass(
       margin: margin,
       padding: padding,
       borderRadius: borderRadius ?? GlassTokens.radiusCard,
-
-      blurX: presetBlur,
-      blurY: presetBlur,
-
-      tintOpacityDark: tintOpacityDark ?? (isPanel ? panelTintDark : tileTintDark),
-      tintOpacityLight: tintOpacityLight ?? (isPanel ? panelTintLight : tileTintLight),
-
-      borderOpacityDark: borderOpacityDark ?? (isPanel ? panelBorderDark : tileBorderDark),
-      borderOpacityLight: borderOpacityLight ?? (isPanel ? panelBorderLight : tileBorderLight),
-
-      shadow: shadow ?? defaultShadow,
-      shadowBlur: shadowBlur ?? 24,
-      shadowOffset: shadowOffset ?? const Offset(0, 12),
-      shadowOpacityDark: shadowOpacityDark ?? 0.18,
-      shadowOpacityLight: shadowOpacityLight ?? 0.06,
-
-      borderColor: borderColor,
-      tintColor: tintColor,
-
-      // ✅ Smart default: grain on panels, off on tiles (massive perf win)
-      grain: grain ?? false,
-
+      backgroundColor: solidBg,
+      borderColor: isDark ? GlassTokens.borderDark : GlassTokens.borderLight,
+      shadow: shadow ?? isPanel,
+      shadowBlur: shadowBlur ?? (isPanel ? 12 : 6),
+      shadowOffset: shadowOffset ?? (isPanel ? const Offset(0, 4) : const Offset(0, 2)),
+      shadowOpacityDark: shadowOpacityDark ?? (isPanel ? 0.35 : 0.20),
+      shadowOpacityLight: shadowOpacityLight ?? 0.05,
       onTap: onTap,
       child: child,
     );

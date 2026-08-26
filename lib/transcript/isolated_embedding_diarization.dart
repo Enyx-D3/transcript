@@ -1,4 +1,6 @@
 // lib/transcript/isolated_embedding_diarization.dart
+import 'dart:async';
+import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -106,6 +108,7 @@ class DiarizationParams {
   // ignore: unintended_html_in_doc_comment
   /// enrolled speaker embeddings: name -> list of embeddings (each embedding is List<double>)
   final Map<String, List<List<double>>> speakerMemoryData;
+  final SendPort? progressPort;
 
   DiarizationParams({
     required this.wavPath,
@@ -139,6 +142,7 @@ class DiarizationParams {
     this.matchSpeakers = true,
     this.matchThreshold = 0.67,
     this.speakerMemoryData = const {},
+    this.progressPort,
   });
 
   Map<String, dynamic> toJson() => {
@@ -208,6 +212,7 @@ class DiarizationParams {
               ),
             )
           : const {},
+      progressPort: json['progressPort'] as SendPort?,
     );
   }
 }
@@ -243,31 +248,20 @@ class _IsolatedTurn {
 Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   DiarizationParams params,
 ) async {
-  debugPrint('[DIA-ISOLATE] _runEmbeddingDiarizationInIsolate started');
   var wave = readWaveSimple(params.wavPath);
-  debugPrint(
-    '[DIA-ISOLATE] readWaveSimple done (samples: ${wave.samples.length})',
-  );
   var samples = wave.samples;
   final fs = wave.sampleRate;
   // Release Wave object's reference early (samples var still holds it)
   wave = Wave(samples: Float32List(0), sampleRate: fs);
 
-  debugPrint('[DIA-ISOLATE] initBindings() starting...');
   initBindings();
-  debugPrint('[DIA-ISOLATE] initBindings() done');
-
   final cfg = SpeakerEmbeddingExtractorConfig(
     model: params.embOnnxPath,
     numThreads: 2,
     provider: 'cpu',
     debug: false,
   );
-  debugPrint(
-    '[DIA-ISOLATE] SpeakerEmbeddingExtractor initialization starting...',
-  );
   final ext = SpeakerEmbeddingExtractor(config: cfg);
-  debugPrint('[DIA-ISOLATE] SpeakerEmbeddingExtractor initialized');
 
   final win = (params.windowSec * fs).round().clamp(1, 1 << 30);
   final hop = (params.hopSec * fs).round().clamp(1, 1 << 30);
@@ -291,11 +285,23 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
   try {
     int i = 0;
     int winIndex = 0;
+    double lastProgressSec = -1;
 
     while (i < totalSamples) {
       final a = i;
       final b = math.min(a + win, totalSamples);
       if (b - a < (0.6 * fs)) break;
+
+      final progressSec = b / fs;
+      if (progressSec - lastProgressSec >= 5 ||
+          progressSec >= params.durationSec) {
+        lastProgressSec = progressSec;
+        params.progressPort?.send({
+          'type': 'progress',
+          'processedSec': math.min(progressSec, params.durationSec),
+          'totalSec': params.durationSec,
+        });
+      }
 
       if (_isSilentIsolate(samples, a, b)) {
         i += hop;
@@ -355,7 +361,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
         // ✅ stay hysteresis
         if (isStay && best >= (params.stayThreshold - params.stayHysteresis)) {
-          candidateCid = currentCid!;
+          candidateCid = currentCid;
           pendingNewCount = 0;
           pendingNewEmb = null;
           if (kDebugMode) {
@@ -390,7 +396,7 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
 
             if (pendingNewCount >= params.newSpeakerConfirmWindows) {
               candidateCid = nextId++;
-              clusters.add(_IsolatedCluster(candidateCid, pendingNewEmb!));
+              clusters.add(_IsolatedCluster(candidateCid, pendingNewEmb));
               pendingNewCount = 0;
               pendingNewEmb = null;
 
@@ -425,13 +431,15 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
         currentCid = candidateCid;
         pendingCid = null;
         pendingCount = 0;
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('[DIA]   set currentCid=$currentCid (initial)');
+        }
       } else if (candidateCid == currentCid) {
         pendingCid = null;
         pendingCount = 0;
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('[DIA]   stay on cid=$currentCid (reset pending)');
+        }
       } else {
         if (pendingCid == candidateCid) {
           pendingCount++;
@@ -450,16 +458,18 @@ Future<EnhancedDiarizationResult> _runEmbeddingDiarizationInIsolate(
           currentCid = candidateCid;
           pendingCid = null;
           pendingCount = 0;
-          if (kDebugMode)
+          if (kDebugMode) {
             debugPrint('[DIA]   SWITCH CONFIRMED -> currentCid=$currentCid');
+          }
         } else {
           candidateCid = currentCid; // keep current until confirmed
-          if (kDebugMode)
+          if (kDebugMode) {
             debugPrint('[DIA]   SWITCH NOT CONFIRMED -> stick cid=$currentCid');
+          }
         }
       }
 
-      assigns.add((a: a, b: b, cid: currentCid!, emb: v));
+      assigns.add((a: a, b: b, cid: currentCid, emb: v));
       if (kDebugMode) {
         debugPrint(
           '[DIA]   ASSIGN final cid=$currentCid t=${(a / fs).toStringAsFixed(2)}–${(b / fs).toStringAsFixed(2)}',
@@ -859,8 +869,8 @@ _ForceCountResult _forceSpeakerCount({
     // Merge into the label with higher talk
     final durA = talk[bestA] ?? 0.0;
     final durB = talk[bestB] ?? 0.0;
-    final keep = (durA >= durB) ? bestA! : bestB!;
-    final drop = (keep == bestA) ? bestB! : bestA!;
+    final keep = (durA >= durB) ? bestA : bestB;
+    final drop = (keep == bestA) ? bestB : bestA;
 
     if (debug) {
       debugPrint(
@@ -1053,7 +1063,13 @@ Future<EnhancedDiarizationResult> runEmbeddingDiarizationInIsolate({
   bool matchSpeakers = true,
   double matchThreshold = 0.67,
   Map<String, List<List<double>>> speakerMemoryData = const {},
+  Future<void> Function({
+    required double processedSec,
+    required double totalSec,
+  })?
+  onProgress,
 }) async {
+  final progressPort = onProgress == null ? null : ReceivePort();
   final params = DiarizationParams(
     wavPath: wavPath,
     durationSec: durationSec,
@@ -1085,7 +1101,27 @@ Future<EnhancedDiarizationResult> runEmbeddingDiarizationInIsolate({
     matchSpeakers: matchSpeakers,
     matchThreshold: matchThreshold,
     speakerMemoryData: speakerMemoryData,
+    progressPort: progressPort?.sendPort,
   );
 
-  return compute(_runEmbeddingDiarizationInIsolate, params);
+  StreamSubscription<dynamic>? sub;
+  if (progressPort != null) {
+    sub = progressPort.listen((message) async {
+      if (message is! Map || message['type'] != 'progress') return;
+      final processed = message['processedSec'];
+      final total = message['totalSec'];
+      if (processed is! num || total is! num) return;
+      await onProgress!(
+        processedSec: processed.toDouble(),
+        totalSec: total.toDouble(),
+      );
+    });
+  }
+
+  try {
+    return await compute(_runEmbeddingDiarizationInIsolate, params);
+  } finally {
+    await sub?.cancel();
+    progressPort?.close();
+  }
 }

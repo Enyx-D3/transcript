@@ -27,7 +27,8 @@ class StatusPill extends StatelessWidget {
     final bl = accent != null ? 0.26 : 0.20;
     final bd = accent != null ? 0.22 : 0.16;
 
-    final resolvedIcon = icon ??
+    final resolvedIcon =
+        icon ??
         (isError
             ? Icons.warning_amber_rounded
             : Icons.hourglass_bottom_rounded);
@@ -50,11 +51,7 @@ class StatusPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                resolvedIcon,
-                size: 16,
-                color: accent ?? fg,
-              ),
+              Icon(resolvedIcon, size: 16, color: accent ?? fg),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(

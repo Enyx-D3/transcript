@@ -5,61 +5,64 @@ class GlassTokens {
   GlassTokens._();
 
   // -----------------
-  // Radii
+  // Colors (Solid Modern Palette)
   // -----------------
-  static const BorderRadius radiusCard =
-      BorderRadius.all(Radius.circular(18));
-  static const BorderRadius radiusModal =
-      BorderRadius.all(Radius.circular(22));
-  static const BorderRadius radiusDock =
-      BorderRadius.all(Radius.circular(24));
+  static const Color backgroundDark = Color(0xFF0E0E12);
+  static const Color backgroundLight = Color(0xFFF6F6F9);
+
+  static const Color cardDark = Color(0xFF17171D);
+  static const Color cardLight = Color(0xFFFFFFFF);
+
+  static const Color surfaceDark = Color(0xFF1F1F27);
+  static const Color surfaceLight = Color(0xFFEEEEF3);
+
+  static const Color borderDark = Color(0xFF282832);
+  static const Color borderLight = Color(0xFFE2E2E9);
 
   // -----------------
-  // Blur
+  // Radii
   // -----------------
-  // Panels should blur more than controls
-  static const double blurSm = 10;  // controls
-  static const double blurMd = 28;  // panels
-  static const double blurLg = 34;  // sheets / large surfaces
+  static const BorderRadius radiusCard = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius radiusModal = BorderRadius.all(Radius.circular(20));
+  static const BorderRadius radiusDock = BorderRadius.all(Radius.circular(22));
+
+  // -----------------
+  // Blur (Disabled for Solid Theme)
+  // -----------------
+  static const double blurSm = 0;
+  static const double blurMd = 0;
+  static const double blurLg = 0;
 
   // -----------------
   // Border
   // -----------------
   static const double borderWidth = 1;
-
-  // Thin subtle white edge
-  static const double borderOpacityLight = 0.18;
-  static const double borderOpacityDark = 0.14;
+  static const double borderOpacityLight = 1.0;
+  static const double borderOpacityDark = 1.0;
 
   // -----------------
-  // Tint (TRUE Apple Glass)
+  // Tint / Surface
   // -----------------
-  // Panels = almost zero tint (blur does the work)
-  static const double tintPanelLight = 0.02;
-  static const double tintPanelDark  = 0.02;
-
-  // Controls = slightly visible
-  static const double tintControlLight = 0.06;
-  static const double tintControlDark  = 0.08;
-
-  // Strong (rare)
-  static const double tintStrongLight = 0.10;
-  static const double tintStrongDark  = 0.12;
+  static const double tintPanelLight = 1.0;
+  static const double tintPanelDark = 1.0;
+  static const double tintControlLight = 1.0;
+  static const double tintControlDark = 1.0;
+  static const double tintStrongLight = 1.0;
+  static const double tintStrongDark = 1.0;
 
   // -----------------
-  // Highlight (top specular line)
+  // Highlight
   // -----------------
-  static const double highlightOpacityLight = 0.18;
-  static const double highlightOpacityDark  = 0.14;
+  static const double highlightOpacityLight = 0.0;
+  static const double highlightOpacityDark = 0.0;
 
   // -----------------
   // Shadow
   // -----------------
-  static const double shadowOpacityLight = 0.08;
-  static const double shadowOpacityDark  = 0.18;
-
-  static const double shadowBlur = 24;
-  static const Offset shadowOffset = Offset(0, 14);
+  static const double shadowOpacityLight = 0.05;
+  static const double shadowOpacityDark = 0.35;
+  static const double shadowBlur = 16;
+  static const Offset shadowOffset = Offset(0, 4);
 
   // -----------------
   // Helpers
@@ -67,38 +70,39 @@ class GlassTokens {
   static bool isDark(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark;
 
-  static Color fg(BuildContext context, {double alpha = 0.92}) {
+  static Color primary(BuildContext context) {
+    return Theme.of(context).colorScheme.primary;
+  }
+
+  static Color fg(BuildContext context, {double alpha = 0.95}) {
     final dark = isDark(context);
-    return (dark ? Colors.white : Colors.black)
+    return (dark ? Colors.white : const Color(0xFF1A1A1E))
         .withValues(alpha: alpha);
   }
 
-  static Color muted(BuildContext context, {double alpha = 0.62}) {
+  static Color muted(BuildContext context, {double alpha = 0.65}) {
     final dark = isDark(context);
-    return (dark ? Colors.white : Colors.black)
+    return (dark ? const Color(0xFFA0A0AB) : const Color(0xFF6B6B78))
         .withValues(alpha: alpha);
   }
 
   static Color borderColor(BuildContext context) {
-    final dark = isDark(context);
-    return Colors.white.withValues(
-      alpha: dark ? borderOpacityDark : borderOpacityLight,
-    );
+    return isDark(context) ? borderDark : borderLight;
   }
 
-  /// IMPORTANT:
-  /// Apple glass uses WHITE tint even in dark mode.
-  /// Not black.
-  static Color tintColor(
-    BuildContext context, {
-    double? light,
-    double? dark,
-  }) {
-    final isD = isDark(context);
-    final a = isD
-        ? (dark ?? tintPanelDark)
-        : (light ?? tintPanelLight);
+  static Color surfaceColor(BuildContext context) {
+    return isDark(context) ? surfaceDark : surfaceLight;
+  }
 
-    return Colors.white.withValues(alpha: a);
+  static Color backgroundColor(BuildContext context) {
+    return isDark(context) ? backgroundDark : backgroundLight;
+  }
+
+  static Color cardColor(BuildContext context) {
+    return isDark(context) ? cardDark : cardLight;
+  }
+
+  static Color tintColor(BuildContext context, {double? light, double? dark}) {
+    return cardColor(context);
   }
 }

@@ -21,7 +21,9 @@ class UserIdentityHelper {
     final email = _clean(user.email);
 
     final meta = user.userMetadata ?? {};
-    final displayName = _clean(meta['display_name'] is String ? meta['display_name'] as String : null);
+    final displayName = _clean(
+      meta['display_name'] is String ? meta['display_name'] as String : null,
+    );
 
     final username = displayName ?? _emailLocalPart(email);
 

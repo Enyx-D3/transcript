@@ -50,7 +50,7 @@ serve(async (req: Request) => {
     const svcEmail = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
     const rawPrivateKey = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
 
-    const packageName = Deno.env.get("ANDROID_PACKAGE_NAME") ?? "com.fllama.transcript";
+    const packageName = Deno.env.get("ANDROID_PACKAGE_NAME") ?? "com.enyxd.transcript";
 
     if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey || !svcEmail || !rawPrivateKey) {
       return json(

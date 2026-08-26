@@ -34,8 +34,8 @@ class SpeakerProfileEntity {
     required this.nameKey,
     DateTime? createdAt,
     DateTime? updatedAt,
-  })  : createdAt = createdAt ?? DateTime.now(),
-        updatedAt = updatedAt ?? DateTime.now();
+  }) : createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 }
 
 @Entity()
@@ -60,7 +60,6 @@ class SpeakerVectorEntity {
 
 // -------------------- Transcript entities (for completeness) --------------------
 
-
 @Entity()
 class TranscriptEntity {
   int id;
@@ -74,7 +73,7 @@ class TranscriptEntity {
   String lang;
 
   /// Optional original audio file (local path) if you keep it.
-String? audioPath;
+  String? audioPath;
   String? processedAudioPath; // ✅ add
 
   /// Duration in seconds.
@@ -82,6 +81,18 @@ String? audioPath;
 
   /// Optional user-edited transcript text
   String? editedText;
+
+  /// V2.1 untouched Sherpa output, concatenated from turns.
+  String? rawText;
+
+  /// V2.1 deterministic calibration output before user edits.
+  String? calibratedText;
+
+  /// V2.1 meaningful correction, duplicate, and speaker audit events.
+  String? calibrationAuditJson;
+
+  /// V2.1 timings and counters captured during runtime calibration.
+  String? instrumentationJson;
 
   /// ✅ Cached concatenated transcript text from turns (cleaned)
   String? fullTextCache;
@@ -99,48 +110,50 @@ String? audioPath;
   DateTime createdAt;
 
   /// 0 = voice, 1 = youtube (future: add more sources)
-@Index()
-int sourceType;
+  @Index()
+  int sourceType;
 
-/// If sourceType==1 (youtube), this links to YoutubeTranscriptMetaEntity.id
-@Index()
-int? youtubeMetaId;
+  /// If sourceType==1 (youtube), this links to YoutubeTranscriptMetaEntity.id
+  @Index()
+  int? youtubeMetaId;
 
-@Index()
-bool isFavourite; // ✅ default false
+  @Index()
+  bool isFavourite; // ✅ default false
 
-/// Optional convenience for sorting/recency for youtube items too
-@Property(type: PropertyType.date)
-DateTime updatedAt;
+  /// Optional convenience for sorting/recency for youtube items too
+  @Property(type: PropertyType.date)
+  DateTime updatedAt;
 
-@Index()
-bool isDeleted; // soft delete flag
+  @Index()
+  bool isDeleted; // soft delete flag
 
-@Property(type: PropertyType.date)
-DateTime? deletedAt; // when moved to trash
+  @Property(type: PropertyType.date)
+  DateTime? deletedAt; // when moved to trash
 
-
-
-TranscriptEntity({
-  this.id = 0,
-  this.title,
-  required this.model,
-  required this.lang,
-  this.sourceType = 0,      // ✅ default voice
-  this.youtubeMetaId,
-  this.audioPath,
-  this.processedAudioPath,
-  required this.durationSec,
-  this.editedText,
-  this.fullTextCache,
-  this.searchText,
-  DateTime? createdAt,
-  DateTime? updatedAt,
-  this.isFavourite = false,
-  this.isDeleted = false,
-  this.deletedAt,
-})  : createdAt = createdAt ?? DateTime.now(),
-      updatedAt = updatedAt ?? DateTime.now();
+  TranscriptEntity({
+    this.id = 0,
+    this.title,
+    required this.model,
+    required this.lang,
+    this.sourceType = 0, // ✅ default voice
+    this.youtubeMetaId,
+    this.audioPath,
+    this.processedAudioPath,
+    required this.durationSec,
+    this.editedText,
+    this.rawText,
+    this.calibratedText,
+    this.calibrationAuditJson,
+    this.instrumentationJson,
+    this.fullTextCache,
+    this.searchText,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    this.isFavourite = false,
+    this.isDeleted = false,
+    this.deletedAt,
+  }) : createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 }
 
 @Entity()
@@ -153,6 +166,10 @@ class TranscriptTurnEntity {
   double startSec;
   double endSec;
   String text;
+  String? rawText;
+  String? calibratedText;
+  String? originalSpeakerLabel;
+  String? calibrationAuditJson;
 
   TranscriptTurnEntity({
     this.id = 0,
@@ -160,7 +177,100 @@ class TranscriptTurnEntity {
     required this.startSec,
     required this.endSec,
     required this.text,
+    this.rawText,
+    this.calibratedText,
+    this.originalSpeakerLabel,
+    this.calibrationAuditJson,
   });
+}
+
+@Entity()
+class PersonalDictionaryEntryEntity {
+  int id;
+
+  @Index()
+  String canonicalForm;
+  String aliasesJson;
+  @Index()
+  String language;
+  @Index()
+  String category;
+  @Index()
+  String scope;
+  int confirmationCount;
+  int rejectionCount;
+  @Index()
+  bool enabled;
+
+  @Property(type: PropertyType.date)
+  DateTime createdAt;
+
+  @Property(type: PropertyType.date)
+  DateTime updatedAt;
+
+  PersonalDictionaryEntryEntity({
+    this.id = 0,
+    required this.canonicalForm,
+    this.aliasesJson = '[]',
+    this.language = 'en',
+    this.category = 'phrase',
+    this.scope = 'personal',
+    this.confirmationCount = 0,
+    this.rejectionCount = 0,
+    this.enabled = true,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) : createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
+}
+
+@Entity()
+class CorrectionMappingEntity {
+  int id;
+
+  @Index()
+  int transcriptId;
+  int? turnId;
+  String observed;
+  String replacement;
+  String leftContext;
+  String rightContext;
+  String speaker;
+  @Index()
+  String language;
+  @Index()
+  String scope;
+  int confirmationCount;
+  int rejectionCount;
+  @Index()
+  bool enabled;
+  bool requiresExplicitRemember;
+
+  @Property(type: PropertyType.date)
+  DateTime createdAt;
+
+  @Property(type: PropertyType.date)
+  DateTime updatedAt;
+
+  CorrectionMappingEntity({
+    this.id = 0,
+    required this.transcriptId,
+    this.turnId,
+    required this.observed,
+    required this.replacement,
+    this.leftContext = '',
+    this.rightContext = '',
+    this.speaker = '',
+    this.language = 'en',
+    this.scope = 'current_session',
+    this.confirmationCount = 1,
+    this.rejectionCount = 0,
+    this.enabled = true,
+    this.requiresExplicitRemember = false,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) : createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 }
 
 @Entity()
@@ -216,10 +326,9 @@ class TranscriptionJobEntity {
     this.error,
     DateTime? createdAt,
     DateTime? updatedAt,
-  })  : createdAt = createdAt ?? DateTime.now(),
-        updatedAt = updatedAt ?? DateTime.now();
+  }) : createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 }
-
 
 // One summary per transcript. We simply reuse transcriptId as the entity id.
 @Entity()
@@ -313,8 +422,8 @@ class YoutubeTranscriptMetaEntity {
     this.channel,
     int? createdAtMs,
     int? updatedAtMs,
-  })  : createdAtMs = createdAtMs ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAtMs = updatedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+  }) : createdAtMs = createdAtMs ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAtMs = updatedAtMs ?? DateTime.now().millisecondsSinceEpoch;
 }
 
 @Entity()

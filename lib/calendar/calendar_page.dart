@@ -1,22 +1,19 @@
 // lib/calendar/calendar_page.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:transcript/widgets/icon_pill_button.dart';
-import 'package:transcript/widgets/leading_pill_icon.dart';
 
 import '../objectbox/objectbox_store.dart';
+import '../objectbox/entities.dart';
 import '../transcript/transcript_detail_page.dart';
+import '../transcript/youtube_saved_detail_page.dart';
 import '../objectbox.g.dart';
 
 // ✅ Glass primitives
 import '../ui/glass/liquid_glass.dart';
 import '../ui/glass/glass_card.dart';
-import '../ui/glass/glass_divider.dart';
 import '../ui/glass/glass_tokens.dart';
+import '../widgets/icon_pill_button.dart';
 
-/// Month-view calendar (Apple glass)
-/// PERF VERSION:
-/// - NO per-cell blur (global background blur recommended)
-/// - Cells are tint+border only (fast)
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
 
@@ -25,332 +22,162 @@ class CalendarPage extends StatefulWidget {
 }
 
 class _CalendarPageState extends State<CalendarPage> {
-  late DateTime _monthAnchor; // first day of current month (local)
-  Map<DateTime, int> _countByDate = const {};
+  // Base date for week index math (Monday)
+  static final DateTime _baseDate = DateTime(2022, 1, 3);
+
+  late DateTime _selectedDay;
+  late int _currentWeekIndex;
+  late PageController _pageController;
+
+  // Cache: date -> transcripts list
+  Map<DateTime, List<TranscriptEntity>> _transcriptsByDate = const {};
+
+  DateTime _truncateDate(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+  DateTime _startOfWeek(DateTime dt) {
+    final truncated = _truncateDate(dt);
+    final diff = (truncated.weekday - 1);
+    return truncated.subtract(Duration(days: diff));
+  }
+
+  int _weekIndexForDate(DateTime dt) {
+    final mon = _startOfWeek(dt);
+    return mon.difference(_baseDate).inDays ~/ 7;
+  }
+
+  DateTime _dateForWeekIndex(int index) {
+    return _baseDate.add(Duration(days: index * 7));
+  }
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _monthAnchor = DateTime(now.year, now.month, 1);
-    _loadMonth();
-  }
+    _selectedDay = _truncateDate(now);
+    _currentWeekIndex = _weekIndexForDate(now);
+    _pageController = PageController(initialPage: _currentWeekIndex);
 
-  // ---------- Data ----------
-
-  DateTime _startOfMonth(DateTime m) => DateTime(m.year, m.month, 1);
-
-  DateTime _endOfMonthExclusive(DateTime m) {
-    final firstNext = (m.month == 12)
-        ? DateTime(m.year + 1, 1, 1)
-        : DateTime(m.year, m.month + 1, 1);
-    return firstNext; // exclusive upper bound
-  }
-
-  DateTime _truncateDate(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
-
-  void _loadMonth() {
-    final obx = ObjectBox.I;
-
-    final start = _startOfMonth(_monthAnchor);
-    final end = _endOfMonthExclusive(_monthAnchor);
-
-    // Query all ordered by createdAt, filter to this month in Dart
-    final qb = obx.transcripts.query(TranscriptEntity_.isDeleted.equals(false))
-      ..order(TranscriptEntity_.createdAt);
-    final q = qb.build();
-    final all = q.find();
-    q.close();
-
-    final inMonth = all.where((t) {
-      final local = t.createdAt.toLocal();
-      return !local.isBefore(start) && local.isBefore(end);
-    }).toList();
-
-    final map = <DateTime, int>{};
-    for (final t in inMonth) {
-      final d = _truncateDate(t.createdAt.toLocal());
-      map[d] = (map[d] ?? 0) + 1;
-    }
-
-    setState(() => _countByDate = map);
-  }
-
-  // ---------- UI ----------
-
-  void _prevMonth() {
-    final m = _monthAnchor.month == 1
-        ? DateTime(_monthAnchor.year - 1, 12, 1)
-        : DateTime(_monthAnchor.year, _monthAnchor.month - 1, 1);
-    setState(() => _monthAnchor = m);
-    _loadMonth();
-  }
-
-  void _nextMonth() {
-    final m = _monthAnchor.month == 12
-        ? DateTime(_monthAnchor.year + 1, 1, 1)
-        : DateTime(_monthAnchor.year, _monthAnchor.month + 1, 1);
-    setState(() => _monthAnchor = m);
-    _loadMonth();
+    _loadTranscripts();
   }
 
   @override
-  Widget build(BuildContext context) {
-    final days = _buildMonthDays(_monthAnchor);
-    final today = _truncateDate(DateTime.now());
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
-    final isDark = GlassTokens.isDark(context);
+  Future<void> _loadTranscripts() async {
+    if (!mounted) return;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ---------- Header ----------
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Calendar',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.2,
-                                color: Colors.white.withValues(alpha: 0.92),
-                              ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Tap to view transcripts',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.70),
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
+    try {
+      final obx = ObjectBox.I;
+      final qb = obx.transcripts.query(TranscriptEntity_.isDeleted.equals(false))
+        ..order(TranscriptEntity_.createdAt, flags: Order.descending);
+      final q = qb.build();
+      final all = q.find();
+      q.close();
 
-                  IconPillButton(
-                    tooltip: 'Previous month',
-                    icon: Icons.chevron_left,
-                    onTap: _prevMonth,
-                  ),
-                  const SizedBox(width: 6),
+      final map = <DateTime, List<TranscriptEntity>>{};
+      for (final t in all) {
+        final d = _truncateDate(t.createdAt.toLocal());
+        map.putIfAbsent(d, () => []).add(t);
+      }
 
-                  // Month pill (NO blur)
-                  Flexible(
-                    child: LiquidGlass(
-                      borderRadius: BorderRadius.circular(999),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 9,
-                      ),
-                      shadow: false,
+      if (!mounted) return;
+      setState(() {
+        _transcriptsByDate = map;
+      });
+    } catch (_) {}
+  }
 
-                      // ✅ PERF: no blur/grain for small controls
-                      blurX: 0,
-                      blurY: 0,
-                      grain: false,
+  // ---------- Navigation Helpers ----------
 
-                      tintOpacityDark: 0.060,
-                      tintOpacityLight: 0.050,
-                      borderOpacityDark: 0.14,
-                      borderOpacityLight: 0.18,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.center,
-                        child: Text(
-                          _monthLabel(_monthAnchor),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.92),
-                            letterSpacing: 0.1,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+  void _onWeekPageChanged(int index) {
+    setState(() {
+      _currentWeekIndex = index;
+      final weekStart = _dateForWeekIndex(index);
+      final weekEnd = weekStart.add(const Duration(days: 6));
 
-                  const SizedBox(width: 6),
-                  IconPillButton(
-                    tooltip: 'Next month',
-                    icon: Icons.chevron_right,
-                    onTap: _nextMonth,
-                  ),
-                ],
-              ),
+      // If currently selected day is not in the new week, select the same weekday in new week
+      if (_selectedDay.isBefore(weekStart) || _selectedDay.isAfter(weekEnd)) {
+        final targetWeekday = _selectedDay.weekday;
+        _selectedDay = weekStart.add(Duration(days: targetWeekday - 1));
+      }
+    });
+  }
 
-              const SizedBox(height: 14),
-
-              // Legend + week header inside a glass panel
-              GlassCard(
-                variant: GlassCardVariant.tile,
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                child: Column(
-                  children: [
-                    _legendTwoColor(),
-                    const SizedBox(height: 10),
-                    _weekHeader(),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Calendar grid (tint-only day cells)
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: GridView.builder(
-                    physics: const BouncingScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 7,
-                          crossAxisSpacing: 6,
-                          mainAxisSpacing: 6,
-                        ),
-                    itemCount: days.length,
-                    itemBuilder: (ctx, i) {
-                      final d = days[i];
-                      final inMonth = d.month == _monthAnchor.month;
-                      final isToday = _truncateDate(d) == today;
-
-                      final key = _truncateDate(d);
-                      final count = _countByDate[key] ?? 0;
-                      final hasTranscripts = count > 0;
-
-                      return _DayCell(
-                        date: d,
-                        inMonth: inMonth,
-                        isToday: isToday,
-                        hasTranscripts: hasTranscripts,
-                        count: count,
-                        onTap: () => _openDaySheet(d),
-                        isDark: isDark,
-                      );
-                    },
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 72), // space for bottom dock nav
-            ],
-          ),
-        ),
-      ),
+  void _goToPrevWeek() {
+    _pageController.previousPage(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
     );
   }
 
-  // Monday-first labels
-  Widget _weekHeader() {
-    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return Row(
-      children: labels
-          .map(
-            (t) => Expanded(
-              child: Text(
-                t,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.70),
-                  fontSize: 12,
-                  letterSpacing: 0.2,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          )
-          .toList(),
+  void _goToNextWeek() {
+    _pageController.nextPage(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
     );
   }
 
-  // Two-color legend (no intensity scale)
-  Widget _legendTwoColor() {
-    Widget box({
-      required double tint,
-      required double borderA,
-      bool showDot = false,
-    }) {
-      return Container(
-        width: 18,
-        height: 18,
-        margin: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
-          color: Colors.white.withValues(alpha: tint),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: borderA),
-            width: 1,
-          ),
-        ),
-        child: showDot
-            ? Center(
-                child: Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              )
-            : null,
+  void _jumpToToday() {
+    final now = DateTime.now();
+    final today = _truncateDate(now);
+    final targetIndex = _weekIndexForDate(now);
+
+    setState(() {
+      _selectedDay = today;
+      _currentWeekIndex = targetIndex;
+    });
+
+    if (_pageController.hasClients && _pageController.page?.round() != targetIndex) {
+      _pageController.animateToPage(
+        targetIndex,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
       );
     }
-
-    Widget item({
-      required double tint,
-      required double borderA,
-      required String label,
-      required bool showDot,
-    }) {
-      return Row(
-        children: [
-          box(tint: tint, borderA: borderA, showDot: showDot),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.60),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Match your day-cell tuning:
-    // No transcript: tint 0.08, border 0.12
-    // Has transcripts: tint 0.20, border 0.26 (and dot)
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        item(tint: 0.08, borderA: 0.12, label: 'No transcript', showDot: false),
-        const SizedBox(width: 16),
-        item(
-          tint: 0.20,
-          borderA: 0.26,
-          label: 'Has transcripts',
-          showDot: true,
-        ),
-      ],
-    );
   }
 
-  String _monthLabel(DateTime a) {
+  void _selectDay(DateTime day) {
+    setState(() {
+      _selectedDay = _truncateDate(day);
+    });
+  }
+
+  Future<void> _openTranscript(TranscriptEntity t) async {
+    final isYoutube = (t.sourceType) == 1;
+    if (isYoutube) {
+      final metaId = t.youtubeMetaId;
+      if (metaId != null) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => YoutubeSavedTranscriptPage(
+              transcriptId: t.id,
+              youtubeMetaId: metaId,
+            ),
+          ),
+        );
+      } else {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TranscriptDetailPage(transcriptId: t.id),
+          ),
+        );
+      }
+    } else {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TranscriptDetailPage(transcriptId: t.id),
+        ),
+      );
+    }
+    await _loadTranscripts();
+  }
+
+  // ---------- Date Formatting ----------
+
+  String _monthYearLabel(DateTime dt) {
     const months = [
       'January',
       'February',
@@ -365,328 +192,753 @@ class _CalendarPageState extends State<CalendarPage> {
       'November',
       'December',
     ];
-    return '${months[a.month - 1]} ${a.year}';
+    return '${months[dt.month - 1]} ${dt.year}';
   }
 
-  /// Build a 6-row calendar (42 cells), Monday-first.
-  List<DateTime> _buildMonthDays(DateTime anchor) {
-    final first = _startOfMonth(anchor);
-    final leading = (first.weekday + 6) % 7; // 0..6; 0 if Mon
-    final start = first.subtract(Duration(days: leading));
-    return List.generate(42, (i) => start.add(Duration(days: i)));
+  String _formatSelectedDayHeader(DateTime d) {
+    final today = _truncateDate(DateTime.now());
+    final isToday = _truncateDate(d) == today;
+    final yesterday = today.subtract(const Duration(days: 1));
+    final isYesterday = _truncateDate(d) == yesterday;
+    final tomorrow = today.add(const Duration(days: 1));
+    final isTomorrow = _truncateDate(d) == tomorrow;
+
+    const weekdayNames = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ];
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+
+    final prefix = isToday
+        ? 'Today'
+        : (isYesterday
+            ? 'Yesterday'
+            : (isTomorrow ? 'Tomorrow' : weekdayNames[d.weekday - 1]));
+
+    return '$prefix • ${monthNames[d.month - 1]} ${d.day}';
   }
 
-  Future<void> _openDaySheet(DateTime day) async {
-    void unfocus() => FocusManager.instance.primaryFocus?.unfocus();
-    unfocus();
+  String _fmtDurationShort(double sec) {
+    final total = sec.isFinite && sec >= 0 ? sec.round() : 0;
+    final h = total ~/ 3600;
+    final m = (total % 3600) ~/ 60;
+    final s = total % 60;
 
-    final obx = ObjectBox.I;
-    final start = DateTime(day.year, day.month, day.day);
-    final end = start.add(const Duration(days: 1));
+    if (h > 0) {
+      return '${h}h ${m}m';
+    } else if (m > 0) {
+      return '${m}m ${s}s';
+    } else {
+      return '${s}s';
+    }
+  }
 
-    final qb = obx.transcripts.query()..order(TranscriptEntity_.createdAt);
-    final q = qb.build();
-    final all = q.find();
-    q.close();
+  String _fmtTime(DateTime dt) {
+    final h = dt.hour;
+    final m = dt.minute.toString().padLeft(2, '0');
+    final period = h >= 12 ? 'PM' : 'AM';
+    final formattedH = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    return '$formattedH:$m $period';
+  }
 
-    final items = all.where((t) {
-      final local = t.createdAt.toLocal();
-      return !local.isBefore(start) && local.isBefore(end);
-    }).toList();
+  // ---------- Quick Month Picker Dialog ----------
 
-    if (!mounted) return;
+  Future<void> _showMonthPickerSheet() async {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+
+    int pickedYear = _selectedDay.year;
+    int pickedMonth = _selectedDay.month;
+
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
 
     await showModalBottomSheet(
       context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: isDark ? const Color(0xFF16161E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-            child: GlassCard(
-              variant: GlassCardVariant.panel,
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with Year switch
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.chevron_left_rounded),
+                          color: fg,
+                          onPressed: () => setSheetState(() => pickedYear--),
+                        ),
+                        Text(
+                          '$pickedYear',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: fg,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.chevron_right_rounded),
+                          color: fg,
+                          onPressed: () => setSheetState(() => pickedYear++),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Months Grid (4x3)
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 1.8,
+                      ),
+                      itemCount: 12,
+                      itemBuilder: (context, i) {
+                        final m = i + 1;
+                        final isSelected = m == pickedMonth && pickedYear == _selectedDay.year;
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            final targetDate = DateTime(pickedYear, m, 1);
+                            final targetIndex = _weekIndexForDate(targetDate);
+                            setState(() {
+                              _selectedDay = targetDate;
+                              _currentWeekIndex = targetIndex;
+                            });
+                            _pageController.jumpToPage(targetIndex);
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? GlassTokens.primary(context)
+                                  : (isDark
+                                      ? GlassTokens.surfaceDark
+                                      : GlassTokens.surfaceLight),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              monthNames[i],
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                color: isSelected ? Colors.white : fg,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ---------- Main Build ----------
+
+  @override
+  Widget build(BuildContext context) {
+    final today = _truncateDate(DateTime.now());
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final isSelectedToday = _selectedDay == today;
+
+    final selectedDayTranscripts = _transcriptsByDate[_selectedDay] ?? const [];
+
+    // Total duration of selected day
+    double dayTotalSec = 0;
+    for (final t in selectedDayTranscripts) {
+      if (t.durationSec.isFinite && t.durationSec > 0) dayTotalSec += t.durationSec;
+    }
+
+    return Scaffold(
+      backgroundColor: GlassTokens.backgroundColor(context),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 1. Pinned Top Bar (Month selector & week navigation)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Sheet header
+                  // Month & Year Selector
+                  InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: _showMonthPickerSheet,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _monthYearLabel(_selectedDay),
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.3,
+                              color: fg,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 20,
+                            color: muted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Navigation Actions (< > and Today)
                   Row(
                     children: [
-                      Icon(
-                        Icons.calendar_month,
-                        color: Colors.white.withValues(alpha: 0.88),
+                      IconPillButton(
+                        tooltip: 'Previous week',
+                        icon: Icons.chevron_left_rounded,
+                        onTap: _goToPrevWeek,
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        '${day.day.toString().padLeft(2, '0')} ${_monthLabel(DateTime(day.year, day.month, 1)).split(' ')[0]}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: Colors.white.withValues(alpha: 0.92),
-                        ),
+                      const SizedBox(width: 6),
+                      IconPillButton(
+                        tooltip: 'Next week',
+                        icon: Icons.chevron_right_rounded,
+                        onTap: _goToNextWeek,
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
 
-                      // Count pill (NO blur)
+                      // Jump to Today Pill
                       LiquidGlass(
                         borderRadius: BorderRadius.circular(999),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        backgroundColor: isSelectedToday
+                            ? (isDark ? const Color(0xFF1E2A3A) : const Color(0xFFEBF3FF))
+                            : (isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight),
                         shadow: false,
-                        blurX: 0,
-                        blurY: 0,
-                        grain: false,
-                        tintOpacityDark: 0.060,
-                        tintOpacityLight: 0.050,
-                        borderOpacityDark: 0.14,
-                        borderOpacityLight: 0.18,
-                        child: Text(
-                          '${items.length} item${items.length == 1 ? '' : 's'}',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.70),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        onTap: _jumpToToday,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isSelectedToday ? GlassTokens.primary(context) : muted,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Today',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: isSelectedToday ? FontWeight.w800 : FontWeight.w600,
+                                color: isSelectedToday ? GlassTokens.primary(context) : fg,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
 
-                  if (items.isEmpty)
-                    const SizedBox(
-                      height: 120,
-                      child: Center(
-                        child: Text(
-                          'No transcripts on this day.',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w600,
+            // 2. Pinned Horizontal Week Scroller Strip with Silky Bouncing Physics
+            SizedBox(
+              height: 84,
+              child: PageView.builder(
+                controller: _pageController,
+                physics: const BouncingScrollPhysics(parent: PageScrollPhysics()),
+                onPageChanged: _onWeekPageChanged,
+                itemBuilder: (context, pageIndex) {
+                  final monday = _dateForWeekIndex(pageIndex);
+                  final weekDays = List.generate(7, (i) => monday.add(Duration(days: i)));
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(
+                      children: weekDays.map((date) {
+                        final truncated = _truncateDate(date);
+                        final isSelected = truncated == _selectedDay;
+                        final isToday = truncated == today;
+                        final items = _transcriptsByDate[truncated];
+                        final hasRecordings = items != null && items.isNotEmpty;
+                        final count = items?.length ?? 0;
+
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                            child: _WeekDayCard(
+                              date: date,
+                              isSelected: isSelected,
+                              isToday: isToday,
+                              hasRecordings: hasRecordings,
+                              count: count,
+                              isDark: isDark,
+                              onTap: () => _selectDay(date),
+                            ),
                           ),
-                        ),
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            // 3. Selected Date Section Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _formatSelectedDayHeader(_selectedDay),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                      color: fg,
+                    ),
+                  ),
+                  if (selectedDayTranscripts.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? GlassTokens.primary(context).withValues(alpha: 0.16)
+                            : GlassTokens.primary(context).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(999),
                       ),
-                    )
-                  else
-                    Flexible(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: items.length,
-
-                        // ✅ PERF: keep compositing stable
-                        addRepaintBoundaries: false,
-                        addAutomaticKeepAlives: false,
-
-                        separatorBuilder: (_, _) => const GlassDivider(),
-                        itemBuilder: (_, i) {
-                          final t = items[i];
-                          final when = t.createdAt.toLocal();
-                          final hh = when.hour.toString().padLeft(2, '0');
-                          final mm = when.minute.toString().padLeft(2, '0');
-                          final title = (t.title?.trim().isNotEmpty ?? false)
-                              ? t.title!.trim()
-                              : 'Untitled';
-
-                          return ListTile(
-                            leading: const LeadingPillIcon(
-                              icon: Icons.description,
-                            ),
-                            title: Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.92),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '$hh:$mm • ${_fmtDuration(t.durationSec)}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.70),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            trailing: Icon(
-                              Icons.chevron_right,
-                              color: Colors.white.withValues(alpha: 0.72),
-                            ),
-                            onTap: () {
-                              unfocus();
-                              Navigator.of(context).pop();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      TranscriptDetailPage(transcriptId: t.id),
-                                ),
-                              );
-                            },
-                          );
-                        },
+                      child: Text(
+                        '${selectedDayTranscripts.length} recording${selectedDayTranscripts.length == 1 ? '' : 's'} • ${_fmtDurationShort(dayTotalSec)}',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: GlassTokens.primary(context),
+                        ),
                       ),
                     ),
                 ],
               ),
             ),
-          ),
-        );
-      },
+
+            const SizedBox(height: 10),
+
+            // 4. Smooth Scrollable Day Agenda List (Fluid BouncingScrollPhysics)
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadTranscripts,
+                color: GlassTokens.primary(context),
+                child: selectedDayTranscripts.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics(),
+                        ),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                        children: [
+                          GlassCard(
+                            variant: GlassCardVariant.tile,
+                            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isDark ? const Color(0xFF1F1F2B) : const Color(0xFFEFF0F6),
+                                  ),
+                                  child: Icon(
+                                    Icons.event_available_rounded,
+                                    size: 26,
+                                    color: muted,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Text(
+                                  'No recordings on this date',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: fg,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  'No transcripts found for this date.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics(),
+                        ),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                        itemCount: selectedDayTranscripts.length,
+                        itemBuilder: (context, index) {
+                          final item = selectedDayTranscripts[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _TimelineTranscriptCard(
+                              transcript: item,
+                              timeText: _fmtTime(item.createdAt.toLocal()),
+                              durationText: _fmtDurationShort(item.durationSec),
+                              isDark: isDark,
+                              onTap: () => _openTranscript(item),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
-
-    unfocus();
-  }
-
-  String _fmtDuration(double sec) {
-    final s = sec.isFinite && sec >= 0 ? sec : 0.0;
-    final total = s.round();
-    final m = (total ~/ 60).toString();
-    final ss = (total % 60).toString().padLeft(2, '0');
-    return '${m}m${ss}s';
   }
 }
 
-class _DayCell extends StatelessWidget {
-  final DateTime date;
-  final bool inMonth;
-  final bool isToday;
-  final bool hasTranscripts;
-  final int count;
-  final VoidCallback onTap;
-  final bool isDark;
+// --------------------------------------------------------------------------
+// Custom Components
+// --------------------------------------------------------------------------
 
-  const _DayCell({
+class _WeekDayCard extends StatelessWidget {
+  const _WeekDayCard({
     required this.date,
-    required this.inMonth,
+    required this.isSelected,
     required this.isToday,
-    required this.hasTranscripts,
+    required this.hasRecordings,
     required this.count,
-    required this.onTap,
     required this.isDark,
+    required this.onTap,
   });
+
+  final DateTime date;
+  final bool isSelected;
+  final bool isToday;
+  final bool hasRecordings;
+  final int count;
+  final bool isDark;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final dayNum = date.day.toString();
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
-    // ✅ Make transcript-days visibly “filled”
-    final baseTint = inMonth ? 1.0 : 0.45;
-    final tint = (hasTranscripts ? 0.20 : 0.08) * baseTint;
+    const weekLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    final letter = weekLetters[date.weekday - 1];
 
-    // ✅ Stronger border when transcripts exist
-    final borderA = hasTranscripts ? 0.26 : 0.12;
-
-    const borderW = 1.2; // today outline thickness
-    const r = 10.0;
-
-    final outerRadius = BorderRadius.circular(r);
-    final innerRadius = BorderRadius.circular(r - borderW);
-
-    final glassCell = InkWell(
-      borderRadius: outerRadius,
-      onTap: onTap,
-      child: Padding(
-        padding: isToday ? const EdgeInsets.all(borderW) : EdgeInsets.zero,
-        child: LiquidGlass(
-          borderRadius: isToday ? innerRadius : outerRadius,
-          padding: const EdgeInsets.all(6),
-          shadow: false,
-
-          // ✅ PERF: NO blur/grain per cell
-          blurX: 0,
-          blurY: 0,
-          grain: false,
-
-          tintOpacityDark: tint,
-          tintOpacityLight: tint * 0.80,
-          borderOpacityDark: borderA,
-          borderOpacityLight: borderA + 0.02,
-
-          child: Stack(
+    if (isSelected) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: GlassTokens.primary(context),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Day number
-              Align(
-                alignment: Alignment.topLeft,
-                child: Text(
-                  dayNum,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: hasTranscripts
-                        ? FontWeight.w800
-                        : FontWeight.w600,
-                    color: inMonth
-                        ? Colors.white.withValues(alpha: 0.92)
-                        : Colors.white.withValues(alpha: 0.35),
-                  ),
+              Text(
+                letter,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white70,
                 ),
               ),
-
-              // ✅ Dot indicator (Apple-ish)
-              if (hasTranscripts)
-                Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 2, bottom: 2),
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                    ),
-                  ),
+              const SizedBox(height: 3),
+              Text(
+                '${date.day}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
                 ),
-
-              // Count badge (kept)
-              if (count > 0)
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: LiquidGlass(
-                    borderRadius: BorderRadius.circular(8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    shadow: false,
-                    blurX: 0,
-                    blurY: 0,
-                    grain: false,
-
-                    tintOpacityDark: 0.10,
-                    tintOpacityLight: 0.08,
-                    borderOpacityDark: 0.14,
-                    borderOpacityLight: 0.16,
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white.withValues(alpha: 0.92),
-                        letterSpacing: 0.2,
-                      ),
-                    ),
+              ),
+              const SizedBox(height: 3),
+              if (hasRecordings)
+                Container(
+                  width: 5,
+                  height: 5,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
                   ),
-                ),
+                )
+              else
+                const SizedBox(height: 5),
             ],
           ),
         ),
-      ),
-    );
+      );
+    }
 
-    if (!isToday) return glassCell;
+    Color bg;
+    Color border;
 
-    // Today outline
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: outerRadius,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.70),
-          width: borderW,
+    if (hasRecordings) {
+      bg = isDark ? const Color(0xFF20202A) : const Color(0xFFEAEAEE);
+      border = isDark ? const Color(0xFF323240) : const Color(0xFFD6D6DF);
+    } else {
+      bg = isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight;
+      border = isDark ? GlassTokens.borderDark : GlassTokens.borderLight;
+    }
+
+    if (isToday) {
+      border = GlassTokens.primary(context);
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: border,
+            width: isToday ? 1.5 : 1.0,
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              letter,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isToday ? GlassTokens.primary(context) : muted,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              '${date.day}',
+              style: TextStyle(
+                fontSize: 15.5,
+                fontWeight: isToday || hasRecordings ? FontWeight.w800 : FontWeight.w600,
+                color: isToday ? GlassTokens.primary(context) : fg,
+              ),
+            ),
+            const SizedBox(height: 3),
+            if (hasRecordings)
+              Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: GlassTokens.primary(context),
+                ),
+              )
+            else
+              const SizedBox(height: 5),
+          ],
         ),
       ),
-      child: glassCell,
+    );
+  }
+}
+
+class _TimelineTranscriptCard extends StatelessWidget {
+  const _TimelineTranscriptCard({
+    required this.transcript,
+    required this.timeText,
+    required this.durationText,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final TranscriptEntity transcript;
+  final String timeText;
+  final String durationText;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+
+    final title = (transcript.title?.trim().isNotEmpty ?? false)
+        ? transcript.title!.trim()
+        : 'Untitled Recording';
+
+    // Source styling
+    final (IconData icon, Color iconColor, Color iconBg) = switch (transcript.sourceType) {
+      1 => (
+          Icons.smart_display_rounded,
+          const Color(0xFFFF3B30),
+          isDark ? const Color(0xFF382024) : const Color(0xFFFFEAEA),
+        ),
+      2 => (
+          Icons.audio_file_rounded,
+          const Color(0xFF00B0FF),
+          isDark ? const Color(0xFF162838) : const Color(0xFFE8F6FF),
+        ),
+      3 => (
+          Icons.video_file_rounded,
+          const Color(0xFF635BFF),
+          isDark ? const Color(0xFF242238) : const Color(0xFFF0EFFF),
+        ),
+      _ => (
+          Icons.mic_rounded,
+          GlassTokens.primary(context),
+          isDark
+              ? GlassTokens.primary(context).withValues(alpha: 0.16)
+              : GlassTokens.primary(context).withValues(alpha: 0.08),
+        ),
+    };
+
+    return GlassCard(
+      variant: GlassCardVariant.tile,
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Icon badge
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Center(
+              child: Icon(icon, size: 22, color: iconColor),
+            ),
+          ),
+
+          const SizedBox(width: 14),
+
+          // Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                    color: fg,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.schedule_rounded,
+                      size: 13,
+                      color: muted,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      timeText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: muted,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 3,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: muted.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      durationText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Trailing Action Chevron
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 22,
+            color: muted.withValues(alpha: 0.6),
+          ),
+        ],
+      ),
     );
   }
 }

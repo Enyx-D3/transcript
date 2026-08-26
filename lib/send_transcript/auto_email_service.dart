@@ -45,7 +45,6 @@ class AutoEmailService {
     return b.toString().trim();
   }
 
-
   /// Call this right after persistence when transcription completes.
   /// Works even if UI is not open.
   static Future<void> sendIfEnabled({

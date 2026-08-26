@@ -361,7 +361,8 @@ class _TranscriptYoutubePageState extends State<TranscriptYoutubePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     final manualSubtitle = !_hasFetched
         ? 'Not fetched yet'
@@ -375,7 +376,7 @@ class _TranscriptYoutubePageState extends State<TranscriptYoutubePage> {
         _hasFetched && !_loading && (_manual.isNotEmpty || _auto.isNotEmpty);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: GlassBackground(
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -427,13 +428,13 @@ class _TranscriptYoutubePageState extends State<TranscriptYoutubePage> {
                         borderOpacityLight: 0.18,
                         child: TextField(
                           controller: _ctrl,
-                          cursorColor: Colors.white,
+                          cursorColor: GlassTokens.primary(context),
                           textInputAction: TextInputAction.done,
                           onSubmitted: (_) => _loading ? null : _fetchAll(),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
+                          style: TextStyle(color: fg),
+                          decoration: InputDecoration(
                             hintText: 'https://www.youtube.com/watch?v=...',
-                            hintStyle: TextStyle(color: Colors.white38),
+                            hintStyle: TextStyle(color: muted),
                             border: InputBorder.none,
                             isDense: true,
                           ),
@@ -535,7 +536,7 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     // ✅ No GlassCard behind this bar (per your request)
     return Padding(
@@ -610,7 +611,7 @@ class _TranscriptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     final langName = (item.language?.trim().isNotEmpty ?? false)
         ? item.language!.trim()
@@ -703,7 +704,8 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
     return Padding(
       padding: const EdgeInsets.only(left: 2),
       child: Column(
@@ -721,8 +723,8 @@ class _SectionHeader extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             subtitle,
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: muted,
               fontWeight: FontWeight.w700,
               fontSize: 12,
             ),
@@ -740,7 +742,7 @@ class _MetaPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     return LiquidGlass(
       borderRadius: BorderRadius.circular(999),
@@ -772,12 +774,13 @@ class _InlineHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final muted = GlassTokens.muted(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 6, 2, 4),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.white70,
+        style: TextStyle(
+          color: muted,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -806,9 +809,9 @@ class _ExpandableTranscriptBoxState extends State<_ExpandableTranscriptBox>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
     final t = widget.text.trim().isEmpty ? '(empty transcript)' : widget.text;
-    final controlColor = isDark ? Colors.white70 : Colors.black54;
 
     Widget buildInner({required bool expanded}) {
       return Column(
@@ -818,10 +821,10 @@ class _ExpandableTranscriptBoxState extends State<_ExpandableTranscriptBox>
             t,
             maxLines: expanded ? null : widget.previewLines,
             overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               height: 1.35,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: fg,
               fontSize: 13.5,
             ),
           ),
@@ -837,13 +840,13 @@ class _ExpandableTranscriptBoxState extends State<_ExpandableTranscriptBox>
                   Icon(
                     expanded ? Icons.expand_less : Icons.expand_more,
                     size: 18,
-                    color: controlColor,
+                    color: muted,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     expanded ? 'Show less' : 'Show more',
                     style: TextStyle(
-                      color: controlColor,
+                      color: muted,
                       fontWeight: FontWeight.w800,
                       fontSize: 12,
                     ),

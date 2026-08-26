@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class RecordingService {
   static const _serviceId = 431;
+  static final List<double> recentAmplitudes = <double>[];
 
   // ============================================================
   // iOS-only: direct recorder + event stream (Android untouched)
@@ -105,8 +106,9 @@ class RecordingService {
 
       final prefs = await SharedPreferences.getInstance();
       final maxMinutes = prefs.getInt(_kPrefMaxRecordingMinutes) ?? 60;
-      final safeMinutes =
-          _kMaxMinutesOptions.contains(maxMinutes) ? maxMinutes : 60;
+      final safeMinutes = _kMaxMinutesOptions.contains(maxMinutes)
+          ? maxMinutes
+          : 60;
 
       _iosMaxSeconds = safeMinutes * 60;
 
@@ -172,8 +174,9 @@ class RecordingService {
       final maxMinutes = prefs.getInt(_kPrefMaxRecordingMinutes) ?? 60;
 
       // Safety clamp (matches your settings options)
-      final safeMinutes =
-          _kMaxMinutesOptions.contains(maxMinutes) ? maxMinutes : 60;
+      final safeMinutes = _kMaxMinutesOptions.contains(maxMinutes)
+          ? maxMinutes
+          : 60;
 
       await FlutterForegroundTask.saveData(key: _kFilePath, value: filePath);
       await FlutterForegroundTask.saveData(
@@ -309,6 +312,13 @@ class RecordingService {
     return (result is ServiceRequestSuccess) ? path : null;
   }
 
+  static Future<String?> getCurrentWavPath() async {
+    if (Platform.isIOS) return _iosPath;
+
+    final v = await FlutterForegroundTask.getData(key: _kFilePath);
+    return v is String ? v : null;
+  }
+
   // ============================================================
   // Listeners: iOS uses stream, Android uses ForegroundTask (unchanged)
   // ============================================================
@@ -346,8 +356,9 @@ class RecordingService {
 
       final start = _iosStartEpochMs ?? nowMs;
 
-      final pausedExtra =
-          (_iosPauseStartedMs == null) ? 0 : (nowMs - _iosPauseStartedMs!);
+      final pausedExtra = (_iosPauseStartedMs == null)
+          ? 0
+          : (nowMs - _iosPauseStartedMs!);
 
       final effectiveMs = (nowMs - start) - _iosPausedAccumMs - pausedExtra;
       final elapsed = Duration(milliseconds: effectiveMs).inSeconds;
@@ -383,9 +394,15 @@ class RecordingService {
       });
 
       // (Optional) keep storage in sync for your hydration logic
-      await FlutterForegroundTask.saveData(key: 'rec_last_elapsed_sec', value: safeElapsed);
+      await FlutterForegroundTask.saveData(
+        key: 'rec_last_elapsed_sec',
+        value: safeElapsed,
+      );
       await FlutterForegroundTask.saveData(key: 'rec_last_level', value: level);
-      await FlutterForegroundTask.saveData(key: 'rec_last_paused', value: _iosPaused);
+      await FlutterForegroundTask.saveData(
+        key: 'rec_last_paused',
+        value: _iosPaused,
+      );
 
       // no notifications on iOS here (UI already shows timer)
       _iosLastNotifSec = safeElapsed;
@@ -486,7 +503,9 @@ class _RecordingTaskHandler extends TaskHandler {
     final mm = await FlutterForegroundTask.getData(key: _kMaxMinutesRuntime);
 
     // ✅ read target speakers (stored int; 0 => null)
-    final ts = await FlutterForegroundTask.getData(key: _kTargetSpeakersRuntime);
+    final ts = await FlutterForegroundTask.getData(
+      key: _kTargetSpeakersRuntime,
+    );
 
     _path = (p is String) ? p : null;
     _startEpochMs = (s is int) ? s : DateTime.now().millisecondsSinceEpoch;
@@ -501,7 +520,8 @@ class _RecordingTaskHandler extends TaskHandler {
 
     if (_path == null) {
       final docs = await getApplicationDocumentsDirectory();
-      final dir = Directory('${docs.path}/recordings')..createSync(recursive: true);
+      final dir = Directory('${docs.path}/recordings')
+        ..createSync(recursive: true);
       final tss = DateTime.now().toIso8601String().replaceAll(':', '-');
       _path = '${dir.path}/rec_$tss.wav';
     }
@@ -693,8 +713,9 @@ class _RecordingTaskHandler extends TaskHandler {
   }
 
   int _elapsedSeconds(int nowMs) {
-    final pausedExtra =
-        (_pauseStartedMs == null) ? 0 : (nowMs - _pauseStartedMs!);
+    final pausedExtra = (_pauseStartedMs == null)
+        ? 0
+        : (nowMs - _pauseStartedMs!);
     final effectiveMs = (nowMs - _startEpochMs) - _pausedAccumMs - pausedExtra;
 
     final sec = Duration(milliseconds: effectiveMs).inSeconds;

@@ -10,6 +10,18 @@ import '../objectbox/entities.dart';
 import '../objectbox.g.dart';
 import 'transcription_models.dart';
 
+TranscriptTurnEntity _turnRow(LiteTurn u, int transcriptId) =>
+    TranscriptTurnEntity(
+      speakerLabel: u.speaker,
+      startSec: u.startSec,
+      endSec: u.endSec,
+      text: u.text,
+      rawText: u.rawText ?? u.text,
+      calibratedText: u.calibratedText ?? u.text,
+      originalSpeakerLabel: u.originalSpeaker ?? u.speaker,
+      calibrationAuditJson: u.calibrationAuditJson,
+    )..transcript.targetId = transcriptId;
+
 Future<int> persistNewTranscriptionFromResult({
   required String wavPath,
   required TranscriptionResult result,
@@ -28,28 +40,28 @@ Future<int> persistNewTranscriptionFromResult({
     createdAt: DateTime.now(),
   );
 
-  final tId = obx.transcripts.put(parent);
+  return obx.store.runInTransaction(TxMode.write, () {
+    parent.rawText = result.rawText;
+    parent.calibratedText = result.calibratedText;
+    parent.calibrationAuditJson = result.calibrationAuditJson;
+    parent.instrumentationJson = result.instrumentationJson;
+    parent.fullTextCache = result.calibratedText;
+    parent.searchText = result.calibratedText;
 
-  if (result.turns.isNotEmpty) {
-    final rows = result.turns
-        .map(
-          (u) => TranscriptTurnEntity(
-            speakerLabel: u.speaker,
-            startSec: u.startSec,
-            endSec: u.endSec,
-            text: u.text,
-          )..transcript.targetId = tId,
-        )
-        .toList();
-    obx.turns.putMany(rows);
-  }
+    final tId = obx.transcripts.put(parent);
 
-  return tId;
+    if (result.turns.isNotEmpty) {
+      obx.turns.putMany(result.turns.map((u) => _turnRow(u, tId)).toList());
+    }
+
+    return tId;
+  });
 }
 
 Future<int> persistExistingTranscriptionFromResult({
   required int transcriptId,
-  required String wavPath, // ✅ this is the file used for transcription (processed)
+  required String
+  wavPath, // ✅ this is the file used for transcription (processed)
   required TranscriptionResult result,
 }) async {
   final obx = ObjectBox.I;
@@ -57,10 +69,7 @@ Future<int> persistExistingTranscriptionFromResult({
 
   if (t == null) {
     // Fallback: create new transcript, but still store processed path
-    return persistNewTranscriptionFromResult(
-      wavPath: wavPath,
-      result: result,
-    );
+    return persistNewTranscriptionFromResult(wavPath: wavPath, result: result);
   }
 
   // ✅ DEBUG: before
@@ -101,31 +110,34 @@ Future<int> persistExistingTranscriptionFromResult({
     t.audioPath = wavPath;
   }
 
-  obx.transcripts.put(t);
+  t.rawText = result.rawText;
+  t.calibratedText = result.calibratedText;
+  t.calibrationAuditJson = result.calibrationAuditJson;
+  t.instrumentationJson = result.instrumentationJson;
+  t.fullTextCache = result.calibratedText;
+  t.searchText = (t.editedText ?? '').trim().isNotEmpty
+      ? t.editedText
+      : result.calibratedText;
 
-  // ✅ Replace turns: first delete old turns for this transcript,
-  // then insert the new ones (prevents duplicates).
-  final turnsBox = obx.store.box<TranscriptTurnEntity>();
-  final qb = turnsBox
-      .query(TranscriptTurnEntity_.transcript.equals(transcriptId))
-      .build();
-  final oldIds = qb.findIds();
-  qb.close();
-  if (oldIds.isNotEmpty) turnsBox.removeMany(oldIds);
+  obx.store.runInTransaction(TxMode.write, () {
+    obx.transcripts.put(t);
 
-  if (result.turns.isNotEmpty) {
-    final rows = result.turns
-        .map(
-          (u) => TranscriptTurnEntity(
-            speakerLabel: u.speaker,
-            startSec: u.startSec,
-            endSec: u.endSec,
-            text: u.text,
-          )..transcript.targetId = transcriptId,
-        )
-        .toList();
-    turnsBox.putMany(rows);
-  }
+    // ✅ Replace turns: first delete old turns for this transcript,
+    // then insert the new ones (prevents duplicates).
+    final turnsBox = obx.store.box<TranscriptTurnEntity>();
+    final qb = turnsBox
+        .query(TranscriptTurnEntity_.transcript.equals(transcriptId))
+        .build();
+    final oldIds = qb.findIds();
+    qb.close();
+    if (oldIds.isNotEmpty) turnsBox.removeMany(oldIds);
+
+    if (result.turns.isNotEmpty) {
+      turnsBox.putMany(
+        result.turns.map((u) => _turnRow(u, transcriptId)).toList(),
+      );
+    }
+  });
 
   // ✅ DEBUG: after
   final t2 = obx.transcripts.get(transcriptId);

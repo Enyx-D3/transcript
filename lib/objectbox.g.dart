@@ -106,7 +106,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(3, 8951984836733702572),
     name: 'TranscriptEntity',
-    lastPropertyId: const obx_int.IdUid(17, 6726383822376668723),
+    lastPropertyId: const obx_int.IdUid(21, 6733838700427619238),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -217,6 +217,30 @@ final _entities = <obx_int.ModelEntity>[
         flags: 8,
         indexId: const obx_int.IdUid(15, 3109755727906842626),
       ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(18, 4975714019875427724),
+        name: 'rawText',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(19, 718917222356364283),
+        name: 'calibratedText',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(20, 3425474144734317165),
+        name: 'calibrationAuditJson',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(21, 6733838700427619238),
+        name: 'instrumentationJson',
+        type: 9,
+        flags: 0,
+      ),
     ],
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[
@@ -230,7 +254,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(4, 5744334615254339933),
     name: 'TranscriptTurnEntity',
-    lastPropertyId: const obx_int.IdUid(6, 3684531645536754636),
+    lastPropertyId: const obx_int.IdUid(10, 4202995744098454170),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -272,6 +296,30 @@ final _entities = <obx_int.ModelEntity>[
         type: 9,
         flags: 0,
       ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 1293349720794098201),
+        name: 'rawText',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 8204094049119297834),
+        name: 'calibratedText',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 2695629432942572327),
+        name: 'originalSpeakerLabel',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 4202995744098454170),
+        name: 'calibrationAuditJson',
+        type: 9,
+        flags: 0,
+      ),
     ],
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
@@ -279,7 +327,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(5, 7831950910300597404),
     name: 'TranscriptionJobEntity',
-    lastPropertyId: const obx_int.IdUid(8, 8262934732911788997),
+    lastPropertyId: const obx_int.IdUid(14, 194023092146562780),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -310,7 +358,8 @@ final _entities = <obx_int.ModelEntity>[
         id: const obx_int.IdUid(5, 7581930211408447811),
         name: 'status',
         type: 9,
-        flags: 0,
+        flags: 2048,
+        indexId: const obx_int.IdUid(25, 6599390134305837761),
       ),
       obx_int.ModelProperty(
         id: const obx_int.IdUid(6, 8125824377358247077),
@@ -327,6 +376,44 @@ final _entities = <obx_int.ModelEntity>[
       obx_int.ModelProperty(
         id: const obx_int.IdUid(8, 8262934732911788997),
         name: 'createdAt',
+        type: 10,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 7972836315890259791),
+        name: 'stage',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(26, 5598207281465091467),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 4256821127720930085),
+        name: 'totalChunks',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 890777727236836568),
+        name: 'processedChunks',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 2216172399637515800),
+        name: 'currentChunkIndex',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(13, 5869265893742675458),
+        name: 'isRecording',
+        type: 1,
+        flags: 8,
+        indexId: const obx_int.IdUid(27, 5092901125198291191),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(14, 194023092146562780),
+        name: 'updatedAt',
         type: 10,
         flags: 0,
       ),
@@ -564,6 +651,197 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(11, 7193293475155126178),
+    name: 'CorrectionMappingEntity',
+    lastPropertyId: const obx_int.IdUid(16, 4734506791500094008),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 4383885988908703937),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 51140920058862662),
+        name: 'transcriptId',
+        type: 6,
+        flags: 8,
+        indexId: const obx_int.IdUid(16, 8050101399052823499),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 8191844259293580023),
+        name: 'turnId',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 6479418215129619824),
+        name: 'observed',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 7485797597347264821),
+        name: 'replacement',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 401319987969508956),
+        name: 'leftContext',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 2506957229754190267),
+        name: 'rightContext',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 7855716918651636423),
+        name: 'speaker',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 4944152431261344789),
+        name: 'language',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(17, 4427974952564008238),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 8087612358141973882),
+        name: 'scope',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(18, 8623748844783602992),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 4455750127218659223),
+        name: 'confirmationCount',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 25287546665070939),
+        name: 'rejectionCount',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(13, 8538185770121637695),
+        name: 'enabled',
+        type: 1,
+        flags: 8,
+        indexId: const obx_int.IdUid(19, 7602969619321553839),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(14, 6178920124093699419),
+        name: 'requiresExplicitRemember',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(15, 1446775557735047094),
+        name: 'createdAt',
+        type: 10,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(16, 4734506791500094008),
+        name: 'updatedAt',
+        type: 10,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(12, 4797247648525836748),
+    name: 'PersonalDictionaryEntryEntity',
+    lastPropertyId: const obx_int.IdUid(11, 65413416784866350),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 6149196888543758980),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 6563961039880981596),
+        name: 'canonicalForm',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(20, 6033664809959279446),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 2497815029846411250),
+        name: 'aliasesJson',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 2691399625747035470),
+        name: 'language',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(21, 5244185754367991968),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 6658844578923098534),
+        name: 'category',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(22, 6651492247262801721),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 8860627359289381180),
+        name: 'scope',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(23, 638500039337594605),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 8839076184099455892),
+        name: 'confirmationCount',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 6261737924904945671),
+        name: 'rejectionCount',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 4884077554482468746),
+        name: 'enabled',
+        type: 1,
+        flags: 8,
+        indexId: const obx_int.IdUid(24, 8512808218002374740),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 8603447884795765859),
+        name: 'createdAt',
+        type: 10,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 65413416784866350),
+        name: 'updatedAt',
+        type: 10,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -609,8 +887,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
     // Typically, this is done with `dart run build_runner build`.
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(10, 6743079949151911291),
-    lastIndexId: const obx_int.IdUid(15, 3109755727906842626),
+    lastEntityId: const obx_int.IdUid(12, 4797247648525836748),
+    lastIndexId: const obx_int.IdUid(27, 5092901125198291191),
     lastRelationId: const obx_int.IdUid(1, 2617604582228853530),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -774,7 +1052,19 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final processedAudioPathOffset = object.processedAudioPath == null
             ? null
             : fbb.writeString(object.processedAudioPath!);
-        fbb.startTable(18);
+        final rawTextOffset = object.rawText == null
+            ? null
+            : fbb.writeString(object.rawText!);
+        final calibratedTextOffset = object.calibratedText == null
+            ? null
+            : fbb.writeString(object.calibratedText!);
+        final calibrationAuditJsonOffset = object.calibrationAuditJson == null
+            ? null
+            : fbb.writeString(object.calibrationAuditJson!);
+        final instrumentationJsonOffset = object.instrumentationJson == null
+            ? null
+            : fbb.writeString(object.instrumentationJson!);
+        fbb.startTable(22);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, titleOffset);
         fbb.addOffset(2, modelOffset);
@@ -792,6 +1082,10 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addBool(14, object.isDeleted);
         fbb.addInt64(15, object.deletedAt?.millisecondsSinceEpoch);
         fbb.addBool(16, object.isFavourite);
+        fbb.addOffset(17, rawTextOffset);
+        fbb.addOffset(18, calibratedTextOffset);
+        fbb.addOffset(19, calibrationAuditJsonOffset);
+        fbb.addOffset(20, instrumentationJsonOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -844,6 +1138,18 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final editedTextParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGetNullable(buffer, rootOffset, 18);
+        final rawTextParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 38);
+        final calibratedTextParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 40);
+        final calibrationAuditJsonParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 42);
+        final instrumentationJsonParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 44);
         final fullTextCacheParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGetNullable(buffer, rootOffset, 20);
@@ -882,6 +1188,10 @@ obx_int.ModelDefinition getObjectBoxModel() {
           processedAudioPath: processedAudioPathParam,
           durationSec: durationSecParam,
           editedText: editedTextParam,
+          rawText: rawTextParam,
+          calibratedText: calibratedTextParam,
+          calibrationAuditJson: calibrationAuditJsonParam,
+          instrumentationJson: instrumentationJsonParam,
           fullTextCache: fullTextCacheParam,
           searchText: searchTextParam,
           createdAt: createdAtParam,
@@ -913,13 +1223,29 @@ obx_int.ModelDefinition getObjectBoxModel() {
       objectToFB: (TranscriptTurnEntity object, fb.Builder fbb) {
         final speakerLabelOffset = fbb.writeString(object.speakerLabel);
         final textOffset = fbb.writeString(object.text);
-        fbb.startTable(7);
+        final rawTextOffset = object.rawText == null
+            ? null
+            : fbb.writeString(object.rawText!);
+        final calibratedTextOffset = object.calibratedText == null
+            ? null
+            : fbb.writeString(object.calibratedText!);
+        final originalSpeakerLabelOffset = object.originalSpeakerLabel == null
+            ? null
+            : fbb.writeString(object.originalSpeakerLabel!);
+        final calibrationAuditJsonOffset = object.calibrationAuditJson == null
+            ? null
+            : fbb.writeString(object.calibrationAuditJson!);
+        fbb.startTable(11);
         fbb.addInt64(0, object.id);
         fbb.addInt64(1, object.transcript.targetId);
         fbb.addOffset(2, speakerLabelOffset);
         fbb.addFloat64(3, object.startSec);
         fbb.addFloat64(4, object.endSec);
         fbb.addOffset(5, textOffset);
+        fbb.addOffset(6, rawTextOffset);
+        fbb.addOffset(7, calibratedTextOffset);
+        fbb.addOffset(8, originalSpeakerLabelOffset);
+        fbb.addOffset(9, calibrationAuditJsonOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -950,12 +1276,28 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final textParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 14, '');
+        final rawTextParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 16);
+        final calibratedTextParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 18);
+        final originalSpeakerLabelParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 20);
+        final calibrationAuditJsonParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 22);
         final object = TranscriptTurnEntity(
           id: idParam,
           speakerLabel: speakerLabelParam,
           startSec: startSecParam,
           endSec: endSecParam,
           text: textParam,
+          rawText: rawTextParam,
+          calibratedText: calibratedTextParam,
+          originalSpeakerLabel: originalSpeakerLabelParam,
+          calibrationAuditJson: calibrationAuditJsonParam,
         );
         object.transcript.targetId = const fb.Int64Reader().vTableGet(
           buffer,
@@ -984,7 +1326,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final errorOffset = object.error == null
             ? null
             : fbb.writeString(object.error!);
-        fbb.startTable(9);
+        final stageOffset = fbb.writeString(object.stage);
+        fbb.startTable(15);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, wavPathOffset);
         fbb.addBool(2, object.translateToEnglish);
@@ -993,6 +1336,12 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addInt64(5, object.transcriptId);
         fbb.addOffset(6, errorOffset);
         fbb.addInt64(7, object.createdAt.millisecondsSinceEpoch);
+        fbb.addOffset(8, stageOffset);
+        fbb.addInt64(9, object.totalChunks);
+        fbb.addInt64(10, object.processedChunks);
+        fbb.addInt64(11, object.currentChunkIndex);
+        fbb.addBool(12, object.isRecording);
+        fbb.addInt64(13, object.updatedAt.millisecondsSinceEpoch);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -1026,11 +1375,41 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final statusParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 12, '');
+        final stageParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 20, '');
+        final totalChunksParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          22,
+          0,
+        );
+        final processedChunksParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          24,
+          0,
+        );
+        final currentChunkIndexParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          26,
+          0,
+        );
+        final isRecordingParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          28,
+          false,
+        );
         final errorParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGetNullable(buffer, rootOffset, 16);
         final createdAtParam = DateTime.fromMillisecondsSinceEpoch(
           const fb.Int64Reader().vTableGet(buffer, rootOffset, 18, 0),
+        );
+        final updatedAtParam = DateTime.fromMillisecondsSinceEpoch(
+          const fb.Int64Reader().vTableGet(buffer, rootOffset, 30, 0),
         );
         final object = TranscriptionJobEntity(
           id: idParam,
@@ -1039,8 +1418,14 @@ obx_int.ModelDefinition getObjectBoxModel() {
           transcriptId: transcriptIdParam,
           titleHint: titleHintParam,
           status: statusParam,
+          stage: stageParam,
+          totalChunks: totalChunksParam,
+          processedChunks: processedChunksParam,
+          currentChunkIndex: currentChunkIndexParam,
+          isRecording: isRecordingParam,
           error: errorParam,
           createdAt: createdAtParam,
+          updatedAt: updatedAtParam,
         );
 
         return object;
@@ -1363,6 +1748,230 @@ obx_int.ModelDefinition getObjectBoxModel() {
             return object;
           },
         ),
+    CorrectionMappingEntity: obx_int.EntityDefinition<CorrectionMappingEntity>(
+      model: _entities[10],
+      toOneRelations: (CorrectionMappingEntity object) => [],
+      toManyRelations: (CorrectionMappingEntity object) => {},
+      getId: (CorrectionMappingEntity object) => object.id,
+      setId: (CorrectionMappingEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (CorrectionMappingEntity object, fb.Builder fbb) {
+        final observedOffset = fbb.writeString(object.observed);
+        final replacementOffset = fbb.writeString(object.replacement);
+        final leftContextOffset = fbb.writeString(object.leftContext);
+        final rightContextOffset = fbb.writeString(object.rightContext);
+        final speakerOffset = fbb.writeString(object.speaker);
+        final languageOffset = fbb.writeString(object.language);
+        final scopeOffset = fbb.writeString(object.scope);
+        fbb.startTable(17);
+        fbb.addInt64(0, object.id);
+        fbb.addInt64(1, object.transcriptId);
+        fbb.addInt64(2, object.turnId);
+        fbb.addOffset(3, observedOffset);
+        fbb.addOffset(4, replacementOffset);
+        fbb.addOffset(5, leftContextOffset);
+        fbb.addOffset(6, rightContextOffset);
+        fbb.addOffset(7, speakerOffset);
+        fbb.addOffset(8, languageOffset);
+        fbb.addOffset(9, scopeOffset);
+        fbb.addInt64(10, object.confirmationCount);
+        fbb.addInt64(11, object.rejectionCount);
+        fbb.addBool(12, object.enabled);
+        fbb.addBool(13, object.requiresExplicitRemember);
+        fbb.addInt64(14, object.createdAt.millisecondsSinceEpoch);
+        fbb.addInt64(15, object.updatedAt.millisecondsSinceEpoch);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final transcriptIdParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          6,
+          0,
+        );
+        final turnIdParam = const fb.Int64Reader().vTableGetNullable(
+          buffer,
+          rootOffset,
+          8,
+        );
+        final observedParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final replacementParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final leftContextParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 14, '');
+        final rightContextParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 16, '');
+        final speakerParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 18, '');
+        final languageParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 20, '');
+        final scopeParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 22, '');
+        final confirmationCountParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          24,
+          0,
+        );
+        final rejectionCountParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          26,
+          0,
+        );
+        final enabledParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          28,
+          false,
+        );
+        final requiresExplicitRememberParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          30,
+          false,
+        );
+        final createdAtParam = DateTime.fromMillisecondsSinceEpoch(
+          const fb.Int64Reader().vTableGet(buffer, rootOffset, 32, 0),
+        );
+        final updatedAtParam = DateTime.fromMillisecondsSinceEpoch(
+          const fb.Int64Reader().vTableGet(buffer, rootOffset, 34, 0),
+        );
+        final object = CorrectionMappingEntity(
+          id: idParam,
+          transcriptId: transcriptIdParam,
+          turnId: turnIdParam,
+          observed: observedParam,
+          replacement: replacementParam,
+          leftContext: leftContextParam,
+          rightContext: rightContextParam,
+          speaker: speakerParam,
+          language: languageParam,
+          scope: scopeParam,
+          confirmationCount: confirmationCountParam,
+          rejectionCount: rejectionCountParam,
+          enabled: enabledParam,
+          requiresExplicitRemember: requiresExplicitRememberParam,
+          createdAt: createdAtParam,
+          updatedAt: updatedAtParam,
+        );
+
+        return object;
+      },
+    ),
+    PersonalDictionaryEntryEntity:
+        obx_int.EntityDefinition<PersonalDictionaryEntryEntity>(
+          model: _entities[11],
+          toOneRelations: (PersonalDictionaryEntryEntity object) => [],
+          toManyRelations: (PersonalDictionaryEntryEntity object) => {},
+          getId: (PersonalDictionaryEntryEntity object) => object.id,
+          setId: (PersonalDictionaryEntryEntity object, int id) {
+            object.id = id;
+          },
+          objectToFB: (PersonalDictionaryEntryEntity object, fb.Builder fbb) {
+            final canonicalFormOffset = fbb.writeString(object.canonicalForm);
+            final aliasesJsonOffset = fbb.writeString(object.aliasesJson);
+            final languageOffset = fbb.writeString(object.language);
+            final categoryOffset = fbb.writeString(object.category);
+            final scopeOffset = fbb.writeString(object.scope);
+            fbb.startTable(12);
+            fbb.addInt64(0, object.id);
+            fbb.addOffset(1, canonicalFormOffset);
+            fbb.addOffset(2, aliasesJsonOffset);
+            fbb.addOffset(3, languageOffset);
+            fbb.addOffset(4, categoryOffset);
+            fbb.addOffset(5, scopeOffset);
+            fbb.addInt64(6, object.confirmationCount);
+            fbb.addInt64(7, object.rejectionCount);
+            fbb.addBool(8, object.enabled);
+            fbb.addInt64(9, object.createdAt.millisecondsSinceEpoch);
+            fbb.addInt64(10, object.updatedAt.millisecondsSinceEpoch);
+            fbb.finish(fbb.endTable());
+            return object.id;
+          },
+          objectFromFB: (obx.Store store, ByteData fbData) {
+            final buffer = fb.BufferContext(fbData);
+            final rootOffset = buffer.derefObject(0);
+            final idParam = const fb.Int64Reader().vTableGet(
+              buffer,
+              rootOffset,
+              4,
+              0,
+            );
+            final canonicalFormParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 6, '');
+            final aliasesJsonParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 8, '');
+            final languageParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 10, '');
+            final categoryParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 12, '');
+            final scopeParam = const fb.StringReader(
+              asciiOptimization: true,
+            ).vTableGet(buffer, rootOffset, 14, '');
+            final confirmationCountParam = const fb.Int64Reader().vTableGet(
+              buffer,
+              rootOffset,
+              16,
+              0,
+            );
+            final rejectionCountParam = const fb.Int64Reader().vTableGet(
+              buffer,
+              rootOffset,
+              18,
+              0,
+            );
+            final enabledParam = const fb.BoolReader().vTableGet(
+              buffer,
+              rootOffset,
+              20,
+              false,
+            );
+            final createdAtParam = DateTime.fromMillisecondsSinceEpoch(
+              const fb.Int64Reader().vTableGet(buffer, rootOffset, 22, 0),
+            );
+            final updatedAtParam = DateTime.fromMillisecondsSinceEpoch(
+              const fb.Int64Reader().vTableGet(buffer, rootOffset, 24, 0),
+            );
+            final object = PersonalDictionaryEntryEntity(
+              id: idParam,
+              canonicalForm: canonicalFormParam,
+              aliasesJson: aliasesJsonParam,
+              language: languageParam,
+              category: categoryParam,
+              scope: scopeParam,
+              confirmationCount: confirmationCountParam,
+              rejectionCount: rejectionCountParam,
+              enabled: enabledParam,
+              createdAt: createdAtParam,
+              updatedAt: updatedAtParam,
+            );
+
+            return object;
+          },
+        ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -1513,6 +2122,26 @@ class TranscriptEntity_ {
     _entities[2].properties[16],
   );
 
+  /// See [TranscriptEntity.rawText].
+  static final rawText = obx.QueryStringProperty<TranscriptEntity>(
+    _entities[2].properties[17],
+  );
+
+  /// See [TranscriptEntity.calibratedText].
+  static final calibratedText = obx.QueryStringProperty<TranscriptEntity>(
+    _entities[2].properties[18],
+  );
+
+  /// See [TranscriptEntity.calibrationAuditJson].
+  static final calibrationAuditJson = obx.QueryStringProperty<TranscriptEntity>(
+    _entities[2].properties[19],
+  );
+
+  /// See [TranscriptEntity.instrumentationJson].
+  static final instrumentationJson = obx.QueryStringProperty<TranscriptEntity>(
+    _entities[2].properties[20],
+  );
+
   /// see [TranscriptEntity.turns]
   static final turns =
       obx.QueryBacklinkToMany<TranscriptTurnEntity, TranscriptEntity>(
@@ -1552,6 +2181,24 @@ class TranscriptTurnEntity_ {
   static final text = obx.QueryStringProperty<TranscriptTurnEntity>(
     _entities[3].properties[5],
   );
+
+  /// See [TranscriptTurnEntity.rawText].
+  static final rawText = obx.QueryStringProperty<TranscriptTurnEntity>(
+    _entities[3].properties[6],
+  );
+
+  /// See [TranscriptTurnEntity.calibratedText].
+  static final calibratedText = obx.QueryStringProperty<TranscriptTurnEntity>(
+    _entities[3].properties[7],
+  );
+
+  /// See [TranscriptTurnEntity.originalSpeakerLabel].
+  static final originalSpeakerLabel =
+      obx.QueryStringProperty<TranscriptTurnEntity>(_entities[3].properties[8]);
+
+  /// See [TranscriptTurnEntity.calibrationAuditJson].
+  static final calibrationAuditJson =
+      obx.QueryStringProperty<TranscriptTurnEntity>(_entities[3].properties[9]);
 }
 
 /// [TranscriptionJobEntity] entity fields to define ObjectBox queries.
@@ -1595,6 +2242,38 @@ class TranscriptionJobEntity_ {
   /// See [TranscriptionJobEntity.createdAt].
   static final createdAt = obx.QueryDateProperty<TranscriptionJobEntity>(
     _entities[4].properties[7],
+  );
+
+  /// See [TranscriptionJobEntity.stage].
+  static final stage = obx.QueryStringProperty<TranscriptionJobEntity>(
+    _entities[4].properties[8],
+  );
+
+  /// See [TranscriptionJobEntity.totalChunks].
+  static final totalChunks = obx.QueryIntegerProperty<TranscriptionJobEntity>(
+    _entities[4].properties[9],
+  );
+
+  /// See [TranscriptionJobEntity.processedChunks].
+  static final processedChunks =
+      obx.QueryIntegerProperty<TranscriptionJobEntity>(
+        _entities[4].properties[10],
+      );
+
+  /// See [TranscriptionJobEntity.currentChunkIndex].
+  static final currentChunkIndex =
+      obx.QueryIntegerProperty<TranscriptionJobEntity>(
+        _entities[4].properties[11],
+      );
+
+  /// See [TranscriptionJobEntity.isRecording].
+  static final isRecording = obx.QueryBooleanProperty<TranscriptionJobEntity>(
+    _entities[4].properties[12],
+  );
+
+  /// See [TranscriptionJobEntity.updatedAt].
+  static final updatedAt = obx.QueryDateProperty<TranscriptionJobEntity>(
+    _entities[4].properties[13],
   );
 }
 
@@ -1767,4 +2446,155 @@ class YoutubeTranscriptTextEntity_ {
       obx.QueryIntegerProperty<YoutubeTranscriptTextEntity>(
         _entities[9].properties[6],
       );
+}
+
+/// [CorrectionMappingEntity] entity fields to define ObjectBox queries.
+class CorrectionMappingEntity_ {
+  /// See [CorrectionMappingEntity.id].
+  static final id = obx.QueryIntegerProperty<CorrectionMappingEntity>(
+    _entities[10].properties[0],
+  );
+
+  /// See [CorrectionMappingEntity.transcriptId].
+  static final transcriptId = obx.QueryIntegerProperty<CorrectionMappingEntity>(
+    _entities[10].properties[1],
+  );
+
+  /// See [CorrectionMappingEntity.turnId].
+  static final turnId = obx.QueryIntegerProperty<CorrectionMappingEntity>(
+    _entities[10].properties[2],
+  );
+
+  /// See [CorrectionMappingEntity.observed].
+  static final observed = obx.QueryStringProperty<CorrectionMappingEntity>(
+    _entities[10].properties[3],
+  );
+
+  /// See [CorrectionMappingEntity.replacement].
+  static final replacement = obx.QueryStringProperty<CorrectionMappingEntity>(
+    _entities[10].properties[4],
+  );
+
+  /// See [CorrectionMappingEntity.leftContext].
+  static final leftContext = obx.QueryStringProperty<CorrectionMappingEntity>(
+    _entities[10].properties[5],
+  );
+
+  /// See [CorrectionMappingEntity.rightContext].
+  static final rightContext = obx.QueryStringProperty<CorrectionMappingEntity>(
+    _entities[10].properties[6],
+  );
+
+  /// See [CorrectionMappingEntity.speaker].
+  static final speaker = obx.QueryStringProperty<CorrectionMappingEntity>(
+    _entities[10].properties[7],
+  );
+
+  /// See [CorrectionMappingEntity.language].
+  static final language = obx.QueryStringProperty<CorrectionMappingEntity>(
+    _entities[10].properties[8],
+  );
+
+  /// See [CorrectionMappingEntity.scope].
+  static final scope = obx.QueryStringProperty<CorrectionMappingEntity>(
+    _entities[10].properties[9],
+  );
+
+  /// See [CorrectionMappingEntity.confirmationCount].
+  static final confirmationCount =
+      obx.QueryIntegerProperty<CorrectionMappingEntity>(
+        _entities[10].properties[10],
+      );
+
+  /// See [CorrectionMappingEntity.rejectionCount].
+  static final rejectionCount =
+      obx.QueryIntegerProperty<CorrectionMappingEntity>(
+        _entities[10].properties[11],
+      );
+
+  /// See [CorrectionMappingEntity.enabled].
+  static final enabled = obx.QueryBooleanProperty<CorrectionMappingEntity>(
+    _entities[10].properties[12],
+  );
+
+  /// See [CorrectionMappingEntity.requiresExplicitRemember].
+  static final requiresExplicitRemember =
+      obx.QueryBooleanProperty<CorrectionMappingEntity>(
+        _entities[10].properties[13],
+      );
+
+  /// See [CorrectionMappingEntity.createdAt].
+  static final createdAt = obx.QueryDateProperty<CorrectionMappingEntity>(
+    _entities[10].properties[14],
+  );
+
+  /// See [CorrectionMappingEntity.updatedAt].
+  static final updatedAt = obx.QueryDateProperty<CorrectionMappingEntity>(
+    _entities[10].properties[15],
+  );
+}
+
+/// [PersonalDictionaryEntryEntity] entity fields to define ObjectBox queries.
+class PersonalDictionaryEntryEntity_ {
+  /// See [PersonalDictionaryEntryEntity.id].
+  static final id = obx.QueryIntegerProperty<PersonalDictionaryEntryEntity>(
+    _entities[11].properties[0],
+  );
+
+  /// See [PersonalDictionaryEntryEntity.canonicalForm].
+  static final canonicalForm =
+      obx.QueryStringProperty<PersonalDictionaryEntryEntity>(
+        _entities[11].properties[1],
+      );
+
+  /// See [PersonalDictionaryEntryEntity.aliasesJson].
+  static final aliasesJson =
+      obx.QueryStringProperty<PersonalDictionaryEntryEntity>(
+        _entities[11].properties[2],
+      );
+
+  /// See [PersonalDictionaryEntryEntity.language].
+  static final language =
+      obx.QueryStringProperty<PersonalDictionaryEntryEntity>(
+        _entities[11].properties[3],
+      );
+
+  /// See [PersonalDictionaryEntryEntity.category].
+  static final category =
+      obx.QueryStringProperty<PersonalDictionaryEntryEntity>(
+        _entities[11].properties[4],
+      );
+
+  /// See [PersonalDictionaryEntryEntity.scope].
+  static final scope = obx.QueryStringProperty<PersonalDictionaryEntryEntity>(
+    _entities[11].properties[5],
+  );
+
+  /// See [PersonalDictionaryEntryEntity.confirmationCount].
+  static final confirmationCount =
+      obx.QueryIntegerProperty<PersonalDictionaryEntryEntity>(
+        _entities[11].properties[6],
+      );
+
+  /// See [PersonalDictionaryEntryEntity.rejectionCount].
+  static final rejectionCount =
+      obx.QueryIntegerProperty<PersonalDictionaryEntryEntity>(
+        _entities[11].properties[7],
+      );
+
+  /// See [PersonalDictionaryEntryEntity.enabled].
+  static final enabled =
+      obx.QueryBooleanProperty<PersonalDictionaryEntryEntity>(
+        _entities[11].properties[8],
+      );
+
+  /// See [PersonalDictionaryEntryEntity.createdAt].
+  static final createdAt = obx.QueryDateProperty<PersonalDictionaryEntryEntity>(
+    _entities[11].properties[9],
+  );
+
+  /// See [PersonalDictionaryEntryEntity.updatedAt].
+  static final updatedAt = obx.QueryDateProperty<PersonalDictionaryEntryEntity>(
+    _entities[11].properties[10],
+  );
 }

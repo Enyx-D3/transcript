@@ -14,7 +14,6 @@ import '../objectbox/entities.dart';
 import '../objectbox/objectbox_store.dart';
 
 import 'background_transcriber.dart';
-import '../paywall/transcription_premium_gate.dart';
 import 'transcript_detail_page.dart';
 
 // ✅ Glass primitives (same as RecordSheet)
@@ -232,10 +231,6 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
       return;
     }
 
-    final allowed = await ensureIosPremiumForTranscription(context);
-    if (!allowed) return;
-    if (!mounted) return;
-
     setState(() => _working = true);
 
     try {
@@ -261,7 +256,7 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
       final tId = obx.transcripts.put(
         TranscriptEntity(
           title: '',
-          model: 'whisper',
+          model: 'sherpa-onnx-whisper-tiny',
           sourceType: 2,
           lang: lang,
           audioPath: wavPath,
@@ -300,13 +295,14 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
       );
 
       try {
-        await BackgroundTranscriber.start(
+        await BackgroundTranscriber.startFromPrefs(
           wavPath: wavPath,
           translateToEnglish: false,
           titleHint: null,
           existingTranscriptId: tId,
-          targetSpeakers: targetSpeakers,
+          targetSpeakers: _diarizationEnabled ? targetSpeakers : null,
           lang: lang,
+          diarizationEnabledOverride: _diarizationEnabled,
         );
 
         final job = obx.jobs.get(jobId);
@@ -339,9 +335,8 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
         value: false,
       );
       await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
-      if (mounted) {
+      if (mounted)
         await AppFlushbar.error(context, message: 'Processing failed!');
-      }
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -453,7 +448,9 @@ class _ImportAudioSheetState extends State<ImportAudioSheet> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
-                                selectedName ?? 'No file selected',
+                                selectedName == null
+                                    ? 'No file selected'
+                                    : selectedName,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   color: fg,

@@ -372,7 +372,7 @@ class _YoutubeSavedTranscriptPageState
   // ============================================================
 
   Widget _headerBar({required bool canShare}) {
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     return Row(
       children: [
@@ -388,10 +388,10 @@ class _YoutubeSavedTranscriptPageState
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.2,
-                  color: fg,
-                ),
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.2,
+              color: fg,
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -407,12 +407,12 @@ class _YoutubeSavedTranscriptPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     // ✅ Loading state (no AppBar)
     if (_loading) {
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
@@ -452,7 +452,7 @@ class _YoutubeSavedTranscriptPageState
     // ✅ Not found state (no AppBar)
     if (_meta == null) {
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
@@ -482,7 +482,7 @@ class _YoutubeSavedTranscriptPageState
     final canShare = (_manual.isNotEmpty || _auto.isNotEmpty);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
@@ -553,7 +553,6 @@ class _YoutubeSavedTranscriptPageState
                     label: _regenerating ? 'Generating…' : 'Generate again',
                     icon: Icons.auto_fix_high,
                     onPressed: _regenerating ? null : _regenerate,
-          
                   ),
 
                   const SizedBox(height: 12),
@@ -576,11 +575,15 @@ class _YoutubeSavedTranscriptPageState
             // ================= Manual section =================
             _SectionHeader(
               title: 'Manual transcripts',
-              subtitle: _manual.isEmpty ? 'None' : '${_manual.length} available',
+              subtitle: _manual.isEmpty
+                  ? 'None'
+                  : '${_manual.length} available',
             ),
             const SizedBox(height: 10),
             _manual.isEmpty
-                ? const _EmptySmall(text: 'No manual transcripts for this video.')
+                ? const _EmptySmall(
+                    text: 'No manual transcripts for this video.',
+                  )
                 : _DbTranscriptList(items: _manual),
 
             const SizedBox(height: 18),
@@ -651,7 +654,8 @@ class _DbTranscriptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     final langName = (item.language?.trim().isNotEmpty ?? false)
         ? item.language!.trim()
@@ -672,13 +676,18 @@ class _DbTranscriptCard extends StatelessWidget {
               Expanded(
                 child: LiquidGlass(
                   borderRadius: BorderRadius.circular(999),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   shadow: false,
                   child: Row(
                     children: [
-                      const Icon(Icons.language,
-                          size: 16, color: Colors.white70),
+                      Icon(
+                        Icons.language,
+                        size: 16,
+                        color: muted,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -704,7 +713,10 @@ class _DbTranscriptCard extends StatelessWidget {
                 onTap: () async {
                   await Clipboard.setData(ClipboardData(text: item.text));
                   if (!context.mounted) return;
-                  await AppFlushbar.success(context, message: 'Copied transcript');
+                  await AppFlushbar.success(
+                    context,
+                    message: 'Copied transcript',
+                  );
                 },
               ),
             ],
@@ -742,9 +754,9 @@ class _GenTag extends StatelessWidget {
     final isDark = GlassTokens.isDark(context);
     final label = isGenerated ? 'AUTO' : 'MANUAL';
 
-    final color = Colors.white;
-    final border = color.withValues(alpha:  isDark ? 0.50 : 0.35);
-    final bg = color.withValues(alpha: isDark ? 0.16 : 0.10);
+    final color = isDark ? Colors.white : const Color(0xFF141418);
+    final border = color.withValues(alpha: isDark ? 0.50 : 0.25);
+    final bg = color.withValues(alpha: isDark ? 0.16 : 0.06);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -756,10 +768,10 @@ class _GenTag extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.2,
-              color: color,
-            ),
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.2,
+          color: color,
+        ),
       ),
     );
   }
@@ -773,7 +785,8 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return Padding(
       padding: const EdgeInsets.only(left: 2),
@@ -791,7 +804,7 @@ class _SectionHeader extends StatelessWidget {
           Text(
             subtitle,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.white70,
+              color: muted,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -807,7 +820,7 @@ class _MiniPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = Colors.white.withValues(alpha: 0.92);
+    final fg = GlassTokens.fg(context);
 
     return LiquidGlass(
       borderRadius: BorderRadius.circular(999),
@@ -817,11 +830,7 @@ class _MiniPill extends StatelessWidget {
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-        ),
+        style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 12),
       ),
     );
   }
@@ -833,12 +842,13 @@ class _EmptySmall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final muted = GlassTokens.muted(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 6, 2, 4),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.white70,
+        style: TextStyle(
+          color: muted,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -952,26 +962,25 @@ class _GlassIconPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = GlassTokens.isDark(context);
+    final disabled = onTap == null;
+    final fg = GlassTokens.fg(context);
+    final iconColor = disabled
+        ? fg.withValues(alpha: 0.35)
+        : fg.withValues(alpha: 0.92);
 
     return Tooltip(
       message: tooltip,
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
-            border: Border.all(
-              color: (isDark ? Colors.white : Colors.black).withValues(alpha:  0.10),
-            ),
-          ),
+        child: LiquidGlass(
+          borderRadius: BorderRadius.circular(999),
+          padding: const EdgeInsets.all(8),
+          shadow: false,
           child: Icon(
             icon,
             size: 20,
-            color: Colors.white.withValues(alpha: onTap == null ? 0.35 : 0.92),
+            color: iconColor,
           ),
         ),
       ),

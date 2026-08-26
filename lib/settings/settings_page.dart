@@ -1,18 +1,13 @@
 // lib/settings/settings_page.dart
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:transcript/ui/glass/glass_button.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:transcript/widgets/icon_pill_button.dart';
 
 import '../common/app_flushbar.dart';
 import '../import_export/transcript_porter.dart';
-import '../paywall/paywall_page.dart';
 import '../trash/trash_page.dart';
 import '../tabs/account_tab.dart';
 import '../model_picker_page.dart';
@@ -28,6 +23,8 @@ import '../help/help_page.dart';
 // ✅ glass system
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_divider.dart';
+import '../ui/glass/glass_tokens.dart';
+import '../theme/theme_controller.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -59,6 +56,8 @@ class _SettingsPageState extends State<SettingsPage> {
   static const _kPrefMaxRecordingMinutes = 'pref_max_recording_minutes';
   static const _kPrefAutoEmailTranscript = 'pref_auto_email_transcript';
   static const _kPrefAutoSummaryEnabled = 'pref_auto_summary_enabled';
+
+  // ✅ NEW: typo fix toggle
   static const _kPrefTypoFixEnabled = 'pref_typo_fix_enabled';
 
   // =========================
@@ -95,6 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _maxRecordingMinutes = 60;
   bool _autoEmailTranscript = false;
   bool _autoSummaryEnabled = true; // ✅ default ON
+
   bool _typoFixEnabled = false;
 
   @override
@@ -112,41 +112,12 @@ class _SettingsPageState extends State<SettingsPage> {
   // Account
   // =========================
   void _openAccount() {
-    if (Platform.isIOS) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) => PaywallPage(
-            onPremiumUnlocked: () async {
-              widget.onUpgradeSuccess?.call();
-            },
-          ),
-        ),
-      );
-      return;
-    }
-
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) => PaywallPage(
-            onPremiumUnlocked: () async {
-              widget.onUpgradeSuccess?.call();
-            },
-          ),
-        ),
-      );
-      return;
-    }
-
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: Colors.transparent,
+        builder: (ctx) => Scaffold(
+          backgroundColor: GlassTokens.backgroundColor(ctx),
           appBar: AppBar(
-            backgroundColor: Colors.transparent,
+            backgroundColor: GlassTokens.backgroundColor(ctx),
             elevation: 0,
             title: const Text('Account'),
             leading: Padding(
@@ -154,7 +125,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: IconPillButton(
                 tooltip: 'Back',
                 icon: Icons.arrow_back,
-                onTap: () => Navigator.of(context).pop(),
+                onTap: () => Navigator.of(ctx).pop(),
               ),
             ),
           ),
@@ -240,8 +211,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final safeMins = _maxMinutesOptions.contains(mins) ? mins : 60;
 
     final autoEmail = sp.getBool(_kPrefAutoEmailTranscript) ?? false;
-
     final autoSummary = sp.getBool(_kPrefAutoSummaryEnabled) ?? true;
+
     final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? false;
 
     if (!mounted) return;
@@ -253,7 +224,9 @@ class _SettingsPageState extends State<SettingsPage> {
       _maxRecordingMinutes = safeMins;
       _autoEmailTranscript = autoEmail;
       _autoSummaryEnabled = autoSummary;
+
       _typoFixEnabled = typoFix;
+
       _loading = false;
     });
   }
@@ -310,6 +283,7 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _autoSummaryEnabled = v);
   }
 
+  // ✅ NEW setter
   Future<void> _setTypoFixEnabled(bool v) async {
     final sp = await SharedPreferences.getInstance();
     await sp.setBool(_kPrefTypoFixEnabled, v);
@@ -339,35 +313,50 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color.fromARGB(190, 0, 0, 0),
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Import transcripts + audio?'),
-        content: const Text(
-          'This will add transcripts (and their audio if included) from a ZIP export into your database.\n\n'
-          '*Duplicates are not automatically removed.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+      builder: (ctx) {
+        final isDark = GlassTokens.isDark(ctx);
+        final fg = GlassTokens.fg(ctx);
+        final muted = GlassTokens.muted(ctx);
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF191922) : Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            'Import transcripts + audio?',
+            style: TextStyle(color: fg, fontWeight: FontWeight.w800),
           ),
-          GlassButton(
-            label: 'Import',
-            onPressed: () => Navigator.pop(ctx, true),
-            expand: false,
-            kind: GlassButtonKind.secondary,
+          content: Text(
+            'This will add transcripts (and their audio if included) from a ZIP export into your database.\n\n'
+            '*Duplicates are not automatically removed.',
+            style: TextStyle(color: muted),
           ),
-          // FilledButton(
-          //   onPressed: () => Navigator.pop(ctx, true),
-          //   style: FilledButton.styleFrom(
-          //     backgroundColor: Colors.white,
-          //     foregroundColor: Colors.black,
-          //   ),
-          //   child: const Text('Import'),
-          // ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: muted, fontWeight: FontWeight.w700),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: GlassTokens.primary(context),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Import',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (ok != true) return;
@@ -392,24 +381,25 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _busyTrailing(bool busy) {
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
     return busy
-        ? const SizedBox(
+        ? SizedBox(
             width: 18,
             height: 18,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: Colors.white,
-              backgroundColor: Colors.black,
+              color: fg,
             ),
           )
         : Icon(
             Icons.chevron_right,
-            color: Colors.white.withValues(alpha: 0.70),
+            color: muted,
           );
   }
 
   // =========================
-  // UI helpers (glass style)
+  // UI helpers
   // =========================
 
   Widget _sectionHeader(String title) {
@@ -420,7 +410,7 @@ class _SettingsPageState extends State<SettingsPage> {
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w900,
-          color: Colors.white.withValues(alpha: 0.70),
+          color: GlassTokens.muted(context, alpha: 0.85),
           letterSpacing: 0.2,
         ),
       ),
@@ -437,16 +427,13 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  /// ✅ Dropdown trailing that won’t overflow and keeps glass styling.
-  /// - wraps DropdownButtonHideUnderline
-  /// - uses `value:` (not initialValue)
-  /// - uses `isDense` + smaller contentPadding
   Widget _trailingDropdown<T>({
     required T value,
     required List<DropdownMenuItem<T>> items,
     required ValueChanged<T?> onChanged,
     double width = 160,
   }) {
+    final fg = GlassTokens.fg(context);
     return SizedBox(
       width: width,
       child: GlassCard(
@@ -460,10 +447,10 @@ class _SettingsPageState extends State<SettingsPage> {
             isExpanded: true,
             items: items,
             onChanged: onChanged,
-            dropdownColor: const Color.fromARGB(170, 0, 0, 0),
-            iconEnabledColor: Colors.white.withValues(alpha: 0.80),
+            dropdownColor: GlassTokens.cardColor(context),
+            iconEnabledColor: GlassTokens.primary(context),
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.92),
+              color: fg,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -478,11 +465,28 @@ class _SettingsPageState extends State<SettingsPage> {
     required String subtitle,
     required Widget trailing,
   }) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final primaryColor = GlassTokens.primary(context);
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: primaryColor.withValues(alpha: isDark ? 0.14 : 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: primaryColor,
+              size: 20,
+            ),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -491,15 +495,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text(
                   title,
                   style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white.withValues(alpha: 0.92),
+                    fontWeight: FontWeight.w800,
+                    color: fg,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.70),
+                    color: muted,
                     fontSize: 12,
                   ),
                 ),
@@ -507,7 +511,6 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(width: 10),
-          // ✅ ensure trailing can shrink without forcing overflow
           ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 0),
             child: trailing,
@@ -527,15 +530,35 @@ class _SettingsPageState extends State<SettingsPage> {
     required String offLabel,
   }) {
     final label = value ? onLabel : offLabel;
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final primaryColor = GlassTokens.primary(context);
 
     return InkWell(
       onTap: () => onChanged(!value),
       borderRadius: BorderRadius.circular(14),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: value
+                    ? primaryColor.withValues(alpha: isDark ? 0.16 : 0.10)
+                    : (isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.black.withValues(alpha: 0.04)),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: value ? primaryColor : fg.withValues(alpha: 0.75),
+                size: 20,
+              ),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -544,37 +567,48 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white.withValues(alpha: 0.92),
+                      fontWeight: FontWeight.w800,
+                      color: fg,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.70),
+                      color: muted,
                       fontSize: 12,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.70),
-                fontWeight: FontWeight.w900,
+                color: value ? primaryColor : muted,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Switch(
               value: value,
               onChanged: onChanged,
-              activeThumbColor: Colors.black,
-              activeTrackColor: Colors.white.withValues(alpha: 0.85),
-              inactiveThumbColor: Colors.white.withValues(alpha: 0.55),
-              inactiveTrackColor: Colors.white.withValues(alpha: 0.18),
+              activeThumbColor: Colors.white,
+              activeTrackColor: primaryColor,
+              inactiveThumbColor:
+                  isDark ? const Color(0xFF9E9EA6) : const Color(0xFF8E8E93),
+              inactiveTrackColor: isDark
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.black.withValues(alpha: 0.10),
+              trackOutlineColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? Colors.transparent
+                    : (isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : Colors.black.withValues(alpha: 0.08)),
+              ),
             ),
           ],
         ),
@@ -585,9 +619,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String _fmtMaxTime(int minutes) {
     if (minutes == 30) return '30 min';
     if (minutes == 60) return '1 hour';
-    // if (minutes == 90) return '1.5 hours';
-    // if (minutes == 120) return '2 hours';
-    // if (minutes == 6000) return 'No limit (Experimental)';
     return '$minutes min';
   }
 
@@ -596,28 +627,38 @@ class _SettingsPageState extends State<SettingsPage> {
   // =========================
   @override
   Widget build(BuildContext context) {
-    // Optional: keep consistent with other glass pages
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         elevation: 0,
-        title: const Text('Settings'),
+        scrolledUnderElevation: 0,
+        titleSpacing: 4,
+        title: Text(
+          'Settings',
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: fg,
+            letterSpacing: -0.4,
+          ),
+        ),
         leading: Padding(
           padding: const EdgeInsets.all(7.0),
           child: IconPillButton(
             tooltip: 'Back',
-            icon: Icons.arrow_back,
+            icon: Icons.arrow_back_rounded,
             onTap: () => Navigator.of(context).pop(),
           ),
         ),
       ),
       body: _loading
-          ? const Center(
+          ? Center(
               child: CircularProgressIndicator(
-                backgroundColor: Colors.black,
-                color: Colors.white,
+                color: fg,
               ),
             )
           : ListView(
@@ -625,18 +666,26 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 const SizedBox(height: 8),
 
-                // -------- Account --------
                 _panel(
                   child: InkWell(
                     onTap: _openAccount,
                     borderRadius: BorderRadius.circular(14),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.person_outline,
-                            color: Colors.white.withValues(alpha: 0.85),
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: GlassTokens.primary(context).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              Icons.person_outline,
+                              color: GlassTokens.primary(context),
+                              size: 20,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -644,21 +693,17 @@ class _SettingsPageState extends State<SettingsPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  Platform.isIOS
-                                      ? 'Billing & Purchases'
-                                      : 'Account & Billing',
+                                  'Account & Billing',
                                   style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white.withValues(alpha: 0.92),
+                                    fontWeight: FontWeight.w800,
+                                    color: fg,
                                   ),
                                 ),
-                                const SizedBox(height: 3),
+                                const SizedBox(height: 2),
                                 Text(
-                                  Platform.isIOS
-                                      ? 'Subscriptions, trial, and restore purchases'
-                                      : 'Subscription, trial, and purchases',
+                                  'Subscription, trial, and purchases',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.70),
+                                    color: muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -667,7 +712,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           Icon(
                             Icons.chevron_right,
-                            color: Colors.white.withValues(alpha: 0.70),
+                            color: muted,
                           ),
                         ],
                       ),
@@ -681,12 +726,21 @@ class _SettingsPageState extends State<SettingsPage> {
                     onTap: _openModelPage,
                     borderRadius: BorderRadius.circular(14),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.smart_toy,
-                            color: Colors.white.withValues(alpha: 0.85),
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: GlassTokens.primary(context).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              Icons.smart_toy_outlined,
+                              color: GlassTokens.primary(context),
+                              size: 20,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -696,15 +750,15 @@ class _SettingsPageState extends State<SettingsPage> {
                                 Text(
                                   'Models',
                                   style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white.withValues(alpha: 0.92),
+                                    fontWeight: FontWeight.w800,
+                                    color: fg,
                                   ),
                                 ),
-                                const SizedBox(height: 3),
+                                const SizedBox(height: 2),
                                 Text(
                                   'Model for AI features',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.70),
+                                    color: muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -713,10 +767,48 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           Icon(
                             Icons.chevron_right,
-                            color: Colors.white.withValues(alpha: 0.70),
+                            color: muted,
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // -------- Appearance --------
+                _sectionHeader('Appearance'),
+                _panel(
+                  child: _kvRow(
+                    icon: Icons.palette_outlined,
+                    title: 'Theme',
+                    subtitle: 'Choose your preferred app theme.',
+                    trailing: _trailingDropdown<AppThemeMode>(
+                      value: ThemeController.instance.appThemeMode,
+                      width: 170,
+                      items: const [
+                        DropdownMenuItem(
+                          value: AppThemeMode.system,
+                          child: Text('System', overflow: TextOverflow.ellipsis),
+                        ),
+                        DropdownMenuItem(
+                          value: AppThemeMode.dark,
+                          child: Text('Dark (Blue)', overflow: TextOverflow.ellipsis),
+                        ),
+                        DropdownMenuItem(
+                          value: AppThemeMode.crimson,
+                          child: Text('Crimson (Dark)', overflow: TextOverflow.ellipsis),
+                        ),
+                        DropdownMenuItem(
+                          value: AppThemeMode.light,
+                          child: Text('Light Mode', overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        ThemeController.instance.setAppThemeMode(v);
+                        setState(() {});
+                      },
                     ),
                   ),
                 ),
@@ -806,6 +898,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         offLabel: 'Off',
                       ),
                       _rowDivider(),
+
                       _switchRow(
                         icon: Icons.spellcheck,
                         title: 'Fix obvious typos',
@@ -816,6 +909,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onLabel: 'On',
                         offLabel: 'Off',
                       ),
+
                       _rowDivider(),
                       _switchRow(
                         icon: Icons.auto_awesome,
@@ -863,12 +957,21 @@ class _SettingsPageState extends State<SettingsPage> {
                             : null,
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.archive_outlined,
-                                color: Colors.white.withValues(alpha: 0.85),
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: GlassTokens.primary(context).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  Icons.archive_outlined,
+                                  color: GlassTokens.primary(context),
+                                  size: 20,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -878,19 +981,15 @@ class _SettingsPageState extends State<SettingsPage> {
                                     Text(
                                       'Export transcripts + audio (ZIP)',
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.92,
-                                        ),
+                                        fontWeight: FontWeight.w800,
+                                        color: fg,
                                       ),
                                     ),
-                                    const SizedBox(height: 3),
+                                    const SizedBox(height: 2),
                                     Text(
                                       'Share to Drive / device / email',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.70,
-                                        ),
+                                        color: muted,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -909,12 +1008,21 @@ class _SettingsPageState extends State<SettingsPage> {
                             : null,
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.unarchive_outlined,
-                                color: Colors.white.withValues(alpha: 0.85),
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: GlassTokens.primary(context).withValues(alpha: GlassTokens.isDark(context) ? 0.14 : 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  Icons.unarchive_outlined,
+                                  color: GlassTokens.primary(context),
+                                  size: 20,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -924,19 +1032,15 @@ class _SettingsPageState extends State<SettingsPage> {
                                     Text(
                                       'Import transcripts + audio (ZIP)',
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.92,
-                                        ),
+                                        fontWeight: FontWeight.w800,
+                                        color: fg,
                                       ),
                                     ),
-                                    const SizedBox(height: 3),
+                                    const SizedBox(height: 2),
                                     Text(
                                       'Pick ZIP from device / Drive',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.70,
-                                        ),
+                                        color: muted,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -1021,14 +1125,31 @@ class _SettingsPageState extends State<SettingsPage> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final primaryColor = GlassTokens.primary(context);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white.withValues(alpha: 0.85)),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: primaryColor.withValues(alpha: isDark ? 0.14 : 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: primaryColor,
+                size: 20,
+              ),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1037,15 +1158,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white.withValues(alpha: 0.92),
+                      fontWeight: FontWeight.w800,
+                      color: fg,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.70),
+                      color: muted,
                       fontSize: 12,
                     ),
                   ),
@@ -1054,7 +1175,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             Icon(
               Icons.chevron_right,
-              color: Colors.white.withValues(alpha: 0.70),
+              color: muted,
             ),
           ],
         ),

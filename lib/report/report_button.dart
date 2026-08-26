@@ -33,19 +33,20 @@ class ReportButton extends StatelessWidget {
           outerContext: context,
           responseText: responseText,
           meta: meta,
-          sendReport: ({
-            required String reason,
-            required String note,
-            required String response,
-            Map<String, dynamic>? meta,
-          }) {
-            return reportService.sendReport(
-              reason: reason,
-              note: note,
-              response: response,
-              meta: meta,
-            );
-          },
+          sendReport:
+              ({
+                required String reason,
+                required String note,
+                required String response,
+                Map<String, dynamic>? meta,
+              }) {
+                return reportService.sendReport(
+                  reason: reason,
+                  note: note,
+                  response: response,
+                  meta: meta,
+                );
+              },
         );
       },
     );

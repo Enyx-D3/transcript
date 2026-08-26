@@ -40,17 +40,16 @@ class SolidSelectionToolbar extends StatelessWidget {
       anchorAbove: anchors.primaryAnchor,
       anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
       children: [
-        Center( // ✅ ensures proper centering
-          child: IntrinsicWidth( // ✅ prevents full width expansion
+        Center(
+          // ✅ ensures proper centering
+          child: IntrinsicWidth(
+            // ✅ prevents full width expansion
             child: Material(
               color: backgroundColor,
               elevation: 10,
               borderRadius: BorderRadius.circular(14),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: Wrap(
                   alignment: WrapAlignment.center, // ✅ center buttons
                   crossAxisAlignment: WrapCrossAlignment.center,

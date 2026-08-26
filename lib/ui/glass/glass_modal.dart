@@ -1,5 +1,4 @@
 // lib/ui/glass/glass_modal.dart
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'liquid_glass.dart';
 import 'glass_tokens.dart';
@@ -11,9 +10,9 @@ class GlassModalBarrier extends StatelessWidget {
   const GlassModalBarrier({
     super.key,
     this.onTap,
-    this.blur = 14, // stronger blur behind modal
-    this.dimAlphaLight = 0.20,
-    this.dimAlphaDark = 0.48,
+    this.blur = 0,
+    this.dimAlphaLight = 0.40,
+    this.dimAlphaDark = 0.65,
   });
 
   final VoidCallback? onTap;
@@ -24,7 +23,6 @@ class GlassModalBarrier extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
-
     final dim = Colors.black.withValues(
       alpha: isDark ? dimAlphaDark : dimAlphaLight,
     );
@@ -33,27 +31,14 @@ class GlassModalBarrier extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Stack(
-          children: [
-            // dim layer
-
-            // background blur
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-                child: const SizedBox.expand(),
-              ),
-            ),
-            Positioned.fill(child: Container(color: dim)),
-          ],
-        ),
+        child: Container(color: dim),
       ),
     );
   }
 }
 
 /// ----------------------------
-/// Modal Glass Panel
+/// Modal Solid Panel
 /// ----------------------------
 class GlassModal extends StatelessWidget {
   const GlassModal({
@@ -65,58 +50,42 @@ class GlassModal extends StatelessWidget {
     this.blur,
     this.tintLight,
     this.tintDark,
+    this.backgroundColor,
   });
 
   final Widget child;
   final double maxWidth;
   final EdgeInsetsGeometry padding;
-
   final BorderRadius? radius;
   final double? blur;
-
   final double? tintLight;
   final double? tintDark;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     final isDark = GlassTokens.isDark(context);
 
-    // Modal should be slightly stronger than panel
-    const defaultTintDark = 0.045;
-    const defaultTintLight = 0.035;
-
-    const defaultBorderDark = 0.16;
-    const defaultBorderLight = 0.22;
-
-    final blurValue = blur ?? (isDark ? 18 : 14); // perf
+    final bg = backgroundColor ??
+        (isDark ? const Color(0xFF191921) : const Color(0xFFFFFFFF));
+    final border = isDark ? const Color(0xFF2C2C38) : const Color(0xFFDFDFE6);
 
     return Center(
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          padding: const EdgeInsets.all(12),
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxWidth),
             child: LiquidGlass(
               padding: padding,
               borderRadius: radius ?? GlassTokens.radiusModal,
-
-              blurX: blurValue,
-              blurY: blurValue,
-              grain: false,
-
-              // extremely transparent, true glass
-              tintOpacityDark: tintDark ?? defaultTintDark,
-              tintOpacityLight: tintLight ?? defaultTintLight,
-
-              borderOpacityDark: defaultBorderDark,
-              borderOpacityLight: defaultBorderLight,
-
+              backgroundColor: bg,
+              borderColor: border,
               shadow: true,
-              shadowBlur: 36,
-              shadowOffset: const Offset(0, 20),
-              shadowOpacityDark: 0.22,
-              shadowOpacityLight: 0.08,
-
+              shadowBlur: 28,
+              shadowOffset: const Offset(0, 10),
+              shadowOpacityDark: 0.50,
+              shadowOpacityLight: 0.12,
               child: child,
             ),
           ),

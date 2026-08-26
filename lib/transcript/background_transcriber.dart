@@ -1,7 +1,7 @@
 // lib/transcript/background_transcriber.dart
 import 'dart:async';
 import 'dart:ui';
-import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +31,8 @@ class BackgroundTranscriber {
   static const _kExistingId = 'bg_existing_id';
   static const _kResultId = 'bg_result_id';
   static const _kBusyTranscribing = 'busy_transcribing';
+
+  // ✅ IMPORTANT: which transcript is currently being processed (0 == none)
   static const _kActiveTranscriptId = 'bg_active_transcript_id';
 
   // ✅ target speakers stored int where 0 == null/auto
@@ -38,12 +40,18 @@ class BackgroundTranscriber {
 
   // ✅ language (always stored as non-null String; default 'auto')
   static const _kLang = 'bg_lang';
+  static const _kDiarizationEnabled = 'bg_diarization_enabled_int';
 
   static const _kProgressProcessedSec = 'progress_processed_sec';
   static const _kProgressTotalSec = 'progress_total_sec';
   static const _kProgressStage = 'progress_stage';
+
+  // ✅ typo fix toggle passed into task isolate (STORE AS INT: 1/0)
   static const _kTypoFixEnabled = 'bg_typo_fix_enabled_int';
+
+  // ✅ SharedPreferences key (must match SettingsPage)
   static const _kPrefTypoFixEnabled = 'pref_typo_fix_enabled';
+  static const _kPrefDiarizationEnabled = 'pref_diarization_enabled';
 
   static Future<void> init() async {
     FlutterForegroundTask.init(
@@ -68,50 +76,47 @@ class BackgroundTranscriber {
     FlutterForegroundTask.initCommunicationPort();
   }
 
-  static Future<void> start({
+  /// ✅ Use this everywhere.
+  /// Reads latest settings RIGHT NOW, so toggle changes apply to the next start.
+  static Future<void> startFromPrefs({
     required String wavPath,
     bool translateToEnglish = false,
     String? titleHint,
     int? existingTranscriptId,
-    // ✅ diarization
     int? targetSpeakers,
-
-    // ✅ language code ('auto','en','bn','hi','es')
     String lang = 'auto',
+    bool? diarizationEnabledOverride,
   }) async {
     final sp = await SharedPreferences.getInstance();
-    final typoFixEnabled = sp.getBool(_kPrefTypoFixEnabled) ?? false;
+    final typoFix = sp.getBool(_kPrefTypoFixEnabled) ?? false;
+    final diarizationEnabled =
+        diarizationEnabledOverride ??
+        (sp.getBool(_kPrefDiarizationEnabled) ?? true);
 
-    if (Platform.isIOS) {
-      return _startIOS(
-        wavPath: wavPath,
-        titleHint: titleHint,
-        existingTranscriptId: existingTranscriptId,
-        targetSpeakers: targetSpeakers,
-        lang: lang,
-        typoFixEnabled: typoFixEnabled,
-      );
-    }
-
-    return _startAndroid(
+    await start(
       wavPath: wavPath,
       translateToEnglish: translateToEnglish,
       titleHint: titleHint,
       existingTranscriptId: existingTranscriptId,
       targetSpeakers: targetSpeakers,
       lang: lang,
-      typoFixEnabled: typoFixEnabled,
+      typoFixEnabled: typoFix,
+      diarizationEnabled: diarizationEnabled,
     );
   }
 
-  static Future<void> _startAndroid({
+  /// ✅ Deterministic start (no prefs read here).
+  static Future<void> start({
     required String wavPath,
-    required bool translateToEnglish,
+    bool translateToEnglish = false,
     String? titleHint,
     int? existingTranscriptId,
     int? targetSpeakers,
-    required String lang,
+    String lang = 'auto',
+
+    // ✅ MUST be passed (call startFromPrefs from UI)
     required bool typoFixEnabled,
+    required bool diarizationEnabled,
   }) async {
     await FlutterForegroundTask.saveData(key: _kWavPath, value: wavPath);
     await FlutterForegroundTask.saveData(
@@ -119,6 +124,8 @@ class BackgroundTranscriber {
       value: translateToEnglish,
     );
     await FlutterForegroundTask.saveData(key: _kBusyTranscribing, value: true);
+
+    // ✅ mark which transcript is active (0 if unknown)
     await FlutterForegroundTask.saveData(
       key: _kActiveTranscriptId,
       value: existingTranscriptId ?? 0,
@@ -145,7 +152,12 @@ class BackgroundTranscriber {
       key: _kLang,
       value: (lang.trim().isEmpty) ? 'auto' : lang.trim(),
     );
+    await FlutterForegroundTask.saveData(
+      key: _kDiarizationEnabled,
+      value: diarizationEnabled ? 1 : 0,
+    );
 
+    // ✅ IMPORTANT: store typo-fix as INT (1/0) to avoid bool deserialization issues
     await FlutterForegroundTask.saveData(
       key: _kTypoFixEnabled,
       value: typoFixEnabled ? 1 : 0,
@@ -169,125 +181,12 @@ class BackgroundTranscriber {
     );
   }
 
-  static Future<void> _startIOS({
-    required String wavPath,
-    String? titleHint,
-    int? existingTranscriptId,
-    int? targetSpeakers,
-    required String lang,
-    required bool typoFixEnabled,
-  }) async {
-    try {
-      await FlutterForegroundTask.saveData(
-        key: _kBusyTranscribing,
-        value: true,
-      );
-      await FlutterForegroundTask.saveData(
-        key: _kActiveTranscriptId,
-        value: existingTranscriptId ?? 0,
-      );
-
-      await FlutterForegroundTask.saveData(
-        key: _kProgressProcessedSec,
-        value: 0.0,
-      );
-
-      await FlutterForegroundTask.saveData(key: _kProgressTotalSec, value: 0.0);
-
-      await FlutterForegroundTask.saveData(
-        key: _kProgressStage,
-        value: 'Preparing',
-      );
-      await FlutterForegroundTask.saveData(
-        key: _kTypoFixEnabled,
-        value: typoFixEnabled ? 1 : 0,
-      );
-
-      final result = await transcribeToResult(
-        wavPath: wavPath,
-        titleHint: titleHint,
-        targetSpeakers: targetSpeakers,
-        lang: lang,
-        onProgress:
-            ({
-              required String stage,
-              required double processedSec,
-              required double totalSec,
-            }) async {
-              await FlutterForegroundTask.saveData(
-                key: _kProgressProcessedSec,
-                value: processedSec,
-              );
-
-              await FlutterForegroundTask.saveData(
-                key: _kProgressTotalSec,
-                value: totalSec,
-              );
-
-              await FlutterForegroundTask.saveData(
-                key: _kProgressStage,
-                value: stage,
-              );
-            },
-      );
-
-      Map<String, dynamic> payload = result.toJson();
-
-      if (typoFixEnabled) {
-        final helper = _TranscribeTaskHandler();
-        final typoFixModelPath = await helper._resolveTypoFixModelPath();
-        if (typoFixModelPath != null) {
-          final turns = helper._turnsFromResultJson(payload);
-          if (turns.isNotEmpty) {
-            await FlutterForegroundTask.saveData(
-              key: _kProgressStage,
-              value: 'Fixing typos',
-            );
-
-            final fixedTurns = await helper._typoFixChunkTurnsIfPossible(
-              modelPath: typoFixModelPath,
-              modelReady: true,
-              turns: turns,
-            );
-
-            payload['turns'] = helper._turnsToJson(fixedTurns);
-
-            await FlutterForegroundTask.saveData(
-              key: _kProgressStage,
-              value: 'Finalizing',
-            );
-          }
-        }
-      }
-
-      FlutterForegroundTask.sendDataToMain({
-        'type': 'transcribe_result',
-        'existingId': existingTranscriptId,
-        'wavPath': wavPath,
-        'payload': payload,
-        'typoFixEnabled': typoFixEnabled,
-      });
-    } catch (e) {
-      FlutterForegroundTask.sendDataToMain({
-        'type': 'transcribe_error',
-        'existingId': existingTranscriptId,
-        'error': e.toString(),
-      });
-    } finally {
-      await FlutterForegroundTask.saveData(
-        key: _kBusyTranscribing,
-        value: false,
-      );
-      await FlutterForegroundTask.saveData(key: _kActiveTranscriptId, value: 0);
-    }
-  }
-
   static Future<int?> getLastResultId() async {
     final v = await FlutterForegroundTask.getData<int>(key: _kResultId);
     return v;
   }
 
-  /// ✅ FIXED: returns a cancelable subscription that *actually* removes callback.
+  /// ✅ returns a cancelable subscription that actually removes callback.
   static StreamSubscription<dynamic> onData(
     void Function(dynamic data) handler,
   ) {
@@ -314,22 +213,17 @@ class _TaskDataSubscription implements StreamSubscription<dynamic> {
     onCancel();
   }
 
-  // The rest are no-ops (not used by your code)
+  // no-ops
   @override
   void onData(void Function(dynamic data)? handleData) {}
-
   @override
   void onError(Function? handleError) {}
-
   @override
   void onDone(void Function()? handleDone) {}
-
   @override
   void pause([Future<void>? resumeSignal]) {}
-
   @override
   void resume() {}
-
   @override
   bool get isPaused => false;
 
@@ -338,7 +232,6 @@ class _TaskDataSubscription implements StreamSubscription<dynamic> {
 }
 
 class _TranscribeTaskHandler extends TaskHandler {
-  // ✅ create inside task isolate (no shared prefs, no UI state)
   final QwenModelService _qwenService = QwenModelService();
 
   String _fmtMmSs(double sec) {
@@ -350,11 +243,10 @@ class _TranscribeTaskHandler extends TaskHandler {
   }
 
   // -------------------------
-  // ✅ Typo-fix helpers
+  // Typo-fix helpers
   // -------------------------
 
   String _escapeTurnText(String s) {
-    // Keep TSV single-line per turn; avoid breaking format.
     return s
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
@@ -381,18 +273,13 @@ class _TranscribeTaskHandler extends TaskHandler {
       if (r['done'] == true) break;
     }
 
-    final out = buf.toString().trim();
-    return out.isEmpty ? prompt : out;
+    return buf.toString().trim();
   }
 
   Future<List<LiteTurn>> _typoFixChunkTurnsIfPossible({
-    required String? modelPath,
-    required bool modelReady,
+    required String modelPath,
     required List<LiteTurn> turns,
   }) async {
-    if (!modelReady) return turns;
-    final mp = (modelPath ?? '').trim();
-    if (mp.isEmpty) return turns;
     if (turns.isEmpty) return turns;
 
     final b = StringBuffer();
@@ -406,9 +293,10 @@ class _TranscribeTaskHandler extends TaskHandler {
     );
     b.writeln('- Keep punctuation/casing as-is as much as possible.');
     b.writeln('- Output ONLY TSV lines, same count, same first 3 columns.');
-    b.writeln('- if no ovious typos return the text as it is');
+    b.writeln('- If no obvious typos, return the text as it is.');
     b.writeln('');
     b.writeln('TSV:');
+
     for (final t in turns) {
       b.writeln(
         '${t.speaker}\t${t.startSec.toStringAsFixed(2)}\t${t.endSec.toStringAsFixed(2)}\t${_escapeTurnText(t.text)}',
@@ -416,9 +304,11 @@ class _TranscribeTaskHandler extends TaskHandler {
     }
 
     final fixedRaw = await _runTypoFixModel(
-      modelPath: mp,
+      modelPath: modelPath,
       prompt: b.toString(),
     );
+
+    if (fixedRaw.trim().isEmpty) return turns;
 
     final lines = fixedRaw
         .split('\n')
@@ -452,10 +342,9 @@ class _TranscribeTaskHandler extends TaskHandler {
       final text = parts.sublist(3).join('\t').trim();
 
       final orig = turns[i];
-      final origStart = orig.startSec.toStringAsFixed(2);
-      final origEnd = orig.endSec.toStringAsFixed(2);
-
-      if (spk != orig.speaker || startStr != origStart || endStr != origEnd) {
+      if (spk != orig.speaker ||
+          startStr != orig.startSec.toStringAsFixed(2) ||
+          endStr != orig.endSec.toStringAsFixed(2)) {
         return turns;
       }
 
@@ -497,6 +386,46 @@ class _TranscribeTaskHandler extends TaskHandler {
         .toList();
   }
 
+  Future<void> _sendPartialTurn({
+    required int? existingId,
+    required LiteTurn turn,
+    required int index,
+    int? total,
+  }) async {
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'transcribe_partial',
+      'existingId': existingId,
+      'index': index,
+      'total': total,
+      'turn': <String, dynamic>{
+        'speaker': turn.speaker,
+        'startSec': turn.startSec,
+        'endSec': turn.endSec,
+        'text': turn.text,
+      },
+    });
+  }
+
+  Future<void> _sendSegmentsReady({
+    required int? existingId,
+    required List<LiteTurn> turns,
+  }) async {
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'transcribe_segments_ready',
+      'existingId': existingId,
+      'total': turns.length,
+      'turns': turns
+          .map(
+            (turn) => <String, dynamic>{
+              'speaker': turn.speaker,
+              'startSec': turn.startSec,
+              'endSec': turn.endSec,
+            },
+          )
+          .toList(),
+    });
+  }
+
   Future<void> _setStageNotification(String stage, {String? text}) async {
     await FlutterForegroundTask.saveData(
       key: BackgroundTranscriber._kProgressStage,
@@ -508,18 +437,30 @@ class _TranscribeTaskHandler extends TaskHandler {
     );
   }
 
-  // ✅ resolve typo-fix model path INSIDE background task
   Future<String?> _resolveTypoFixModelPath() async {
     try {
       final ok = await _qwenService.isModelDownloaded();
       if (!ok) return null;
       final path = await _qwenService.modelFilePath();
-      final p = (path).trim();
+      final p = path.trim();
       if (p.isEmpty) return null;
       return p;
     } catch (_) {
       return null;
     }
+  }
+
+  bool _readTypoFixEnabled(dynamic v) {
+    // ✅ robust decoding across platforms
+    if (v is bool) return v;
+    if (v is int) return v != 0;
+    if (v is num) return v.toInt() != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      if (s == 'true' || s == '1' || s == 'yes' || s == 'on') return true;
+      if (s == 'false' || s == '0' || s == 'no' || s == 'off') return false;
+    }
+    return false;
   }
 
   @override
@@ -544,7 +485,7 @@ class _TranscribeTaskHandler extends TaskHandler {
     final tsRaw = await FlutterForegroundTask.getData(
       key: BackgroundTranscriber._kTargetSpeakers,
     );
-    final tsInt = (tsRaw is int) ? tsRaw : 0;
+    final tsInt = (tsRaw is int) ? tsRaw : int.tryParse('$tsRaw') ?? 0;
     final int? targetSpeakers = (tsInt <= 0) ? null : tsInt;
 
     final langRaw = await FlutterForegroundTask.getData(
@@ -554,10 +495,15 @@ class _TranscribeTaskHandler extends TaskHandler {
         ? langRaw.trim()
         : 'auto';
 
+    // ✅ ONLY source of truth inside task isolate (stored as int)
     final rawTypo = await FlutterForegroundTask.getData(
       key: BackgroundTranscriber._kTypoFixEnabled,
     );
     final typoFixEnabled = _readTypoFixEnabled(rawTypo);
+    final rawDiarization = await FlutterForegroundTask.getData(
+      key: BackgroundTranscriber._kDiarizationEnabled,
+    );
+    final diarizationEnabled = _readTypoFixEnabled(rawDiarization);
 
     if (wavPath == null || wavPath.isEmpty) {
       await FlutterForegroundTask.updateService(
@@ -579,6 +525,20 @@ class _TranscribeTaskHandler extends TaskHandler {
         titleHint: titleHint,
         targetSpeakers: targetSpeakers,
         lang: lang,
+        translateToEnglish: translate,
+        diarizationEnabled: diarizationEnabled,
+        onPartialTurn:
+            ({required LiteTurn turn, required int index, int? total}) async {
+              await _sendPartialTurn(
+                existingId: existingId,
+                turn: turn,
+                index: index,
+                total: total,
+              );
+            },
+        onSegmentsReady: (turns) async {
+          await _sendSegmentsReady(existingId: existingId, turns: turns);
+        },
         onProgress:
             ({
               required String stage,
@@ -612,24 +572,21 @@ class _TranscribeTaskHandler extends TaskHandler {
 
       Map<String, dynamic> payload = result.toJson();
 
+      // ✅ ONLY run typo fix when enabled
       if (typoFixEnabled) {
-        final typoFixModelPath = await _resolveTypoFixModelPath();
-        if (typoFixModelPath != null) {
+        final modelPath = await _resolveTypoFixModelPath();
+        if (modelPath != null) {
           final turns = _turnsFromResultJson(payload);
           if (turns.isNotEmpty) {
             await _setStageNotification(
               'Fixing typos',
               text: 'Fixing obvious typos…',
             );
-
             final fixedTurns = await _typoFixChunkTurnsIfPossible(
-              modelPath: typoFixModelPath,
-              modelReady: true,
+              modelPath: modelPath,
               turns: turns,
             );
-
             payload['turns'] = _turnsToJson(fixedTurns);
-
             await _setStageNotification(
               'Finalizing',
               text: 'Preparing result…',
@@ -644,7 +601,7 @@ class _TranscribeTaskHandler extends TaskHandler {
         'wavPath': wavPath,
         'payload': payload,
         'translate': translate,
-        'typoFixEnabled': typoFixEnabled,
+        'typoFixEnabled': typoFixEnabled, // optional debug
       });
 
       if (existingId != null) {
@@ -661,7 +618,6 @@ class _TranscribeTaskHandler extends TaskHandler {
     } catch (e) {
       FlutterForegroundTask.sendDataToMain({
         'type': 'transcribe_error',
-        'existingId': existingId,
         'error': e.toString(),
       });
       await FlutterForegroundTask.updateService(
@@ -669,6 +625,7 @@ class _TranscribeTaskHandler extends TaskHandler {
         notificationText: 'See app',
       );
     } finally {
+      // ✅ clear busy + active transcript id so other pages don't show loading
       await FlutterForegroundTask.saveData(
         key: BackgroundTranscriber._kBusyTranscribing,
         value: false,
@@ -677,20 +634,9 @@ class _TranscribeTaskHandler extends TaskHandler {
         key: BackgroundTranscriber._kActiveTranscriptId,
         value: 0,
       );
+
       await FlutterForegroundTask.stopService();
     }
-  }
-
-  bool _readTypoFixEnabled(dynamic v) {
-    if (v is bool) return v;
-    if (v is int) return v != 0;
-    if (v is num) return v.toInt() != 0;
-    if (v is String) {
-      final s = v.trim().toLowerCase();
-      if (s == 'true' || s == '1' || s == 'yes' || s == 'on') return true;
-      if (s == 'false' || s == '0' || s == 'no' || s == 'off') return false;
-    }
-    return false;
   }
 
   @override

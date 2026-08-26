@@ -1,16 +1,13 @@
-import 'dart:io';
 import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:transcript/send_transcript/auto_email_service.dart';
 import 'package:transcript/send_transcript/send_transcript_healper.dart';
 import 'package:transcript/transcript/audio_cleanup.dart';
 import 'package:transcript/ui/glass/glass_background.dart';
-import 'package:transcript/ui/glass/glass_button.dart';
-import 'package:transcript/ui/glass/glass_card.dart';
-import 'package:transcript/ui/glass/glass_tokens.dart';
 import 'package:transcript/widgets/brand_logo.dart';
 import 'package:transcript/widgets/status_pill.dart';
 
@@ -24,21 +21,24 @@ import 'transcript/transcription_persistence.dart';
 // App gate
 import 'auth/app_gate.dart';
 import 'auth/eligibility_gate.dart';
-import 'auth/guest_user_service.dart';
-import 'billing/subscription_service.dart';
-// If you still need the global Whisper for ModelPickerPage, keep this:
-import 'whisper_service.dart';
 import 'package:background_downloader/background_downloader.dart';
 
+import '../ui/glass/glass_card.dart';
+import '../ui/glass/glass_button.dart';
+import '../ui/glass/glass_tokens.dart';
 
-final whisper = WhisperService(); // UI-only: downloads & selection
+import 'theme/theme_controller.dart';
+import 'theme/app_theme.dart';
 
 final TranscriptMailService _mailer = TranscriptMailService(
   baseUrl: 'https://enyx.app',
   // authToken: 'optional', // if you use it
 );
 
-Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async {
+Future<void> _normalizeImportAudioPaths(
+  int transcriptId,
+  String wavPath,
+) async {
   final obx = ObjectBox.I;
 
   final t = obx.transcripts.get(transcriptId);
@@ -55,7 +55,9 @@ Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async 
   if (p.isEmpty && a.isNotEmpty && wavPath.trim().isEmpty) return;
 
   // Force import rule
-  t.audioPath = wavPath.trim().isEmpty ? (a.isEmpty ? null : a) : wavPath.trim();
+  t.audioPath = wavPath.trim().isEmpty
+      ? (a.isEmpty ? null : a)
+      : wavPath.trim();
   t.processedAudioPath = null;
 
   // optional timestamp
@@ -63,10 +65,10 @@ Future<void> _normalizeImportAudioPaths(int transcriptId, String wavPath) async 
 
   obx.transcripts.put(t);
 
-  debugPrint('[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)');
+  debugPrint(
+    '[IMPORT-FIX] Applied for transcriptId=$transcriptId (sourceType=$st)',
+  );
 }
-
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,10 +80,9 @@ Future<void> main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcHhscXlrYXdxdW9yZHdueG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNzQwMjAsImV4cCI6MjA3OTc1MDAyMH0.eDYqntQBhp_AxfhFw1PdR6gIFp50zDKzhqYKUzSs0EU',
   );
 
-  await GuestUserService.I.ensureGuestId();
-  await SubscriptionService.I.initializePurchase();
   await ObjectBox.init();
   await RecordingService.ensureInitialized();
+  await ThemeController.instance.init();
 
   runApp(const MyApp());
 
@@ -163,49 +164,25 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Transcript',
+    return ListenableBuilder(
+      listenable: ThemeController.instance,
+      builder: (context, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Transcript',
+          themeMode: ThemeController.instance.themeMode,
+          theme: AppTheme.light,
+          darkTheme: ThemeController.instance.isCrimson
+              ? AppTheme.crimson
+              : AppTheme.dark,
 
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
+          builder: (context, child) {
+            return GlassBackground(child: child ?? const SizedBox.shrink());
+          },
 
-        // ✅ IMPORTANT: let your GlassBackground show through
-        scaffoldBackgroundColor: Colors.transparent,
-
-        // Black/white only
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.white,
-          secondary: Colors.white,
-          surface: Color(0x0FFFFFFF), // translucent surfaces
-          onSurface: Colors.white,
-          onPrimary: Colors.black,
-        ),
-
-        // Remove weird tints
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-
-        // Text: iOS-ish
-        textTheme: ThemeData.dark().textTheme.apply(
-          bodyColor: Colors.white.withValues(alpha: 0.92),
-          displayColor: Colors.white.withValues(alpha: 0.92),
-        ),
-
-        // Default cards should not paint solid blocks
-        cardColor: Colors.transparent,
-
-        dividerColor: Colors.white.withValues(alpha: 0.10),
-      ),
-
-      // ✅ Global wallpaper behind EVERYTHING
-      builder: (context, child) {
-        return GlassBackground(child: child ?? const SizedBox.shrink());
+          home: const SplashGate(),
+        );
       },
-
-      home: const SplashGate(),
     );
   }
 }
@@ -241,10 +218,24 @@ class _SplashGateState extends State<SplashGate> {
     try {
       setState(() {
         _failed = false;
-        _status = 'Initializing…';
+        _status = 'Requesting microphone access…';
       });
+
+      final perm = await Permission.microphone.request();
+      if (!perm.isGranted) {
+        throw Exception('Microphone permission is required');
+      }
+
+      final p = await FlutterForegroundTask.checkNotificationPermission();
+      if (p != NotificationPermission.granted) {
+        await FlutterForegroundTask.requestNotificationPermission();
+      }
+
+      setState(() => _status = 'Initializing…');
       await _recoverStaleTranscriptionLock();
-      final eligibility = await _resolveInitialEligibility();
+
+      setState(() => _status = 'Checking access…');
+      final eligibility = await checkEligibilityOnce(Supabase.instance.client);
 
       await Future.delayed(const Duration(milliseconds: 120));
 
@@ -259,7 +250,6 @@ class _SplashGateState extends State<SplashGate> {
       setState(() {
         _failed = true;
         _status = 'Failed to initialize: $e';
-        debugPrint('SplashGate boot error: $e');
       });
     }
   }
@@ -274,7 +264,7 @@ class _SplashGateState extends State<SplashGate> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {},
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: GlassTokens.backgroundColor(context),
         body: GlassBackground(
           child: SafeArea(
             child: Center(
@@ -300,8 +290,8 @@ class _SplashGateState extends State<SplashGate> {
                       const SizedBox(height: 8),
 
                       // ---- Status pill ----
-                      StatusPill(text: _status,isError: _failed),
-                      
+                      StatusPill(text: _status, isError: _failed),
+
                       const SizedBox(height: 14),
 
                       // ---- Progress / error card ----
@@ -317,8 +307,9 @@ class _SplashGateState extends State<SplashGate> {
                                 borderRadius: BorderRadius.circular(999),
                                 child: LinearProgressIndicator(
                                   minHeight: 3,
-                                  backgroundColor:
-                                      Colors.white.withValues(alpha: 0.10),
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.10,
+                                  ),
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     GlassTokens.fg(context, alpha: 0.92),
                                   ),
@@ -377,7 +368,6 @@ class _SplashGateState extends State<SplashGate> {
                       ),
 
                       const SizedBox(height: 18),
-
                     ],
                   ),
                 ),
@@ -387,36 +377,5 @@ class _SplashGateState extends State<SplashGate> {
         ),
       ),
     );
-  }
-
-  Future<EligibilityGateResult> _resolveInitialEligibility() async {
-    try {
-      await SubscriptionService.I.initializePurchase();
-      if (Platform.isIOS && SubscriptionService.I.premiumActive) {
-        return const EligibilityGateResult(eligible: true);
-      }
-
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) {
-        return const EligibilityGateResult(eligible: false);
-      }
-
-      final remote = await checkEligibilityOnce(
-        Supabase.instance.client,
-      ).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => const EligibilityGateResult(eligible: false),
-      );
-
-      if (Platform.isIOS && SubscriptionService.I.premiumActive) {
-        return EligibilityGateResult(eligible: true, error: remote.error);
-      }
-      return remote;
-    } catch (e) {
-      if (Platform.isIOS && SubscriptionService.I.premiumActive) {
-        return const EligibilityGateResult(eligible: true);
-      }
-      return EligibilityGateResult(eligible: false, error: e.toString());
-    }
   }
 }

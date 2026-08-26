@@ -1,6 +1,8 @@
 import 'package:another_flushbar/flushbar.dart';
 import 'package:flutter/material.dart';
 
+import '../ui/glass/glass_tokens.dart';
+
 class AppFlushbar {
   AppFlushbar._();
 
@@ -29,7 +31,19 @@ class AppFlushbar {
     // If the widget tree is already gone, bail safely.
     if (!overlayCtx.mounted) return;
 
-    final theme = Theme.of(overlayCtx);
+    final isDark = GlassTokens.isDark(overlayCtx);
+    final bgColor = isDark ? const Color(0xFF1E1E26) : Colors.white;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.black.withValues(alpha: 0.08);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1A1A1E);
+    final messageColor = isDark
+        ? Colors.white.withValues(alpha: 0.92)
+        : const Color(0xFF2C2C34);
+    final closeColor = isDark ? Colors.white70 : const Color(0xFF6B6B78);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.50)
+        : Colors.black.withValues(alpha: 0.12);
 
     final safeTop = MediaQuery.of(overlayCtx).padding.top;
     final topMargin = (safeTop > 0 ? safeTop : 0) + 8.0;
@@ -50,9 +64,10 @@ class AppFlushbar {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall?.copyWith(
+              style: TextStyle(
                 fontWeight: FontWeight.w800,
-                color: Colors.white,
+                fontSize: 14,
+                color: titleColor,
                 letterSpacing: 0.2,
               ),
             ),
@@ -60,27 +75,30 @@ class AppFlushbar {
         message,
         maxLines: maxLines,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: Colors.white.withValues(alpha: 0.95),
-          height: 1.15,
+        style: TextStyle(
+          color: messageColor,
+          fontSize: 13.5,
+          height: 1.25,
           fontWeight: FontWeight.w600,
         ),
       ),
       icon: icon == null
           ? null
           : Padding(
-            padding: const EdgeInsets.all(4.0),
-            child: Container(
-                width: 34,
-                height: 34,
+              padding: const EdgeInsets.all(4.0),
+              child: Container(
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.14),
+                  color: iconColor.withValues(alpha: isDark ? 0.16 : 0.10),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: iconColor.withValues(alpha: 0.25)),
+                  border: Border.all(
+                    color: iconColor.withValues(alpha: isDark ? 0.28 : 0.20),
+                  ),
                 ),
                 child: Icon(icon, color: iconColor, size: 20),
               ),
-          ),
+            ),
 
       // ✅ Close button: dismiss THIS flushbar (not routes)
       mainButton: showClose
@@ -89,9 +107,9 @@ class AppFlushbar {
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 minimumSize: const Size(0, 36),
-                foregroundColor: Colors.white70,
+                foregroundColor: closeColor,
               ),
-              child: const Icon(Icons.close, size: 18),
+              child: Icon(Icons.close, size: 18, color: closeColor),
             )
           : null,
 
@@ -102,23 +120,23 @@ class AppFlushbar {
       flushbarStyle: FlushbarStyle.FLOATING,
 
       // --- Look & feel ---
-      margin: EdgeInsets.fromLTRB(18, topMargin, 14, 0),
+      margin: EdgeInsets.fromLTRB(16, topMargin, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       borderRadius: BorderRadius.circular(16),
-      backgroundColor:  const Color.fromARGB(100, 0, 0, 0),
-      borderColor: Colors.white.withValues(alpha: 0.08),
+      backgroundColor: bgColor,
+      borderColor: borderColor,
       borderWidth: 1,
 
       // --- Animation / shadow ---
-      animationDuration: const Duration(milliseconds: 220),
+      animationDuration: const Duration(milliseconds: 240),
       forwardAnimationCurve: Curves.easeOutCubic,
       reverseAnimationCurve: Curves.easeInCubic,
-      boxShadows: const [
+      boxShadows: [
         BoxShadow(
-          blurRadius: 22,
-          spreadRadius: 1,
-          offset: Offset(0, 12),
-          color: Colors.black45,
+          blurRadius: 20,
+          spreadRadius: 0,
+          offset: const Offset(0, 8),
+          color: shadowColor,
         ),
       ],
 
@@ -135,7 +153,9 @@ class AppFlushbar {
 
     // ✅ Show using root overlay context so it stays visible regardless of scroll.
     try {
-      await flush.show(overlayCtx);
+      if (overlayCtx.mounted) {
+        await flush.show(overlayCtx);
+      }
     } catch (_) {
       // ignore if overlay is gone mid-show
     }
@@ -145,39 +165,36 @@ class AppFlushbar {
     BuildContext context, {
     required String message,
     String? title,
-  }) =>
-      show(
-        context,
-        title: title ?? 'Success',
-        message: message,
-        icon: Icons.check_circle_outline,
-        iconColor: Colors.greenAccent,
-      );
+  }) => show(
+    context,
+    title: title ?? 'Success',
+    message: message,
+    icon: Icons.check_circle_rounded,
+    iconColor: const Color(0xFF34C759),
+  );
 
   static Future<void> error(
     BuildContext context, {
     required String message,
     String? title,
-  }) =>
-      show(
-        context,
-        title: title ?? 'Error',
-        message: message,
-        icon: Icons.error_outline,
-        duration: const Duration(seconds: 3),
-        iconColor: Colors.redAccent,
-      );
+  }) => show(
+    context,
+    title: title ?? 'Error',
+    message: message,
+    icon: Icons.error_rounded,
+    duration: const Duration(seconds: 3),
+    iconColor: const Color(0xFFFF3B30),
+  );
 
   static Future<void> info(
     BuildContext context, {
     required String message,
     String? title,
-  }) =>
-      show(
-        context,
-        title: title ?? 'Info',
-        message: message,
-        icon: Icons.info_outline,
-        iconColor: const Color(0xFF65D6FF),
-      );
+  }) => show(
+    context,
+    title: title ?? 'Info',
+    message: message,
+    icon: Icons.info_rounded,
+    iconColor: GlassTokens.primary(context),
+  );
 }

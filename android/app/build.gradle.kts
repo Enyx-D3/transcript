@@ -9,21 +9,23 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.enyxd.transcript"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    ndkVersion = flutter.ndkVersion
 
-     signingConfigs {
+    signingConfigs {
         create("release") {
-            val keystoreProperties = Properties().apply {
-                load(FileInputStream(rootProject.file("key.properties")))
-            }
-            
-            storeFile = file(keystoreProperties.getProperty("storeFile"))
-            storePassword = keystoreProperties.getProperty("storePassword")
             keyAlias = keystoreProperties.getProperty("keyAlias")
             keyPassword = keystoreProperties.getProperty("keyPassword")
+            storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+            storePassword = keystoreProperties.getProperty("storePassword")
         }
     }
     
@@ -48,23 +50,27 @@ android {
     }
 
     buildTypes {
-    getByName("release") {
-        // Remove the debug signing config and use your release config
-        signingConfig = signingConfigs.getByName("release")  // Changed from 'debug' to 'release'
-        
-        // Optional optimization settings (recommended)
-        isMinifyEnabled = true
-        isShrinkResources = true
-        proguardFiles(
-            getDefaultProguardFile("proguard-android-optimize.txt"),
-            "proguard-rules.pro"
-        )
+        getByName("release") {
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            
+            // Optional optimization settings (recommended)
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
     }
-}
-
-     packaging {
+    packaging {
         jniLibs {
-            useLegacyPackaging = true
+            // Keep native libs uncompressed so AGP can package them
+            // with modern page-size-compatible alignment for Play bundles.
+            useLegacyPackaging = false
         }
     }
 

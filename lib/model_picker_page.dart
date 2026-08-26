@@ -3,13 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:transcript/widgets/icon_pill_button.dart';
 
 import 'qwen_model_service.dart';
-import 'whisper_service.dart';
-
-// ✅ Glass primitives (match your new system)
-import '../ui/glass/glass_card.dart';
-import '../ui/glass/glass_divider.dart';
+import 'model_progress.dart';
 import '../ui/glass/glass_tokens.dart';
-import '../ui/glass/liquid_glass.dart';
 
 class ModelPickerPage extends StatefulWidget {
   const ModelPickerPage({super.key});
@@ -51,7 +46,10 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
         setState(() => _qwenProgress = p);
 
         final finishedOk =
-            !p.downloading && p.error == null && p.total == 1 && p.received == 1;
+            !p.downloading &&
+            p.error == null &&
+            p.total == 1 &&
+            p.received == 1;
         if (finishedOk) {
           final ok2 = await _qwenService.isModelDownloaded();
           if (!mounted) return;
@@ -87,245 +85,374 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final isDark = GlassTokens.isDark(context);
-
-    final fg = GlassTokens.fg(context, alpha: 0.92);
-    final muted = GlassTokens.muted(context, alpha: 0.70);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
+    final primaryColor = GlassTokens.primary(context);
 
     final p = _qwenProgress;
     final isDl = p.downloading;
     final isReady = _qwenDownloaded;
 
-    // ✅ Keep your percentage exactly as-is
     final pct = (p.percent * 100).clamp(0, 100).toStringAsFixed(0);
 
-    // ✅ progress bar uses received/total
-    final barValue = (p.total <= 0) ? null : (p.received / p.total).clamp(0.0, 1.0);
-
-    final statusText = isDl
-        ? (p.error != null ? 'Error: ${p.error}' : 'Downloading…')
-        : (isReady ? 'Downloaded' : 'Not downloaded');
+    final barValue = (p.total <= 0)
+        ? null
+        : (p.received / p.total).clamp(0.0, 1.0);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTokens.backgroundColor(context),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),
+        child: Column(
           children: [
-            // ---------- Header (glass, no AppBar) ----------
-            Row(
-              children: [
-                IconPillButton(
-                  tooltip: 'Close',
-                  icon: Icons.close,
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-                
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Models',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.2,
-                            color: fg,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Download local AI models',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: muted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            // ---------- Qwen panel (glass) ----------
-            GlassCard(
-              variant: GlassCardVariant.panel,
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // Top App Bar with bold 'Models' title
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
                 children: [
-                  // Top row
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LiquidGlass(
-                        borderRadius: BorderRadius.circular(14),
-                        padding: const EdgeInsets.all(10),
-                        shadow: false,
-                        blurX: isDark ? 16 : 12,
-                        blurY: isDark ? 16 : 12,
-                        tintOpacityDark: 0.040,
-                        tintOpacityLight: 0.032,
-                        borderOpacityDark: 0.14,
-                        borderOpacityLight: 0.18,
-                        child: Icon(
-                          Icons.smart_toy_outlined,
-                          color: fg,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Enyx Lite',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: fg,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Local LLM used for AI features.',
-                              style: TextStyle(
-                                color: muted,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _StatusPill(
-                                  label: statusText,
-                                  tone: isReady
-                                      ? _PillTone.good
-                                      : (p.error != null
-                                          ? _PillTone.bad
-                                          : _PillTone.neutral),
-                                ),
-                                if (isDl)
-                                  _StatusPill(
-                                    label: '$pct%',
-                                    tone: _PillTone.neutral,
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  IconPillButton(
+                    tooltip: 'Back',
+                    icon: Icons.arrow_back_rounded,
+                    onTap: () => Navigator.of(context).pop(),
                   ),
-
-                  // Progress
-                  if (isDl) ...[
-                    const SizedBox(height: 14),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        minHeight: 8,
-                        value: barValue,
-                        backgroundColor: Colors.white.withValues(alpha: 0.16),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white.withValues(alpha: 0.92),
-                        ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      'Models',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        color: fg,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            p.error != null ? 'Issue detected' : 'Downloading…',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: p.error != null
-                                  ? Colors.redAccent
-                                  : muted,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        OutlinedButton(
-                          onPressed: _cancelQwen,
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.redAccent, width: 1.2),
-                            foregroundColor: Colors.redAccent,
-                          ),
-                          child: const Text('Cancel'),
-                        ),
-                      ],
-                    ),
-                  ],
-
-                  const SizedBox(height: 14),
-                  const GlassDivider(height: 1, thickness: 0.8),
-                  const SizedBox(height: 12),
-
-                  // Bottom actions
-                  Row(
-                    children: [
-                      Expanded(
-                        child: isReady
-                            ? OutlinedButton.icon(
-                                onPressed: null,
-                                icon: const Icon(Icons.verified,color: Colors.white,),
-                                label: const Text('Downloaded',style: TextStyle(color: Colors.white),),
-                              )
-                            : FilledButton.icon(
-                                onPressed: isDl ? null : _downloadQwen,
-                                icon: isDl
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.black,
-                                        ),
-                                      )
-                                    : const Icon(Icons.download,color: Colors.white,),
-                                label: Text(isDl ? 'Downloading…' : 'Download'),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: Colors.black,
-                                ),
-                              ),
-                      ),
-                    ],
                   ),
                 ],
               ),
             ),
 
-            // ---------- Error panel ----------
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              GlassCard(
-                variant: GlassCardVariant.tile,
-                padding: const EdgeInsets.all(12),
-                child: Text(
-                  _error!,
-                  style: const TextStyle(
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: GlassTokens.borderColor(context),
+            ),
 
-            const SizedBox(height: 10),
+            Expanded(
+              child: ListView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  // Model panel (Solid High Contrast Card)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: GlassTokens.cardColor(context),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: GlassTokens.borderColor(context),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.20 : 0.04,
+                          ),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top row
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                color: primaryColor.withValues(
+                                  alpha: isDark ? 0.16 : 0.10,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.smart_toy_outlined,
+                                color: primaryColor,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Enyx Lite',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: fg,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Local on-device LLM for AI transcription & summaries.',
+                                    style: TextStyle(
+                                      color: muted,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      _StatusPill(
+                                        label: isReady
+                                            ? 'Downloaded'
+                                            : (isDl
+                                                  ? 'Downloading…'
+                                                  : (p.error != null
+                                                        ? 'Error'
+                                                        : 'Not downloaded')),
+                                        tone: isReady
+                                            ? _PillTone.good
+                                            : (p.error != null
+                                                  ? _PillTone.bad
+                                                  : _PillTone.neutral),
+                                        primaryColor: primaryColor,
+                                        isDark: isDark,
+                                      ),
+                                      if (isDl)
+                                        _StatusPill(
+                                          label: '$pct%',
+                                          tone: _PillTone.neutral,
+                                          primaryColor: primaryColor,
+                                          isDark: isDark,
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Progress bar during download
+                        if (isDl) ...[
+                          const SizedBox(height: 16),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(
+                              minHeight: 8,
+                              value: barValue,
+                              backgroundColor:
+                                  (isDark ? Colors.white : Colors.black)
+                                      .withValues(alpha: 0.10),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                primaryColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  p.error != null
+                                      ? 'Issue detected'
+                                      : 'Downloading AI model ($pct%)…',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: p.error != null
+                                        ? const Color(0xFFFF3B30)
+                                        : muted,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              OutlinedButton(
+                                onPressed: _cancelQwen,
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(
+                                    color: Color(0xFFFF3B30),
+                                    width: 1,
+                                  ),
+                                  foregroundColor: const Color(0xFFFF3B30),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+
+                        const SizedBox(height: 16),
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: GlassTokens.borderColor(context),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Bottom Action Button
+                        Row(
+                          children: [
+                            Expanded(
+                              child: isReady
+                                  ? OutlinedButton.icon(
+                                      onPressed: null,
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: const Color(
+                                          0xFF34C759,
+                                        ),
+                                        disabledForegroundColor: const Color(
+                                          0xFF34C759,
+                                        ),
+                                        backgroundColor: const Color(0xFF34C759)
+                                            .withValues(
+                                              alpha: isDark ? 0.14 : 0.08,
+                                            ),
+                                        side: BorderSide(
+                                          color: const Color(
+                                            0xFF34C759,
+                                          ).withValues(alpha: 0.35),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 13,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                      ),
+                                      icon: const Icon(
+                                        Icons.check_circle_rounded,
+                                        size: 19,
+                                        color: Color(0xFF34C759),
+                                      ),
+                                      label: const Text(
+                                        'Downloaded & Ready',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 14,
+                                          color: Color(0xFF34C759),
+                                        ),
+                                      ),
+                                    )
+                                  : ElevatedButton.icon(
+                                      onPressed: isDl ? null : _downloadQwen,
+                                      icon: isDl
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.download_rounded,
+                                              size: 20,
+                                              color: Colors.white,
+                                            ),
+                                      label: Text(
+                                        isDl
+                                            ? 'Downloading…'
+                                            : 'Download Model',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: primaryColor,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 13,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                        elevation: 2,
+                                        shadowColor: primaryColor.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Error alert panel
+                  if (_error != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(
+                          0xFFFF3B30,
+                        ).withValues(alpha: isDark ? 0.16 : 0.08),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFFF3B30,
+                          ).withValues(alpha: 0.35),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.error_outline_rounded,
+                            color: Color(0xFFFF3B30),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(
+                                color: Color(0xFFFF3B30),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -336,33 +463,51 @@ class _ModelPickerPageState extends State<ModelPickerPage> {
 enum _PillTone { neutral, good, bad }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, required this.tone});
+  const _StatusPill({
+    required this.label,
+    required this.tone,
+    required this.primaryColor,
+    required this.isDark,
+  });
 
   final String label;
   final _PillTone tone;
+  final Color primaryColor;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = GlassTokens.isDark(context);
+    final fg = GlassTokens.fg(context);
+    final muted = GlassTokens.muted(context);
 
-    // ✅ black/white only (remove orange)
-    Color? accent;
-    if (tone == _PillTone.good) {
-      accent = Colors.white;
-    } else if (tone == _PillTone.bad) {
-      accent = Colors.redAccent;
+    Color bg;
+    Color border;
+    Color textColor;
+
+    switch (tone) {
+      case _PillTone.good:
+        bg = const Color(0xFF34C759).withValues(alpha: isDark ? 0.18 : 0.10);
+        border = const Color(0xFF34C759).withValues(alpha: 0.35);
+        textColor = const Color(0xFF34C759);
+        break;
+      case _PillTone.bad:
+        bg = const Color(0xFFFF3B30).withValues(alpha: isDark ? 0.18 : 0.10);
+        border = const Color(0xFFFF3B30).withValues(alpha: 0.35);
+        textColor = const Color(0xFFFF3B30);
+        break;
+      case _PillTone.neutral:
+        bg = isDark ? const Color(0xFF242432) : const Color(0xFFEEEEF4);
+        border = isDark ? const Color(0xFF343444) : const Color(0xFFDCDCE6);
+        textColor = muted;
+        break;
     }
 
-    final base = accent ?? (isDark ? Colors.white : Colors.black);
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
       decoration: BoxDecoration(
-        color: base.withValues(alpha: tone == _PillTone.bad ? 0.10 : 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: base.withValues(alpha: tone == _PillTone.bad ? 0.45 : 0.28),
-        ),
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border, width: 1),
       ),
       child: Text(
         label,
@@ -370,10 +515,9 @@ class _StatusPill extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 11.5,
-          fontWeight: FontWeight.w800,
-          color: tone == _PillTone.good
-              ? Colors.white.withValues(alpha: 0.85)
-              : (tone == _PillTone.bad ? Colors.redAccent : Colors.white70),
+          fontWeight: FontWeight.w700,
+          color: textColor,
+          height: 1.0,
         ),
       ),
     );

@@ -11,7 +11,7 @@ import '../objectbox.g.dart';
 
 import '../llm_service.dart' show LLMService, qwenMaxContext;
 import '../qwen_model_service.dart';
-import '../whisper_service.dart' show ModelProgress;
+import '../model_progress.dart';
 
 import '../report/report_dialog.dart';
 import '../report/report_service.dart';
@@ -174,8 +174,9 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
   }
 
   Future<void> _openModelPicker() async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ModelPickerPage()));
     await _initModelState(); // refresh model availability on return
   }
 
@@ -377,19 +378,20 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
       outerContext: context,
       responseText: m.text,
       meta: meta,
-      sendReport: ({
-        required String reason,
-        required String note,
-        required String response,
-        Map<String, dynamic>? meta,
-      }) {
-        return _reportService.sendReport(
-          reason: reason,
-          note: note,
-          response: response,
-          meta: meta,
-        );
-      },
+      sendReport:
+          ({
+            required String reason,
+            required String note,
+            required String response,
+            Map<String, dynamic>? meta,
+          }) {
+            return _reportService.sendReport(
+              reason: reason,
+              note: note,
+              response: response,
+              meta: meta,
+            );
+          },
     );
   }
 
@@ -483,8 +485,9 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(
-            crossAxisAlignment:
-                isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: isUser
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
               // ✅ FIX: ensure bubble corners clip perfectly (prevents “not fully round”)
               ClipRRect(
@@ -673,7 +676,7 @@ class _TranscriptChatPageState extends State<TranscriptChatPage> {
 
   PreferredSizeWidget _glassAppBar() {
     final fg = GlassTokens.fg(context, alpha: 0.92);
-  
+
     return AppBar(
       automaticallyImplyLeading: false,
       titleSpacing: 12,

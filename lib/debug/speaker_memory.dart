@@ -16,8 +16,8 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 class IdentifyResult {
-  final String? key;   // speaker name
-  final double value;  // similarity score
+  final String? key; // speaker name
+  final double value; // similarity score
   const IdentifyResult(this.key, this.value);
 }
 
@@ -68,7 +68,10 @@ class SpeakerMemory {
               final protos = <Float32List>[];
               for (final item in value) {
                 if (item is List) {
-                  final vec = item.cast<num>().map((e) => e.toDouble()).toList();
+                  final vec = item
+                      .cast<num>()
+                      .map((e) => e.toDouble())
+                      .toList();
                   if (vec.isNotEmpty) protos.add(Float32List.fromList(vec));
                 }
               }
@@ -125,10 +128,7 @@ class SpeakerMemory {
   // --------------------------------------------------
 
   /// Identify the closest known speaker using best prototype match.
-  IdentifyResult identify(
-    Float32List probe, {
-    double threshold = 0.67,
-  }) {
+  IdentifyResult identify(Float32List probe, {double threshold = 0.67}) {
     String? bestName;
     double bestScore = -1.0;
 

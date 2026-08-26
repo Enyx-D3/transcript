@@ -9,8 +9,8 @@ class TranscriptMailService {
   const TranscriptMailService({required this.baseUrl, this.authToken});
 
   Future<void> sendTxtAttachment({
-    required String txt,      // attachment content (whatever you want)
-    String? filename,         // attachment filename
+    required String txt, // attachment content (whatever you want)
+    String? filename, // attachment filename
     Map<String, dynamic>? meta,
   }) async {
     final uri = Uri.parse('$baseUrl/.netlify/functions/send-transcript-txt');
