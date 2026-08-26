@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum AppThemeMode {
-  system,
-  dark,
-  crimson,
-  light,
-}
+enum AppThemeMode { system, dark, crimson, light }
 
 class ThemeController extends ChangeNotifier {
   ThemeController._();
@@ -14,7 +9,7 @@ class ThemeController extends ChangeNotifier {
 
   static const String _kPrefThemeMode = 'pref_theme_mode';
 
-  AppThemeMode _appThemeMode = AppThemeMode.system;
+  AppThemeMode _appThemeMode = AppThemeMode.crimson;
   AppThemeMode get appThemeMode => _appThemeMode;
 
   ThemeMode get themeMode {
@@ -42,10 +37,10 @@ class ThemeController extends ChangeNotifier {
       } else if (saved == 'light') {
         _appThemeMode = AppThemeMode.light;
       } else {
-        _appThemeMode = AppThemeMode.system;
+        _appThemeMode = AppThemeMode.crimson;
       }
     } catch (_) {
-      _appThemeMode = AppThemeMode.system;
+      _appThemeMode = AppThemeMode.crimson;
     }
     notifyListeners();
   }

@@ -159,7 +159,7 @@ class _AccountTabState extends State<AccountTab> {
           'date_joined': now.toIso8601String(),
           'is_upgraded': false,
           'trial_expires_at': now
-              .add(const Duration(days: 7))
+              .add(const Duration(days: 1))
               .toIso8601String(),
         });
 

@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:transcript/config/dev_flags.dart';
 import 'package:transcript/widgets/brand_logo.dart';
 import 'package:transcript/widgets/status_pill.dart';
 
@@ -12,7 +13,6 @@ import 'eligibility_gate.dart';
 
 import '../ui/glass/glass_background.dart';
 import '../ui/glass/glass_card.dart';
-import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_tokens.dart';
 
 class AppGate extends StatefulWidget {
@@ -30,7 +30,6 @@ class _AppGateState extends State<AppGate> {
 
   Session? _session;
   bool _ready = false;
-  bool _devBypass = false;
 
   late EligibilityGateResult _eligibility;
 
@@ -46,6 +45,10 @@ class _AppGateState extends State<AppGate> {
 
     _session = _sb.auth.currentSession;
     _ready = true;
+
+    if (!DevFlags.enableLoginSystem && _session == null) {
+      _eligibility = const EligibilityGateResult(eligible: true);
+    }
 
     // ✅ If already logged in at app start, show splash then check eligibility
     if (_session != null) {
@@ -72,7 +75,9 @@ class _AppGateState extends State<AppGate> {
       } else {
         // logged out
         setState(() {
-          _eligibility = const EligibilityGateResult(eligible: false);
+          _eligibility = EligibilityGateResult(
+            eligible: !DevFlags.enableLoginSystem,
+          );
           _checkingEligibility = false;
         });
       }
@@ -149,18 +154,11 @@ class _AppGateState extends State<AppGate> {
     }
 
     // ✅ Not logged in -> Login
-    if (_session == null && !_devBypass) {
+    if (_session == null && DevFlags.enableLoginSystem) {
       return LoginPage(
         onLoggedIn: () {
           setState(() {
             _session = _sb.auth.currentSession;
-          });
-        },
-        onBypass: () {
-          setState(() {
-            _devBypass = true;
-            _eligibility = const EligibilityGateResult(eligible: true);
-            _checkingEligibility = false;
           });
         },
       );
@@ -182,13 +180,9 @@ class _AppGateState extends State<AppGate> {
 
 /// A lightweight splash UI used by AppGate (NOT your main SplashGate boot screen)
 class _GateSplash extends StatelessWidget {
-  const _GateSplash({required this.status, this.failed = false, this.onRetry});
+  const _GateSplash({required this.status});
 
   final String status;
-
-  // ✅ Optional error mode
-  final bool failed;
-  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -224,7 +218,7 @@ class _GateSplash extends StatelessWidget {
                     const SizedBox(height: 8),
 
                     // ---- Status pill ----
-                    StatusPill(text: status, isError: failed),
+                    StatusPill(text: status, isError: false),
 
                     const SizedBox(height: 14),
 
@@ -235,61 +229,27 @@ class _GateSplash extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (!failed) ...[
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(999),
-                              child: LinearProgressIndicator(
-                                minHeight: 3,
-                                backgroundColor: Colors.white.withValues(
-                                  alpha: 0.10,
-                                ),
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  GlassTokens.fg(context, alpha: 0.92),
-                                ),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(
+                              minHeight: 3,
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.10,
+                              ),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                GlassTokens.fg(context, alpha: 0.92),
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Setting things up…',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: muted,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Setting things up…',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: muted,
+                              fontWeight: FontWeight.w600,
                             ),
-                          ] else ...[
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(
-                                  Icons.error_outline,
-                                  color: Colors.redAccent,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    'We couldn’t finish setup. Please try again.',
-                                    style: TextStyle(
-                                      color: GlassTokens.muted(
-                                        context,
-                                        alpha: 0.80,
-                                      ),
-                                      height: 1.2,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            GlassButton(
-                              kind: GlassButtonKind.primary,
-                              label: 'Retry',
-                              icon: Icons.refresh,
-                              onPressed: onRetry,
-                              innerChrome: false,
-                            ),
-                          ],
+                          ),
                         ],
                       ),
                     ),
