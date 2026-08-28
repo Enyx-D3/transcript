@@ -51,12 +51,14 @@ class TimelineTab extends StatefulWidget {
     super.key,
     required this.onNavigateToTab,
     this.onUpgradeSuccess,
+    this.devBypassPremium = false,
   });
 
   final void Function(int tabIndex) onNavigateToTab;
 
   /// ✅ Passed from HomeShell → Timeline → Settings → Account
   final VoidCallback? onUpgradeSuccess;
+  final bool devBypassPremium;
 
   @override
   State<TimelineTab> createState() => _TimelineTabState();
@@ -227,21 +229,13 @@ class _TimelineTabState extends State<TimelineTab> {
             leading: Icon(ic, color: fg),
             title: Text(
               title,
-              style: TextStyle(
-                color: fg,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(color: fg, fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
               subtitle,
-              style: TextStyle(
-                color: muted,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(color: muted, fontWeight: FontWeight.w600),
             ),
-            trailing: selected
-                ? Icon(Icons.check, color: fg)
-                : null,
+            trailing: selected ? Icon(Icons.check, color: fg) : null,
             onTap: () => Navigator.of(ctx).pop(v),
           );
         }
@@ -778,10 +772,12 @@ class _TimelineTabState extends State<TimelineTab> {
         child: LiquidGlass(
           borderRadius: BorderRadius.circular(999),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          backgroundColor:
-              isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
-          borderColor:
-              isDark ? GlassTokens.borderDark : GlassTokens.borderLight,
+          backgroundColor: isDark
+              ? GlassTokens.surfaceDark
+              : GlassTokens.surfaceLight,
+          borderColor: isDark
+              ? GlassTokens.borderDark
+              : GlassTokens.borderLight,
           shadow: false,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -791,8 +787,9 @@ class _TimelineTabState extends State<TimelineTab> {
                 height: 10,
                 child: CircularProgressIndicator(
                   strokeWidth: 1.8,
-                  value:
-                      _qwenProgress.percent > 0 ? _qwenProgress.percent : null,
+                  value: _qwenProgress.percent > 0
+                      ? _qwenProgress.percent
+                      : null,
                   color: fg,
                 ),
               ),
@@ -859,7 +856,9 @@ class _TimelineTabState extends State<TimelineTab> {
                                     ),
                                   ),
                                   if (showModelDownloading)
-                                    Flexible(child: _modelDownloadingTag(context)),
+                                    Flexible(
+                                      child: _modelDownloadingTag(context),
+                                    ),
                                 ],
                               ),
                             ),
@@ -874,6 +873,7 @@ class _TimelineTabState extends State<TimelineTab> {
                                 onTap: () => _openPage(
                                   SettingsPage(
                                     onUpgradeSuccess: widget.onUpgradeSuccess,
+                                    devBypassPremium: widget.devBypassPremium,
                                   ),
                                 ),
                               ),
@@ -929,7 +929,8 @@ class _TimelineTabState extends State<TimelineTab> {
                                 subtitle: 'Speakers',
                                 icon: Icons.people_alt_rounded,
                                 iconColor: const Color(0xFF635BFF),
-                                onTap: () => _openPage(const SpeakerMemoryPage()),
+                                onTap: () =>
+                                    _openPage(const SpeakerMemoryPage()),
                               ),
                             ],
                           ),
@@ -949,9 +950,15 @@ class _TimelineTabState extends State<TimelineTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildSectionHeader(title: 'Today', showActions: true),
+                          _buildSectionHeader(
+                            title: 'Today',
+                            showActions: true,
+                          ),
                           const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+                            padding: EdgeInsets.symmetric(
+                              vertical: 36,
+                              horizontal: 24,
+                            ),
                             child: Center(
                               child: EmptyState(
                                 title: 'No transcripts yet',
@@ -968,9 +975,7 @@ class _TimelineTabState extends State<TimelineTab> {
                 else
                   ..._buildGroupedSlivers(),
 
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 90),
-                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 90)),
               ],
             ),
           ),
@@ -1016,13 +1021,24 @@ class _TimelineTabState extends State<TimelineTab> {
                 leading: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E2A3A) : const Color(0xFFE8F1FF),
+                    color: isDark
+                        ? const Color(0xFF1E2A3A)
+                        : const Color(0xFFE8F1FF),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.audio_file_rounded, color: GlassTokens.primary(context)),
+                  child: Icon(
+                    Icons.audio_file_rounded,
+                    color: GlassTokens.primary(context),
+                  ),
                 ),
-                title: Text('Import Audio File', style: TextStyle(fontWeight: FontWeight.w600, color: fg)),
-                subtitle: Text('MP3, WAV, M4A, AAC', style: TextStyle(fontSize: 12, color: muted)),
+                title: Text(
+                  'Import Audio File',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: fg),
+                ),
+                subtitle: Text(
+                  'MP3, WAV, M4A, AAC',
+                  style: TextStyle(fontSize: 12, color: muted),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   ImportAudioSheet.show(context);
@@ -1034,13 +1050,24 @@ class _TimelineTabState extends State<TimelineTab> {
                 leading: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF242238) : const Color(0xFFF0EFFF),
+                    color: isDark
+                        ? const Color(0xFF242238)
+                        : const Color(0xFFF0EFFF),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.video_file_rounded, color: Color(0xFF635BFF)),
+                  child: const Icon(
+                    Icons.video_file_rounded,
+                    color: Color(0xFF635BFF),
+                  ),
                 ),
-                title: Text('Import Video File', style: TextStyle(fontWeight: FontWeight.w600, color: fg)),
-                subtitle: Text('MP4, MOV, MKV, AVI', style: TextStyle(fontSize: 12, color: muted)),
+                title: Text(
+                  'Import Video File',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: fg),
+                ),
+                subtitle: Text(
+                  'MP4, MOV, MKV, AVI',
+                  style: TextStyle(fontSize: 12, color: muted),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   ImportVideoSheet.show(context);
@@ -1077,9 +1104,7 @@ class _TimelineTabState extends State<TimelineTab> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _AnimatedSortButton(
-                  onTap: _showTranscriptSortSheet,
-                ),
+                _AnimatedSortButton(onTap: _showTranscriptSortSheet),
                 const SizedBox(width: 6),
                 _AnimatedReloadButton(
                   loading: _loading,
@@ -1109,10 +1134,7 @@ class _TimelineTabState extends State<TimelineTab> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: _buildSectionHeader(
-              title: groupKey,
-              showActions: isFirst,
-            ),
+            child: _buildSectionHeader(title: groupKey, showActions: isFirst),
           ),
         ),
       );
@@ -1122,21 +1144,18 @@ class _TimelineTabState extends State<TimelineTab> {
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, i) {
-                final t = list[i];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _TranscriptItemCard(
-                    transcript: t,
-                    onTap: () => _openDetail(t),
-                    onToggleFavourite: () => _toggleFavourite(t),
-                    onDelete: () => _onDeletePressed(t),
-                  ),
-                );
-              },
-              childCount: list.length,
-            ),
+            delegate: SliverChildBuilderDelegate((context, i) {
+              final t = list[i];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _TranscriptItemCard(
+                  transcript: t,
+                  onTap: () => _openDetail(t),
+                  onToggleFavourite: () => _toggleFavourite(t),
+                  onDelete: () => _onDeletePressed(t),
+                ),
+              );
+            }, childCount: list.length),
           ),
         ),
       );
@@ -1146,7 +1165,8 @@ class _TimelineTabState extends State<TimelineTab> {
   }
 
   Map<String, List<TranscriptEntity>> _groupTranscripts(
-      List<TranscriptEntity> items) {
+    List<TranscriptEntity> items,
+  ) {
     final Map<String, List<TranscriptEntity>> groups = {};
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1228,9 +1248,7 @@ class _TimelineActionCard extends StatelessWidget {
     final fg = GlassTokens.fg(context);
     final muted = GlassTokens.muted(context);
 
-    final cardBg = isDark
-        ? const Color(0xFF191922)
-        : const Color(0xFFEBEBF0);
+    final cardBg = isDark ? const Color(0xFF191922) : const Color(0xFFEBEBF0);
 
     final borderColor = isDark
         ? const Color(0xFF282834)
@@ -1250,10 +1268,7 @@ class _TimelineActionCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: borderColor,
-                width: 1,
-              ),
+              border: Border.all(color: borderColor, width: 1),
               boxShadow: [
                 BoxShadow(
                   color: isDark
@@ -1267,11 +1282,7 @@ class _TimelineActionCard extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  size: 32,
-                  color: iconColor,
-                ),
+                Icon(icon, size: 32, color: iconColor),
                 const SizedBox(height: 10),
                 Text(
                   title,
@@ -1392,10 +1403,7 @@ class _TranscriptItemCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Left Accent Line Bar (matching screenshot)
-              Container(
-                width: 4.5,
-                color: accentColor,
-              ),
+              Container(width: 4.5, color: accentColor),
               Expanded(
                 child: InkWell(
                   onTap: onTap,
@@ -1458,7 +1466,10 @@ class _TranscriptItemCard extends StatelessWidget {
                                         transcript.isFavourite
                                             ? 'Unfavourite'
                                             : 'Favourite',
-                                        style: TextStyle(fontSize: 13.5, color: fg),
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          color: fg,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -1545,10 +1556,7 @@ class _TranscriptItemCard extends StatelessWidget {
 // ---------------- ANIMATED BUTTONS ----------------
 
 class _AnimatedReloadButton extends StatefulWidget {
-  const _AnimatedReloadButton({
-    required this.onTap,
-    required this.loading,
-  });
+  const _AnimatedReloadButton({required this.onTap, required this.loading});
 
   final VoidCallback? onTap;
   final bool loading;
@@ -1634,7 +1642,11 @@ class _AnimatedReloadButtonState extends State<_AnimatedReloadButton>
                   ? (ColorTween(begin: muted, end: primaryColor).evaluate(
                           CurvedAnimation(
                             parent: _controller,
-                            curve: const Interval(0.0, 0.4, curve: Curves.easeInOut),
+                            curve: const Interval(
+                              0.0,
+                              0.4,
+                              curve: Curves.easeInOut,
+                            ),
                           ),
                         ) ??
                         primaryColor)
@@ -1684,18 +1696,24 @@ class _AnimatedSortButtonState extends State<_AnimatedSortButton>
     // Smooth subtle tilt swing
     _tiltAnim = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: -0.04)
-            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween<double>(
+          begin: 0.0,
+          end: -0.04,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 35,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: -0.04, end: 0.03)
-            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween<double>(
+          begin: -0.04,
+          end: 0.03,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 35,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.03, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween<double>(
+          begin: 0.03,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 30,
       ),
     ]).animate(_controller);
@@ -1737,7 +1755,11 @@ class _AnimatedSortButtonState extends State<_AnimatedSortButton>
                   ? (ColorTween(begin: muted, end: primaryColor).evaluate(
                           CurvedAnimation(
                             parent: _controller,
-                            curve: const Interval(0.0, 0.5, curve: Curves.easeInOut),
+                            curve: const Interval(
+                              0.0,
+                              0.5,
+                              curve: Curves.easeInOut,
+                            ),
                           ),
                         ) ??
                         primaryColor)
@@ -1747,11 +1769,7 @@ class _AnimatedSortButtonState extends State<_AnimatedSortButton>
                 angle: _controller.isAnimating ? _tiltAnim.value * 6.28 : 0.0,
                 child: Padding(
                   padding: const EdgeInsets.all(6),
-                  child: Icon(
-                    Icons.sort_rounded,
-                    size: 21,
-                    color: activeColor,
-                  ),
+                  child: Icon(Icons.sort_rounded, size: 21, color: activeColor),
                 ),
               );
             },

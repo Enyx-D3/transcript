@@ -3,18 +3,19 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:transcript/config/dev_flags.dart';
 import 'package:transcript/widgets/brand_logo.dart';
 import 'package:transcript/widgets/status_pill.dart';
 
 import '../home_shell.dart';
 import '../billing/subscription_service.dart'; // ✅ ADD
 import 'eligibility_gate.dart';
+import 'login_page.dart';
 
 import '../ui/glass/glass_background.dart';
 import '../ui/glass/glass_card.dart';
 import '../ui/glass/glass_button.dart';
 import '../ui/glass/glass_tokens.dart';
-
 
 class AppGate extends StatefulWidget {
   const AppGate({super.key, required this.initialEligibility});
@@ -31,6 +32,7 @@ class _AppGateState extends State<AppGate> {
 
   Session? _session;
   bool _ready = false;
+  bool _devBypassPremium = false;
 
   late EligibilityGateResult _eligibility;
 
@@ -46,6 +48,11 @@ class _AppGateState extends State<AppGate> {
 
     _session = _sb.auth.currentSession;
     _ready = true;
+    _devBypassPremium = !DevFlags.enableLoginSystem && _session == null;
+
+    if (_devBypassPremium) {
+      _eligibility = const EligibilityGateResult(eligible: true);
+    }
 
     // ✅ If already logged in at app start, show splash then check eligibility
     if (_session != null) {
@@ -62,6 +69,9 @@ class _AppGateState extends State<AppGate> {
       setState(() {
         _session = newSession;
         _ready = true;
+        _devBypassPremium =
+            newSession == null &&
+            (_devBypassPremium || !DevFlags.enableLoginSystem);
 
         // ✅ If logged in -> show splash until eligibility check finishes
         _checkingEligibility = newSession != null;
@@ -72,7 +82,7 @@ class _AppGateState extends State<AppGate> {
       } else {
         // logged out
         setState(() {
-          _eligibility = const EligibilityGateResult(eligible: false);
+          _eligibility = EligibilityGateResult(eligible: _devBypassPremium);
           _checkingEligibility = false;
         });
       }
@@ -81,6 +91,10 @@ class _AppGateState extends State<AppGate> {
 
   // ✅ One place that does "reconcile + check" with timeouts
   Future<EligibilityGateResult> _reconcileAndCheck() async {
+    if (_devBypassPremium) {
+      return const EligibilityGateResult(eligible: true);
+    }
+
     await SubscriptionService.I.initializePurchase();
 
     // Step A: try to reconcile purchases (important after purchase/restart)
@@ -105,10 +119,7 @@ class _AppGateState extends State<AppGate> {
         onTimeout: () => const EligibilityGateResult(eligible: false),
       );
       if (Platform.isIOS && SubscriptionService.I.premiumActive) {
-        return EligibilityGateResult(
-          eligible: true,
-          error: remote.error,
-        );
+        return EligibilityGateResult(eligible: true, error: remote.error);
       }
       return remote;
     } catch (e) {
@@ -148,6 +159,10 @@ class _AppGateState extends State<AppGate> {
 
   // ✅ Used by HomeShell Retry button
   Future<EligibilityGateResult> _retryEligibility() async {
+    if (_devBypassPremium) {
+      return const EligibilityGateResult(eligible: true);
+    }
+
     if (_session == null && !Platform.isIOS) {
       return const EligibilityGateResult(
         eligible: false,
@@ -175,11 +190,36 @@ class _AppGateState extends State<AppGate> {
       return const _GateSplash(status: 'Preparing…');
     }
 
+    if (_session == null &&
+        DevFlags.enableLoginSystem &&
+        !_devBypassPremium &&
+        !(Platform.isIOS && SubscriptionService.I.premiumActive)) {
+      return LoginPage(
+        onLoggedIn: () {
+          setState(() {
+            _session = _sb.auth.currentSession;
+            _devBypassPremium = false;
+          });
+        },
+        onBypass: () {
+          setState(() {
+            _session = null;
+            _devBypassPremium = true;
+            _checkingEligibility = false;
+            _eligibility = const EligibilityGateResult(eligible: true);
+          });
+        },
+      );
+    }
+
     // ✅ Guest mode allowed for non-account-based features.
     if (_session == null) {
       return HomeShell(
-        initialEligible: false,
+        initialEligible:
+            _devBypassPremium ||
+            (Platform.isIOS && SubscriptionService.I.premiumActive),
         onRetryEligibility: _retryEligibility,
+        devBypassPremium: _devBypassPremium,
       );
     }
 
@@ -193,17 +233,14 @@ class _AppGateState extends State<AppGate> {
       initialEligible: _eligibility.eligible,
       eligibilityError: _eligibility.error,
       onRetryEligibility: _retryEligibility,
+      devBypassPremium: _devBypassPremium,
     );
   }
 }
 
 /// A lightweight splash UI used by AppGate (NOT your main SplashGate boot screen)
 class _GateSplash extends StatelessWidget {
-  const _GateSplash({
-    required this.status,
-    this.failed = false,
-    this.onRetry,
-  });
+  const _GateSplash({required this.status, this.failed = false, this.onRetry});
 
   final String status;
 
@@ -231,7 +268,7 @@ class _GateSplash extends StatelessWidget {
                   children: [
                     // ---- Brand header ----
                     BrandLogo(),
-                    
+
                     const SizedBox(height: 16),
 
                     Text(
@@ -245,7 +282,7 @@ class _GateSplash extends StatelessWidget {
                     const SizedBox(height: 8),
 
                     // ---- Status pill ----
-                    StatusPill(text: status,isError: failed),
+                    StatusPill(text: status, isError: failed),
 
                     const SizedBox(height: 14),
 
@@ -261,8 +298,9 @@ class _GateSplash extends StatelessWidget {
                               borderRadius: BorderRadius.circular(999),
                               child: LinearProgressIndicator(
                                 minHeight: 3,
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.10),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.10,
+                                ),
                                 valueColor: AlwaysStoppedAnimation<Color>(
                                   GlassTokens.fg(context, alpha: 0.92),
                                 ),
@@ -315,7 +353,6 @@ class _GateSplash extends StatelessWidget {
                     ),
 
                     const SizedBox(height: 18),
-
                   ],
                 ),
               ),

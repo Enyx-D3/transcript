@@ -24,9 +24,14 @@ import '../ui/glass/glass_divider.dart';
 import '../ui/glass/liquid_glass.dart';
 
 class AccountTab extends StatefulWidget {
-  const AccountTab({super.key, this.onUpgradeSuccess});
+  const AccountTab({
+    super.key,
+    this.onUpgradeSuccess,
+    this.devBypassPremium = false,
+  });
 
   final VoidCallback? onUpgradeSuccess;
+  final bool devBypassPremium;
 
   @override
   State<AccountTab> createState() => _AccountTabState();
@@ -70,7 +75,7 @@ class _AccountTabState extends State<AccountTab> {
       _authDebounce = Timer(const Duration(milliseconds: 250), () async {
         if (!mounted) return;
 
-        if (_sb.auth.currentUser == null) {
+        if (_sb.auth.currentUser == null && !widget.devBypassPremium) {
           _resetToAppGate();
           return;
         }
@@ -139,7 +144,7 @@ class _AccountTabState extends State<AccountTab> {
       if (user == null) {
         if (!mounted) return;
         setState(() {
-          _profile = null;
+          _profile = widget.devBypassPremium ? _devBypassProfile() : null;
           _loading = false;
         });
         return;
@@ -243,6 +248,20 @@ class _AccountTabState extends State<AccountTab> {
   bool get _isLifetime => (_profile?.isLifetime ?? false);
 
   bool get _isActiveSubscription => _proActive && !_isLifetime;
+
+  AppProfile _devBypassProfile() {
+    final now = DateTime.now().toUtc();
+    return AppProfile(
+      id: 'dev-bypass',
+      email: 'developer@local',
+      dateJoined: now,
+      isUpgraded: true,
+      isLifetime: true,
+      trialExpiresAt: null,
+      proExpiresAt: null,
+      avatarUrl: null,
+    );
+  }
 
   String get _proExpiryLabel {
     if (!_proActive) return '—';
@@ -603,7 +622,9 @@ class _AccountTabState extends State<AccountTab> {
       });
     }
 
-    await _sb.auth.signOut();
+    if (!widget.devBypassPremium) {
+      await _sb.auth.signOut();
+    }
     if (mounted) _resetToAppGate();
   }
 
@@ -656,7 +677,7 @@ class _AccountTabState extends State<AccountTab> {
   Widget build(BuildContext context) {
     final user = _sb.auth.currentUser;
 
-    if (user == null) {
+    if (user == null && !widget.devBypassPremium) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(16),
@@ -677,12 +698,12 @@ class _AccountTabState extends State<AccountTab> {
       );
     }
 
-    final meta = user.userMetadata ?? {};
+    final meta = user?.userMetadata ?? {};
     final displayName =
         (meta['full_name'] ?? meta['name'] ?? meta['display_name']) as String?;
     final heroName = (displayName != null && displayName.trim().isNotEmpty)
         ? displayName.trim()
-        : (user.email ?? 'User');
+        : (user?.email ?? 'Developer Bypass');
 
     final accessEnabled = (_proActive || _trialActive);
 
@@ -705,7 +726,7 @@ class _AccountTabState extends State<AccountTab> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Avatar(profile: _profile, fallbackEmail: user.email),
+                _Avatar(profile: _profile, fallbackEmail: user?.email),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -721,7 +742,7 @@ class _AccountTabState extends State<AccountTab> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _profile?.email ?? user.email ?? 'Unknown',
+                        _profile?.email ?? user?.email ?? 'developer@local',
                         style: TextStyle(
                           color: isDark
                               ? Colors.white.withValues(alpha: 0.70)
@@ -902,41 +923,44 @@ class _AccountTabState extends State<AccountTab> {
               child: OutlinedButton.icon(
                 onPressed: _signOut,
                 icon: const Icon(Icons.logout, color: Colors.white),
-                label: const Text(
-                  'Sign out',
-                  style: TextStyle(color: Colors.white),
+                label: Text(
+                  widget.devBypassPremium
+                      ? 'Exit developer bypass'
+                      : 'Sign out',
+                  style: const TextStyle(color: Colors.white),
                 ),
               ),
             ),
 
-            const SizedBox(height: 10),
-
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _deleting ? null : _deleteAccount,
-                icon: _deleting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+            if (!widget.devBypassPremium) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _deleting ? null : _deleteAccount,
+                  icon: _deleting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(
+                          Icons.delete_forever_outlined,
+                          color: Colors.white.withValues(alpha: 0.92),
                         ),
-                      )
-                    : Icon(
-                        Icons.delete_forever_outlined,
-                        color: Colors.white.withValues(alpha: 0.92),
-                      ),
-                label: Text(
-                  _deleting ? 'Deleting…' : 'Delete account',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontWeight: FontWeight.w800,
+                  label: Text(
+                    _deleting ? 'Deleting…' : 'Delete account',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
 
           if (_error != null) ...[

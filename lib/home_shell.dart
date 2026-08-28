@@ -22,11 +22,13 @@ class HomeShell extends StatefulWidget {
     required this.initialEligible,
     this.eligibilityError,
     required this.onRetryEligibility,
+    this.devBypassPremium = false,
   });
 
   final bool initialEligible;
   final String? eligibilityError;
   final Future<EligibilityGateResult> Function() onRetryEligibility;
+  final bool devBypassPremium;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -83,6 +85,7 @@ class _HomeShellState extends State<HomeShell> {
         builder: (_) => SettingsPage(
           openAccount: true,
           onUpgradeSuccess: _handleUpgradeSuccess,
+          devBypassPremium: widget.devBypassPremium,
         ),
       ),
     );
@@ -123,6 +126,7 @@ class _HomeShellState extends State<HomeShell> {
       TimelineTab(
         onNavigateToTab: _goTo,
         onUpgradeSuccess: _handleUpgradeSuccess,
+        devBypassPremium: widget.devBypassPremium,
       ),
       const CalendarPage(),
       const SizedBox.shrink(),
@@ -166,10 +170,7 @@ class _HomeShellState extends State<HomeShell> {
 
 /// Keeps tab state and adds a smooth directional slide + fade transition when switching.
 class _AnimatedIndexedStack extends StatefulWidget {
-  const _AnimatedIndexedStack({
-    required this.index,
-    required this.children,
-  });
+  const _AnimatedIndexedStack({required this.index, required this.children});
 
   final int index;
   final List<Widget> children;
@@ -242,10 +243,7 @@ class _AnimatedIndexedStackState extends State<_AnimatedIndexedStack>
             if (!isVisible) {
               return Offstage(
                 offstage: true,
-                child: TickerMode(
-                  enabled: false,
-                  child: child,
-                ),
+                child: TickerMode(enabled: false, child: child),
               );
             }
 
@@ -254,24 +252,17 @@ class _AnimatedIndexedStackState extends State<_AnimatedIndexedStack>
                   (1.0 - animVal) * (isForward ? 20.0 : -20.0);
               return Transform.translate(
                 offset: Offset(slideX, 0),
-                child: Opacity(
-                  opacity: animVal.clamp(0.0, 1.0),
-                  child: child,
-                ),
+                child: Opacity(opacity: animVal.clamp(0.0, 1.0), child: child),
               );
             }
 
             if (isPrev) {
-              final double slideX =
-                  animVal * (isForward ? -20.0 : 20.0);
+              final double slideX = animVal * (isForward ? -20.0 : 20.0);
               return Transform.translate(
                 offset: Offset(slideX, 0),
                 child: Opacity(
                   opacity: (1.0 - animVal).clamp(0.0, 1.0),
-                  child: TickerMode(
-                    enabled: false,
-                    child: child,
-                  ),
+                  child: TickerMode(enabled: false, child: child),
                 ),
               );
             }
@@ -298,8 +289,9 @@ class _BottomDockNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final primaryColor = GlassTokens.primary(context);
     final isDark = GlassTokens.isDark(context);
-    final inactiveColor =
-        isDark ? const Color(0xFFA0A0AB) : const Color(0xFF6B6B78);
+    final inactiveColor = isDark
+        ? const Color(0xFFA0A0AB)
+        : const Color(0xFF6B6B78);
     final bg = isDark ? const Color(0xFF14141A) : const Color(0xFFFFFFFF);
     final border = isDark ? const Color(0xFF282832) : const Color(0xFFE8E8EE);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -317,9 +309,7 @@ class _BottomDockNav extends StatelessWidget {
               height: 76,
               decoration: BoxDecoration(
                 color: bg,
-                border: Border(
-                  top: BorderSide(color: border, width: 1),
-                ),
+                border: Border(top: BorderSide(color: border, width: 1)),
                 // Removed the glow/shadow as requested
               ),
               child: Row(
@@ -385,9 +375,7 @@ class _BottomDockNav extends StatelessWidget {
             // Floating Center Mic Button (Slightly lowered, clean with no glow)
             Positioned(
               top: 0,
-              child: _FloatingMicButton(
-                onTap: () => onSelect(2),
-              ),
+              child: _FloatingMicButton(onTap: () => onSelect(2)),
             ),
           ],
         ),
@@ -426,11 +414,7 @@ class _NavItem extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 24,
-              color: color,
-            ),
+            Icon(icon, size: 24, color: color),
             const SizedBox(height: 3),
             Text(
               label,
@@ -481,11 +465,7 @@ class _FloatingMicButtonState extends State<_FloatingMicButton> {
             color: GlassTokens.primary(context),
           ),
           child: const Center(
-            child: Icon(
-              Icons.mic_none_rounded,
-              size: 28,
-              color: Colors.white,
-            ),
+            child: Icon(Icons.mic_none_rounded, size: 28, color: Colors.white),
           ),
         ),
       ),
@@ -527,10 +507,7 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                     padding: const EdgeInsets.all(10),
                     shadow: false,
-                    child: Icon(
-                      Icons.lock_outline,
-                      color: fg,
-                    ),
+                    child: Icon(Icons.lock_outline, color: fg),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -572,8 +549,9 @@ class _AccessLockedOverlaySheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   padding: const EdgeInsets.all(10),
                   shadow: false,
-                  backgroundColor:
-                      isDark ? GlassTokens.surfaceDark : GlassTokens.surfaceLight,
+                  backgroundColor: isDark
+                      ? GlassTokens.surfaceDark
+                      : GlassTokens.surfaceLight,
                   child: Text(
                     error!,
                     textAlign: TextAlign.center,

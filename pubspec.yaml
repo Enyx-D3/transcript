@@ -55,6 +55,7 @@ dependencies:
         ref: 03f7b56
   google_sign_in: ^7.2.0
   sign_in_with_apple: ^6.1.4
+  crypto: ^3.0.6
   supabase_flutter: ^2.10.3
   in_app_purchase: ^3.2.3
   in_app_purchase_android: ^0.4.0+5
